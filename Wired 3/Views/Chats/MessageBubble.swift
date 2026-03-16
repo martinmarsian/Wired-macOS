@@ -10,7 +10,7 @@ import SwiftUI
 
 struct MessageBubble: Shape {
     let showsTail: Bool
-    private let cornerRadius: Double = 10
+    private let cornerRadius: Double = 16
     private let tailWidth: Double = 8
 
     init(showsTail: Bool = true) {

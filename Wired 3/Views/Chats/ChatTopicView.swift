@@ -31,6 +31,8 @@ struct ChatTopicView: View {
                     .font(.system(size: 13))
                     .padding(10)
                     .help(chat.topic?.topic ?? "")
+                    .textSelection(.enabled)
+                
             } else {
                 Text("*No topic set*")
                     .multilineTextAlignment(.leading)
@@ -86,7 +88,7 @@ struct ChatTopicView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white)
+                .fill(.background)
                 .shadow(color: .gray.opacity(0.3), radius: 4)
         )
 

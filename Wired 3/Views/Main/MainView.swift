@@ -37,6 +37,8 @@ struct MainView: View {
     @State private var windowNumber: Int? = nil
 #if os(iOS)
     @State private var iPadSplitVisibility: NavigationSplitViewVisibility = .doubleColumn
+#elseif os(macOS)
+    @State private var macSplitVisibility: NavigationSplitViewVisibility = .automatic
 #endif
 
     private var splitColumnVisibility: Binding<NavigationSplitViewVisibility> {
@@ -44,6 +46,8 @@ struct MainView: View {
         if UIDevice.current.userInterfaceIdiom == .pad {
             return $iPadSplitVisibility
         }
+#elseif os(macOS)
+        return $macSplitVisibility
 #endif
         return .constant(.automatic)
     }
@@ -579,7 +583,9 @@ struct MainView: View {
 
         let startupBookmarks = bookmarks.filter { $0.connectAtStartup }
         guard !startupBookmarks.isEmpty else {
-            connectionController.presentNewConnection()
+            if bookmarks.isEmpty {
+                connectionController.presentNewConnection()
+            }
             return
         }
 
