@@ -149,6 +149,7 @@ struct TabsView: View {
             }
         }
         .navigationTitle(connectionTitle)
+        .iPadInlineNavigationTitle()
         .toolbarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .windowToolbar)
         .toolbar {
@@ -340,16 +341,19 @@ struct TabsView: View {
                             .environment(connectionController)
                             .environment(runtime)
                             .navigationTitle(connectionName)
+                            .iPadInlineNavigationTitle()
                     }
 
                     Tab("Messages", systemImage: "ellipsis.message.fill") {
                         MessagesView()
                             .environment(runtime)
+                            .iPadInlineNavigationTitle()
                     }
 
                     Tab("Boards", systemImage: "newspaper.fill") {
                         BoardsView()
                             .environment(runtime)
+                            .iPadInlineNavigationTitle()
                     }
 
                     Tab("Files", systemImage: "folder.fill") {
@@ -357,12 +361,14 @@ struct TabsView: View {
                             .environment(connectionController)
                             .environmentObject(transfers)
                             .environment(runtime)
+                            .iPadInlineNavigationTitle()
                     }
 
                     Tab("Settings", systemImage: "gearshape.fill") {
                         ServerSettingsView(connectionID: connectionID)
                             .environment(connectionController)
                             .environment(runtime)
+                            .iPadInlineNavigationTitle()
                     }
 
                     Tab("Info", systemImage: "info.circle.fill") {
@@ -370,10 +376,12 @@ struct TabsView: View {
                             .environment(connectionController)
                             .environment(runtime)
                             .navigationTitle(connectionName)
+                            .iPadInlineNavigationTitle()
                     }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .navigationTitle("")
+                .iPadInlineNavigationTitle()
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         if let serverInfo = runtime.serverInfo {
@@ -482,6 +490,21 @@ struct TabsView: View {
         }
 
         connectionController.markConnectionAsBookmarked(configuration.id)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func iPadInlineNavigationTitle() -> some View {
+#if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            self.navigationBarTitleDisplayMode(.inline)
+        } else {
+            self
+        }
+#else
+        self
+#endif
     }
 }
 

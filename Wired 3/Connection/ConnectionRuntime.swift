@@ -1155,6 +1155,15 @@ final class ConnectionRuntime: Identifiable {
         try await self.send(message)
     }
     
+    func setChatTopic(_ chatID: UInt32, topic: String) async throws {
+        let message = P7Message(withName: "wired.chat.set_topic", spec: spec!)
+
+        message.addParameter(field: "wired.chat.id", value: chatID)
+        message.addParameter(field: "wired.chat.topic.topic", value: topic)
+        
+        _ = try await self.send(message)
+    }
+    
     
     // MARK: - User Status Messages
     

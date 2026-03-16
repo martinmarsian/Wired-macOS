@@ -35,6 +35,18 @@ struct MainView: View {
     @State private var isTransfersVisible = false
     @State private var isTabBarVisible = false
     @State private var windowNumber: Int? = nil
+#if os(iOS)
+    @State private var iPadSplitVisibility: NavigationSplitViewVisibility = .doubleColumn
+#endif
+
+    private var splitColumnVisibility: Binding<NavigationSplitViewVisibility> {
+#if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return $iPadSplitVisibility
+        }
+#endif
+        return .constant(.automatic)
+    }
 
     private var activeTransfersCount: Int {
         transfers.transfers.filter { !$0.isStopped() }.count
@@ -217,11 +229,13 @@ struct MainView: View {
     }
 
     private var splitMainContent: some View {
-        NavigationSplitView {
+        NavigationSplitView(
+            columnVisibility: splitColumnVisibility
+        ) {
             sidebarContent
                 #if os(macOS)
-                .padding(.top, isTabBarVisible ? 30 : 0)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+                    .padding(.top, isTabBarVisible ? 30 : 0)
+                    .navigationSplitViewColumnWidth(min: 180, ideal: 200)
                 #endif
         } detail: {
             detailPane(for: windowConnectionID)
@@ -309,7 +323,7 @@ struct MainView: View {
             Section {
                 ForEach(bookmarks, id: \.id) { bookmark in
                     Button {
-                        selectConnection(bookmark.id)
+                        handleConnectionPrimaryAction([bookmark.id])
                     } label: {
                         connectionRow(connectionID: bookmark.id, name: bookmark.name)
                     }
@@ -323,7 +337,7 @@ struct MainView: View {
                 Section {
                     ForEach(connectionController.temporaryConnections, id: \.id) { temporary in
                         Button {
-                            selectConnection(temporary.id)
+                            handleConnectionPrimaryAction([temporary.id])
                         } label: {
                             connectionRow(connectionID: temporary.id, name: temporary.name)
                         }
@@ -436,11 +450,14 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var compactDetailToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Button("Connections") {
+            Button {
                 windowConnectionID = nil
                 listSelectionID = nil
                 connectionController.activeConnectionID = nil
+            } label: {
+                Image(systemName: "chevron.left")
             }
+            .accessibilityLabel("Connections")
         }
         ToolbarItem(placement: .topBarTrailing) {
             NavigationLink {

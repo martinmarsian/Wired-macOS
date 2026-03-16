@@ -23,7 +23,7 @@ struct ChatView: View {
                 ChatTopicView(chat: chat)
                     .environment(runtime)
                 
-                Divider()
+                //Divider()
                 
                 ChatMessagesView(
                     chat: chat,
@@ -62,6 +62,9 @@ struct ChatView: View {
                 }
                 .background(.background)
             }
+#if os(iOS)
+            .padding(10)
+#endif
 #if os(macOS)
             Divider()
             
