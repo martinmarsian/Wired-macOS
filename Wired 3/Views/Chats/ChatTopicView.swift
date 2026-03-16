@@ -85,7 +85,7 @@ struct ChatTopicView: View {
         })
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white)
                 .shadow(color: .gray.opacity(0.3), radius: 4)
         )
