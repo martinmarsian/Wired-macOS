@@ -17,11 +17,24 @@ struct ChatMessagesView: View {
     @State private var revealNewMessage = true
     
     var chat: Chat
+    var topOverlayInset: CGFloat = 0
+    var bottomOverlayInset: CGFloat = 0
+    var keyboardShowTrigger: Int = 0
     var onUserInteraction: (() -> Void)? = nil
+
+    private let bottomAnchorID = "chat-messages-bottom-anchor"
     
     var body: some View {
         ScrollViewReader { proxy in
             List {
+                if topOverlayInset > 0 {
+                    Color.clear
+                        .frame(height: topOverlayInset)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+
                 ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
                     if message.type == .say {
                         let previous = index > 0 ? chat.messages[index - 1] : nil
@@ -52,6 +65,13 @@ struct ChatMessagesView: View {
                             .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
                     }
                 }
+
+                Color.clear
+                    .frame(height: max(bottomOverlayInset, 0.1))
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .id(bottomAnchorID)
             }
 #if os(macOS)
             .background(
@@ -61,6 +81,8 @@ struct ChatMessagesView: View {
             )
 #endif
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(.clear)
             .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
@@ -80,16 +102,17 @@ struct ChatMessagesView: View {
                             }
                         }
                     }
-                    if let lastID = chat.messages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
             .onAppear {
                 DispatchQueue.main.async {
-                    if let lastID = chat.messages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: keyboardShowTrigger) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
         }

@@ -16,23 +16,61 @@ struct ChatView: View {
     
     var chat: Chat
     @State private var chatInput: String = ""
+#if os(iOS)
+    @State private var chatScrollTrigger: Int = 0
+#endif
     
+    
+    private var windowBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .textBackgroundColor)
+        #else
+        Color(uiColor: .systemBackground)
+        #endif
+    }
+
+    private var topicOverlayInset: CGFloat {
+        #if os(macOS)
+        76
+        #else
+        84
+        #endif
+    }
+
+    private var composerOverlayInset: CGFloat {
+        #if os(macOS)
+        58
+        #else
+        76
+        #endif
+    }
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                ChatTopicView(chat: chat)
-                    .environment(runtime)
-                
-                //Divider()
-                
+            ZStack {
                 ChatMessagesView(
                     chat: chat,
+                    topOverlayInset: topicOverlayInset,
+                    bottomOverlayInset: composerOverlayInset,
+                    keyboardShowTrigger: {
+#if os(iOS)
+                        chatScrollTrigger
+#else
+                        0
+#endif
+                    }(),
                     onUserInteraction: {
                         markCurrentChatAsReadIfNeeded()
                     }
                 )
+                .environment(runtime)
+#if os(iOS)
+                .padding([.horizontal], 10)
+#endif
+                
+                ChatTopicView(chat: chat)
                     .environment(runtime)
-                                
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
                 HStack(alignment: .top, spacing: 0) {
                     ConversationComposer(
                         text: $chatInput,
@@ -47,10 +85,10 @@ struct ChatView: View {
                         }
                     )
                     
-                    Button {
+                    
 #if os(macOS)
+                    Button {
                         NSApp.orderFrontCharacterPalette(nil)
-#endif
                     } label: {
                         Image(systemName: "face.smiling")
                             .font(.title3)
@@ -59,12 +97,12 @@ struct ChatView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 8)
                     .padding(.trailing, 8)
-                }
-                .background(.background)
-            }
-#if os(iOS)
-            .padding(10)
 #endif
+                }
+                .materialEdgeFade(top: 0, bottom: 60)
+                //.background(.red)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
 #if os(macOS)
             Divider()
             
@@ -91,6 +129,11 @@ struct ChatView: View {
             guard !newValue.isEmpty else { return }
             markCurrentChatAsReadIfNeeded()
         }
+#if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            chatScrollTrigger += 1
+        }
+#endif
 #if os(macOS)
         .background(
             ChatWindowInteractionObserver {
@@ -98,6 +141,7 @@ struct ChatView: View {
             }
         )
 #endif
+        .toolbarBackground(.visible, for: .windowToolbar)
         .toolbar {
 #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) {
@@ -179,10 +223,17 @@ struct ConversationComposer: View {
             .opacity(isEnabled ? 1.0 : 0.65)
             .allowsHitTesting(isEnabled)
 #else
-            TextField("", text: $text, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
+            TextField("", text: $text, prompt: Text("Chat here…"), axis: .vertical)
+                .textFieldStyle(.plain)
                 .lineLimit(1...5)
-                .padding(5)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(.background)
+                        .shadow(color: .gray.opacity(0.3), radius: 10)
+                )
+                .padding(10)
                 .disabled(!isEnabled)
                 .onSubmit {
                     submit()
@@ -354,7 +405,7 @@ private struct ChatInputField: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
         scrollView.wantsLayer = true
-        scrollView.layer?.cornerRadius = 6
+        scrollView.layer?.cornerRadius = 10
         scrollView.layer?.masksToBounds = true
         scrollView.layer?.borderWidth = 1
         scrollView.layer?.borderColor = NSColor.separatorColor.cgColor

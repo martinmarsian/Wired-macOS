@@ -45,11 +45,9 @@ struct MessageConversationDetailView: View {
                         }
                     }
                 )
-                
-                Button {
 #if os(macOS)
+                Button {
                         NSApp.orderFrontCharacterPalette(nil)
-#endif
                 } label: {
                     Image(systemName: "face.smiling")
                         .font(.title3)
@@ -58,6 +56,7 @@ struct MessageConversationDetailView: View {
                 .buttonStyle(.plain)
                 .padding(.top, 8)
                 .padding(.trailing, 8)
+#endif
             }
             .background(.background)
         }
