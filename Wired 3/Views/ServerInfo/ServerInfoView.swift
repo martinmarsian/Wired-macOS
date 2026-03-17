@@ -46,6 +46,7 @@ struct ServerInfoView: View {
 
                         // MARK: Info sections
                         VStack(spacing: 14) {
+
                             infoSection("Application") {
                                 infoRow("Name",     value: serverInfo.applicationName)
                                 infoRow("Version",  value: serverInfo.serverVersion)
@@ -74,7 +75,9 @@ struct ServerInfoView: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 24)
                     }
+                    .frame(maxWidth: 360)
                     .frame(maxWidth: .infinity)
+                    .padding(.top, 20)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
@@ -139,6 +142,7 @@ struct ServerInfoView: View {
             Text(date, style: .timer)
                 .font(.subheadline)
                 .gridColumnAlignment(.leading)
+                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -171,7 +175,6 @@ struct ServerInfoView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(.green.opacity(0.30), lineWidth: 1)
             )
-            .padding(.horizontal, 20)
         } else {
             HStack(spacing: 6) {
                 Image(systemName: "questionmark.circle")
@@ -184,7 +187,6 @@ struct ServerInfoView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 20)
         }
     }
 
