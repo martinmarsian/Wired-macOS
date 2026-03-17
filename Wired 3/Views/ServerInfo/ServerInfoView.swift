@@ -11,7 +11,7 @@ import SwiftUI
 struct ServerInfoView: View {
     @Environment(ConnectionRuntime.self) private var runtime
 
-    /// True if we have a stored TOFU fingerprint for this server.
+    /// Stored TOFU fingerprint for this server, if any.
     private var serverTrustFingerprint: String? {
         guard let hostname = runtime.connectionController.configuration(for: runtime.id)?.hostname else {
             return nil
@@ -22,94 +22,61 @@ struct ServerInfoView: View {
     var body: some View {
         Group {
             if let serverInfo = runtime.serverInfo {
-                VStack(spacing: 0) {
-                    Image(data: serverInfo.serverBanner)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // MARK: Header
+                        Image(data: serverInfo.serverBanner)
 
-                    VStack {
-                        Text(serverInfo.serverName)
-                            .font(.title)
+                        VStack(spacing: 4) {
+                            Text(serverInfo.serverName)
+                                .font(.title2)
+                                .fontWeight(.semibold)
 
-                        Text(serverInfo.serverDescription)
-                            .font(.caption)
-                    }
-                    .padding(.vertical, 8)
+                            Text(serverInfo.serverDescription)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 12)
+                        .padding(.bottom, 10)
 
-                    // SECURITY (A_009): Server identity badge
-                    serverIdentityBadge
-                        .padding(.bottom, 8)
+                        // SECURITY (A_009): Server identity badge
+                        serverIdentityBadge
+                            .padding(.bottom, 20)
 
-                    Divider()
+                        // MARK: Info sections
+                        VStack(spacing: 14) {
+                            infoSection("Application") {
+                                infoRow("Name",     value: serverInfo.applicationName)
+                                infoRow("Version",  value: serverInfo.serverVersion)
+                                if let spec = runtime.connection?.spec {
+                                    if let p7 = spec.builtinProtocolVersion {
+                                        infoRow("P7 Protocol", value: p7)
+                                    }
+                                    if let name = spec.protocolName, let ver = spec.protocolVersion {
+                                        infoRow("Wired Protocol", value: "\(name) \(ver)")
+                                    }
+                                }
+                            }
 
-                    LabeledContent {
-                        Text(serverInfo.applicationName)
-                    } label: {
-                        Text("Application Name").bold()
-                    }
+                            infoSection("System") {
+                                infoRow("OS",           value: serverInfo.osName)
+                                infoRow("OS Version",   value: serverInfo.osVersion)
+                                infoRow("Architecture", value: serverInfo.arch)
+                            }
 
-                    LabeledContent {
-                        Text(serverInfo.serverVersion)
-                    } label: {
-                        Text("Server Version").bold()
-                    }
-
-                    if let spec = runtime.connection?.spec {
-                        if let p7Version = spec.builtinProtocolVersion {
-                            LabeledContent {
-                                Text(p7Version).foregroundStyle(.secondary)
-                            } label: {
-                                Text("P7 Protocol").bold()
+                            infoSection("Files") {
+                                infoRow("Count",  value: "\(serverInfo.filesCount) files")
+                                infoRow("Size",   value: ByteCountFormatter().string(fromByteCount: Int64(serverInfo.filesSize)))
+                                infoTimerRow("Uptime", since: serverInfo.startTime)
                             }
                         }
-                        if let wiredName = spec.protocolName, let wiredVersion = spec.protocolVersion {
-                            LabeledContent {
-                                Text("\(wiredName) \(wiredVersion)").foregroundStyle(.secondary)
-                            } label: {
-                                Text("Wired Protocol").bold()
-                            }
-                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 24)
                     }
-
-                    Divider()
-
-                    LabeledContent {
-                        Text(serverInfo.osName)
-                    } label: {
-                        Text("OS Name").bold()
-                    }
-
-                    LabeledContent {
-                        Text(serverInfo.osVersion)
-                    } label: {
-                        Text("OS Version").bold()
-                    }
-
-                    LabeledContent {
-                        Text(serverInfo.arch)
-                    } label: {
-                        Text("OS Arch").bold()
-                    }
-
-                    Divider()
-
-                    LabeledContent {
-                        Text("\(serverInfo.filesCount) files")
-                    } label: {
-                        Text("Files").bold()
-                    }
-
-                    LabeledContent {
-                        Text("\(ByteCountFormatter().string(fromByteCount: Int64(serverInfo.filesSize)))")
-                    } label: {
-                        Text("Size").bold()
-                    }
-
-                    LabeledContent {
-                        Text(serverInfo.startTime, style: .timer)
-                    } label: {
-                        Text("Uptime").bold()
-                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: 400)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -125,12 +92,63 @@ struct ServerInfoView: View {
         }
     }
 
+    // MARK: - Section builder
+
+    @ViewBuilder
+    private func infoSection(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
+        GroupBox {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                rows()
+            }
+            .padding(.top, 4)
+        } label: {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+        }
+    }
+
+    @ViewBuilder
+    private func infoRow(_ label: String, value: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .gridColumnAlignment(.leading)
+                .frame(minWidth: 110, alignment: .leading)
+
+            Text(value)
+                .font(.subheadline)
+                .gridColumnAlignment(.leading)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func infoTimerRow(_ label: String, since date: Date) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .gridColumnAlignment(.leading)
+                .frame(minWidth: 110, alignment: .leading)
+
+            Text(date, style: .timer)
+                .font(.subheadline)
+                .gridColumnAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     // MARK: - Identity badge
 
     @ViewBuilder
     private var serverIdentityBadge: some View {
         if let fingerprint = serverTrustFingerprint {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "checkmark.seal.fill")
                     .foregroundStyle(.green)
                     .imageScale(.small)
@@ -146,13 +164,14 @@ struct ServerInfoView: View {
                         .textSelection(.enabled)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(.green.opacity(0.30), lineWidth: 1)
             )
+            .padding(.horizontal, 20)
         } else {
             HStack(spacing: 6) {
                 Image(systemName: "questionmark.circle")
@@ -162,9 +181,10 @@ struct ServerInfoView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 20)
         }
     }
 
