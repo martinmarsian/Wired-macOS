@@ -52,6 +52,23 @@ struct ServerInfoView: View {
                         Text("Server Version").bold()
                     }
 
+                    if let spec = runtime.connection?.spec {
+                        if let p7Version = spec.builtinProtocolVersion {
+                            LabeledContent {
+                                Text(p7Version).foregroundStyle(.secondary)
+                            } label: {
+                                Text("P7 Protocol").bold()
+                            }
+                        }
+                        if let wiredName = spec.protocolName, let wiredVersion = spec.protocolVersion {
+                            LabeledContent {
+                                Text("\(wiredName) \(wiredVersion)").foregroundStyle(.secondary)
+                            } label: {
+                                Text("Wired Protocol").bold()
+                            }
+                        }
+                    }
+
                     Divider()
 
                     LabeledContent {
