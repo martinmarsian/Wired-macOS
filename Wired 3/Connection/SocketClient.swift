@@ -59,7 +59,36 @@ actor SocketClient {
             if let userIcon = userIcon {
                 connection.icon = userIcon
             }
-            
+
+            // SECURITY (A_009): TOFU — verify server identity fingerprint
+            let host = configuration.hostname
+            connection.serverTrustHandler = { fingerprint, isNewKey, strictIdentity in
+                switch ServerTrustStore.evaluate(fingerprint: fingerprint,
+                                                 host: host, port: 4871,
+                                                 strictIdentity: strictIdentity) {
+                case .allow:
+                    return true
+
+                case .newKey(let fp):
+                    // First connection: fingerprint stored automatically
+                    Logger.info("TOFU: stored new server identity for \(host) — \(fp)")
+                    return true
+
+                case .changed(let stored, let received, let strict):
+                    Logger.warning("TOFU: server identity changed for \(host)!")
+                    Logger.warning("  Expected : \(stored)")
+                    Logger.warning("  Received : \(received)")
+                    if strict {
+                        Logger.error("TOFU: strict mode — aborting connection (possible MITM).")
+                        return false
+                    } else {
+                        Logger.warning("TOFU: non-strict mode — updating stored fingerprint.")
+                        ServerTrustStore.storeFingerprint(received, host: host, port: 4871)
+                        return true
+                    }
+                }
+            }
+
             connections[id] = connection
             delegates[id] = proxy
 
