@@ -122,6 +122,6 @@ struct ChatTopicView: View {
 #endif
         }
         //.background(.clear)
-        .materialEdgeFade(top: 30, bottom: 0)
+        .backgroundEdgeFade(top: 30, bottom: 0)
     }
 }

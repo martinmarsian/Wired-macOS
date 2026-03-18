@@ -99,7 +99,7 @@ struct ChatView: View {
                     .padding(.trailing, 8)
 #endif
                 }
-                .materialEdgeFade(top: 0, bottom: 60)
+                .backgroundEdgeFade(top: 0, bottom: 60)
                 //.background(.red)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }

@@ -1,5 +1,5 @@
 //
-//  MaterialEdgeFade.swift
+//  BackgroundEdgeFade.swift
 //  Wired-macOS
 //
 //  Created by Rafaël Warnault on 16/03/2026.
@@ -7,8 +7,13 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
-struct MaterialEdgeFade: ViewModifier {
+struct BackgroundEdgeFade: ViewModifier {
     var top: CGFloat = 24
     var bottom: CGFloat = 24
 
@@ -17,10 +22,10 @@ struct MaterialEdgeFade: ViewModifier {
             .background(alignment: .top) {
                 if top > 0 {
                     Rectangle()
-                        .fill(.regularMaterial)
+                        .fill(Color.edgeFadeBackground)
                         .mask {
                             LinearGradient(
-                                colors: [.regularMaterialOpacity1, .clear],
+                                colors: [.edgeFadeMaskOpacity1, .clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -32,10 +37,10 @@ struct MaterialEdgeFade: ViewModifier {
             .background(alignment: .bottom) {
                 if bottom > 0 {
                     Rectangle()
-                        .fill(.regularMaterial)
+                        .fill(Color.edgeFadeBackground)
                         .mask {
                             LinearGradient(
-                                colors: [.clear, .regularMaterialOpacity1],
+                                colors: [.clear, .edgeFadeMaskOpacity1],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -48,12 +53,20 @@ struct MaterialEdgeFade: ViewModifier {
 }
 
 private extension Color {
+    #if os(macOS)
+    static let edgeFadeBackground = Color(nsColor: .textBackgroundColor)
+    #elseif os(iOS)
+    static let edgeFadeBackground = Color(uiColor: .systemBackground)
+    #else
+    static let edgeFadeBackground = Color.background
+    #endif
+
     // Alpha du masque (pas la couleur finale)
-    static let regularMaterialOpacity1 = Color.white
+    static let edgeFadeMaskOpacity1 = Color.white
 }
 
 extension View {
-    func materialEdgeFade(top: CGFloat = 24, bottom: CGFloat = 24) -> some View {
-        modifier(MaterialEdgeFade(top: top, bottom: bottom))
+    func backgroundEdgeFade(top: CGFloat = 24, bottom: CGFloat = 24) -> some View {
+        modifier(BackgroundEdgeFade(top: top, bottom: bottom))
     }
 }

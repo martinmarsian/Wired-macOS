@@ -23,6 +23,7 @@ struct ChatMessagesView: View {
     var onUserInteraction: (() -> Void)? = nil
 
     private let bottomAnchorID = "chat-messages-bottom-anchor"
+    private let scrollIndicatorBottomInset: CGFloat = 30
     
     var body: some View {
         ScrollViewReader { proxy in
@@ -82,6 +83,7 @@ struct ChatMessagesView: View {
 #endif
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, scrollIndicatorBottomInset, for: .scrollIndicators)
             .background(.clear)
             .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
