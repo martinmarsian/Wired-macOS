@@ -75,7 +75,6 @@ struct AccountEditor {
     var comment: String
     var originalPassword: String
     var password: String
-    var passwordExplicitlySet: Bool = false
     var primaryGroup: String
     var secondaryGroups: [String]
     var editedBy: String
@@ -397,9 +396,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         message.addParameter(field: "wired.account.comment", value: editor.comment)
         message.addParameter(field: "wired.account.group", value: editor.primaryGroup)
         message.addParameter(field: "wired.account.groups", value: editor.secondaryGroups)
-        if editor.passwordExplicitlySet {
-            message.addParameter(field: "wired.account.password", value: passwordForAccountEdit(editor))
-        }
+        message.addParameter(field: "wired.account.password", value: passwordForAccountEdit(editor))
         if editor.canEditIdentity {
             let identity = editor.identity.trimmingCharacters(in: .whitespacesAndNewlines)
             if !identity.isEmpty {
@@ -884,7 +881,6 @@ private struct AccountEditorForm: View {
                             editableSecureRow(label: "Mot de passe", text: editor.password) { value in
                                 var copy = editor
                                 copy.password = value
-                                copy.passwordExplicitlySet = true
                                 onUpdate(copy)
                             }
 
