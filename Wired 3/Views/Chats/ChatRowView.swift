@@ -25,12 +25,13 @@ struct ChatRowView: View {
             Text(chat.name)
             
             Spacer()
+
+            UnreadCountBadge(count: chat.unreadMessagesCount)
         }
         .contentShape(Rectangle())
 #if os(macOS)
         .background(isDropTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
 #endif
-        .badge(chat.unreadMessagesCount)
         .contextMenu {
             if chat.joined {
                 Button("Leave") {

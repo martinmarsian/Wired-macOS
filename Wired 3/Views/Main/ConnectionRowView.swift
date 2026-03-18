@@ -48,14 +48,26 @@ struct ConnectionRowView: View {
             
             Spacer()
 
-            if unreadCount > 0 {
-                Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.accentColor))
-            }
+            UnreadCountBadge(count: unreadCount)
+        }
+    }
+}
+
+struct UnreadCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            Text(count > 99 ? "99+" : "\(count)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(Color.accentColor.opacity(0.35))
+                        .stroke(Color.accentColor.opacity(0.95), lineWidth: 0.8)
+                )
         }
     }
 }
