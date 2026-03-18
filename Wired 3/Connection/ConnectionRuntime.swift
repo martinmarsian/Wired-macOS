@@ -124,6 +124,9 @@ final class ConnectionRuntime: Identifiable {
     var boardsByPath: [String: Board] = [:]
     @ObservationIgnored
     private var pendingLocalPostUUIDByThread: [String: String] = [:]
+    @ObservationIgnored
+    private(set) var boardReadIDs: Set<String> = []
+    var allBoardThreadsLoaded: Bool = false
     var boardsLoaded: Bool = false
     var selectedBoardPath: String?
     var selectedThreadUUID: String?
@@ -195,6 +198,7 @@ final class ConnectionRuntime: Identifiable {
         serverInfo = nil
         status = .connecting
         resetAutoReconnectState()
+        loadPersistedBoardReadIDs()
         loadPersistedMessagesIfNeeded()
     }
 
@@ -302,6 +306,7 @@ final class ConnectionRuntime: Identifiable {
     func resetBoards() {
         boards = []
         boardsByPath = [:]
+        allBoardThreadsLoaded = false
         boardsLoaded = false
         selectedBoardPath = nil
         selectedThreadUUID = nil
@@ -309,6 +314,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func appendBoard(_ board: Board) {
+        board.threadsLoaded = allBoardThreadsLoaded
         let parentPath = board.parentPath
         if parentPath.isEmpty || parentPath == "/" {
             boards.append(board)
@@ -335,8 +341,7 @@ final class ConnectionRuntime: Identifiable {
             // Board not found at old or new path — full re-sync needed
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.resetBoards()
-                try? await self.getBoards()
+                await self.reloadBoardsAndThreads()
             }
             return
         }
@@ -401,13 +406,121 @@ final class ConnectionRuntime: Identifiable {
         board(path: boardPath)?.threads.first(where: { $0.uuid == uuid })
     }
 
-    func markThreadAsRead(_ thread: BoardThread) {
-        thread.unreadPostsCount = 0
-        thread.lastReadAt = .now
+    func reloadBoardsAndThreads() async {
+        resetBoards()
+        try? await getBoards()
+        await bootstrapBoardThreads()
+    }
+
+    func bootstrapBoardThreads() async {
+        do {
+            try await getAllThreads()
+        } catch {
+            allBoardThreadsLoaded = false
+
+            let boardsToLoad = boardsByPath.values.sorted { $0.path < $1.path }
+            var loadedAllBoards = true
+
+            for board in boardsToLoad {
+                do {
+                    try await getThreads(forBoard: board)
+                } catch {
+                    loadedAllBoards = false
+                }
+            }
+
+            allBoardThreadsLoaded = loadedAllBoards
+        }
+    }
+
+    private func persistedBoardReadIDsKey() -> String? {
+        guard let key = persistenceKey() else { return nil }
+        return "BoardReadIDs|\(key)"
+    }
+
+    private func loadPersistedBoardReadIDs() {
+        guard let key = persistedBoardReadIDsKey() else { return }
+        guard let data = defaults.data(forKey: key) else {
+            boardReadIDs = []
+            return
+        }
+
+        do {
+            let decoded = try JSONDecoder().decode([String].self, from: data)
+            boardReadIDs = Set(decoded)
+        } catch {
+            boardReadIDs = Set(defaults.stringArray(forKey: key) ?? [])
+        }
+
+        refreshAllBoardUnreadStates()
+    }
+
+    private func persistBoardReadIDs() {
+        guard let key = persistedBoardReadIDsKey() else { return }
+        let encoded = Array(boardReadIDs).sorted()
+
+        do {
+            defaults.set(try JSONEncoder().encode(encoded), forKey: key)
+        } catch {
+            defaults.set(encoded, forKey: key)
+        }
+    }
+
+    private func unreadMarker(for thread: BoardThread) -> String {
+        thread.lastReplyUUID ?? thread.uuid
+    }
+
+    private func isThreadUnread(_ thread: BoardThread) -> Bool {
+        !boardReadIDs.contains(unreadMarker(for: thread))
+    }
+
+    private func isPostUnread(_ post: BoardPost, in thread: BoardThread) -> Bool {
+        if post.isThreadBody {
+            guard thread.lastReplyUUID == nil else { return false }
+            return !boardReadIDs.contains(thread.uuid)
+        }
+
+        return !boardReadIDs.contains(post.uuid)
+    }
+
+    func refreshThreadUnreadState(for thread: BoardThread, updateBadge: Bool = true) {
+        thread.isUnreadThread = isThreadUnread(thread)
+
+        var unreadCount = 0
         for post in thread.posts {
-            post.isUnread = false
+            let unread = isPostUnread(post, in: thread)
+            post.isUnread = unread
+            if unread {
+                unreadCount += 1
+            }
+        }
+
+        thread.unreadPostsCount = max(unreadCount, thread.isUnreadThread ? 1 : 0)
+
+        if updateBadge {
+            connectionController.updateNotificationsBadge()
+        }
+    }
+
+    func refreshAllBoardUnreadStates() {
+        for board in boardsByPath.values {
+            for thread in board.threads {
+                refreshThreadUnreadState(for: thread, updateBadge: false)
+            }
         }
         connectionController.updateNotificationsBadge()
+    }
+
+    func markThreadAsRead(_ thread: BoardThread) {
+        boardReadIDs.insert(thread.uuid)
+        if let latestReplyUUID = thread.lastReplyUUID {
+            boardReadIDs.insert(latestReplyUUID)
+        }
+        for post in thread.posts where !post.isThreadBody {
+            boardReadIDs.insert(post.uuid)
+        }
+        persistBoardReadIDs()
+        refreshThreadUnreadState(for: thread)
     }
 
     func markThreadAsRead(boardPath: String, threadUUID: String) {
@@ -416,47 +529,50 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func markThreadAsUnread(_ thread: BoardThread) {
-        let anchorDate = thread.lastReplyDate ?? thread.postDate
-        thread.lastReadAt = anchorDate.addingTimeInterval(-1)
-        thread.unreadPostsCount = max(1, thread.unreadPostsCount)
-
-        if thread.postsLoaded {
-            for post in thread.posts {
-                post.isUnread = post.postDate > (thread.lastReadAt ?? .distantPast)
-            }
-
-            if !thread.posts.contains(where: { $0.isUnread }), let lastPost = thread.posts.last {
-                lastPost.isUnread = true
-            }
+        if let latestReplyUUID = thread.lastReplyUUID {
+            boardReadIDs.remove(latestReplyUUID)
+        } else {
+            boardReadIDs.remove(thread.uuid)
         }
-
-        connectionController.updateNotificationsBadge()
+        persistBoardReadIDs()
+        refreshThreadUnreadState(for: thread)
     }
 
-    func markThreadHasUnread(_ thread: BoardThread, increment: Int = 1) {
-        guard increment > 0 else { return }
-        thread.unreadPostsCount += increment
-        connectionController.updateNotificationsBadge()
+    func applyBoardThreadListState(to thread: BoardThread) {
+        refreshThreadUnreadState(for: thread)
     }
 
-    func refreshPostUnreadState(for thread: BoardThread) {
-        guard let lastReadAt = thread.lastReadAt else {
-            for post in thread.posts {
-                post.isUnread = false
-            }
+    func applyRemoteThreadActivity(to thread: BoardThread, latestReplyChanged: Bool) {
+        if latestReplyChanged {
+            boardReadIDs.remove(thread.uuid)
+            persistBoardReadIDs()
+        }
+        refreshThreadUnreadState(for: thread)
+    }
+
+    func markOwnThreadAsRead(_ thread: BoardThread, postUUID: String? = nil) {
+        boardReadIDs.insert(thread.uuid)
+        if let latestReplyUUID = thread.lastReplyUUID {
+            boardReadIDs.insert(latestReplyUUID)
+        }
+        if let postUUID {
+            boardReadIDs.insert(postUUID)
+        }
+        persistBoardReadIDs()
+        refreshThreadUnreadState(for: thread)
+    }
+
+    func markSelectedThreadAsReadIfVisible() {
+        guard
+            let boardPath = selectedBoardPath,
+            let threadUUID = selectedThreadUUID,
+            let thread = thread(boardPath: boardPath, uuid: threadUUID),
+            connectionController.shouldAutoMarkBoardThreadAsRead(in: self, thread: thread)
+        else {
             return
         }
 
-        var unreadCount = 0
-        for post in thread.posts {
-            let unread = post.postDate > lastReadAt
-            post.isUnread = unread
-            if unread {
-                unreadCount += 1
-            }
-        }
-        thread.unreadPostsCount = unreadCount
-        connectionController.updateNotificationsBadge()
+        markThreadAsRead(thread)
     }
 
     func appendChat(_ chat: Chat) {
@@ -1278,13 +1394,38 @@ final class ConnectionRuntime: Identifiable {
         _ = try await send(m)
     }
 
+    func getAllThreads() async throws {
+        allBoardThreadsLoaded = false
+        for board in boardsByPath.values {
+            board.threadsLoaded = false
+            board.threads.removeAll()
+        }
+
+        let m = P7Message(withName: "wired.board.get_threads", spec: spec!)
+        if let response = try await send(m), response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+
+        allBoardThreadsLoaded = true
+        for board in boardsByPath.values {
+            board.threadsLoaded = true
+        }
+    }
+
     func getThreads(forBoard board: Board) async throws {
         board.threadsLoaded = false
         board.threads.removeAll()
         let m = P7Message(withName: "wired.board.get_threads", spec: spec!)
         m.addParameter(field: "wired.board.board", value: board.path)
-        _ = try await send(m)
+        if let response = try await send(m), response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
         board.threadsLoaded = true
+    }
+
+    func ensureThreadsLoaded(for board: Board) async {
+        guard !board.threadsLoaded else { return }
+        try? await getThreads(forBoard: board)
     }
 
     func getPosts(forThread thread: BoardThread) async throws {

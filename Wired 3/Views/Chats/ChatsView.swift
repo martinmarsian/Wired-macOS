@@ -40,13 +40,15 @@ struct ChatsView: View {
                             Text("Public Chats")
                         }
                         
-                        Section {
-                            ForEach(runtime.private_chats) { chat in
-                                ChatRowView(chat: chat)
-                                    .environment(runtime)
+                        if runtime.private_chats.count > 0 {
+                            Section {
+                                ForEach(runtime.private_chats) { chat in
+                                    ChatRowView(chat: chat)
+                                        .environment(runtime)
+                                }
+                            } header: {
+                                Text("Private Chats")
                             }
-                        } header: {
-                            Text("Private Chats")
                         }
                     }
                     .onChange(of: runtime.selectedChatID) { old, new in

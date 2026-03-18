@@ -27,8 +27,8 @@ final class BoardThread: Identifiable, Equatable, Hashable {
     var lastReplyUUID: String?
     var replies: Int
     var isOwn: Bool
+    var isUnreadThread: Bool = false
     var unreadPostsCount: Int = 0
-    var lastReadAt: Date?
 
     var posts: [BoardPost] = []
     var postsLoaded: Bool = false

@@ -66,7 +66,7 @@ struct UnreadCountBadge: View {
                 .background(
                     Capsule()
                         .fill(Color.accentColor.opacity(0.35))
-                        .stroke(Color.accentColor.opacity(0.95), lineWidth: 0.8)
+                        .stroke(Color.accentColor.opacity(0.75), lineWidth: 0.8)
                 )
         }
     }

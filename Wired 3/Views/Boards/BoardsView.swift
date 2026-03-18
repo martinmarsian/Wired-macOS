@@ -585,6 +585,10 @@ struct BoardsView: View {
                 Task { await preloadSmartBoardData(for: smartBoard) }
             }
         }
+        .onChange(of: runtime.allBoardThreadsLoaded) { _, loaded in
+            guard loaded, let smartBoard = selectedSmartBoard else { return }
+            Task { await preloadSmartBoardData(for: smartBoard) }
+        }
     }
 
     @ViewBuilder
@@ -687,10 +691,6 @@ struct BoardsView: View {
 
     private func preloadSmartBoardData(for smartBoard: SmartBoardDefinition) async {
         let boards = boardsForSmartBoard(smartBoard)
-        for board in boards where !board.threadsLoaded {
-            try? await runtime.getThreads(forBoard: board)
-        }
-
         let needsPosts = !smartBoard.replyContains.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         guard needsPosts else { return }
 
@@ -749,7 +749,20 @@ struct BoardsView: View {
                                             }
                                         }
                                         .contextMenu {
+                                            Button("Mark as read") {
+                                                
+                                            }
+                                            
+                                            Button("Mark as unread") {
+                                                
+                                            }
+                                            
+                                            Divider()
+                                            
                                             Button("Edit Smart Board") { smartBoardToEdit = smartBoard }
+                                            
+                                            Divider()
+                                            
                                             Button("Delete Smart Board", role: .destructive) { smartBoardToDelete = smartBoard }
                                         }
                                 }
@@ -808,16 +821,30 @@ struct BoardsView: View {
                                     }
                                 }
                                 .contextMenu {
+                                    Button("Mark as read") {
+                                        
+                                    }
+                                    Button("Mark as unread") {
+                                        
+                                    }
+                                    
+                                    if runtime.hasPrivilege("wired.account.board.rename_boards") {
+                                        Divider()
+                                        
+                                        Button("Rename Board") { boardToRename = board }
+                                    }
+                                    
                                     if runtime.hasPrivilege("wired.account.board.set_board_info") {
                                         Button("Edit Permissions") { boardToEditPermissions = board }
                                     }
-                                    if runtime.hasPrivilege("wired.account.board.rename_boards") {
-                                        Button("Rename Board") { boardToRename = board }
-                                    }
+                                    
                                     if runtime.hasPrivilege("wired.account.board.move_boards") {
                                         Button("Move Board") { boardToMove = board }
                                     }
+                                    
                                     if runtime.hasPrivilege("wired.account.board.delete_boards") {
+                                        Divider()
+                                        
                                         Button("Delete Board", role: .destructive) { boardToDelete = board }
                                     }
                                 }
@@ -872,6 +899,14 @@ struct BoardsView: View {
                     .frame(maxWidth: 30)
                     
                     Spacer()
+                    
+                    Button {
+                        // TODO: mark all board thread/post as read
+                    } label: {
+                        Image(systemName: "checkmark.rectangle.stack.fill")
+                    }
+                    .help("Mark all as read")
+                    .buttonStyle(.plain)
                 }
                 .padding(9)
                 
@@ -984,7 +1019,7 @@ struct BoardsView: View {
             }
             guard let board = selectedBoard else { return }
             if !board.threadsLoaded {
-                Task { try? await runtime.getThreads(forBoard: board) }
+                Task { await runtime.ensureThreadsLoaded(for: board) }
             }
         }
         .onChange(of: runtime.boardsLoaded) { _, loaded in
@@ -1002,7 +1037,6 @@ struct BoardsView: View {
             }
 
             if !board.threadsLoaded {
-                Task { try? await runtime.getThreads(forBoard: board) }
                 return
             }
 
@@ -1024,6 +1058,10 @@ struct BoardsView: View {
         .onChange(of: expandedBoardPaths) { _, _ in
             persistBoardExpansionState()
         }
+        .onChange(of: runtime.selectedTab) { _, selectedTab in
+            guard selectedTab == .boards else { return }
+            runtime.markSelectedThreadAsReadIfVisible()
+        }
         .onChange(of: selectedBoard?.threadsLoaded) { _, loaded in
             guard loaded == true else { return }
             guard let selectedThreadUUID else { return }
@@ -1037,6 +1075,11 @@ struct BoardsView: View {
                 Task { try? await runtime.getPosts(forThread: thread) }
             }
         }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            runtime.markSelectedThreadAsReadIfVisible()
+        }
+        #endif
         #else
         List(selection: boardListSelection) {
             if !smartBoards.isEmpty {
@@ -1103,10 +1146,8 @@ struct BoardsView: View {
             runtime.selectedBoardPath = value
             runtime.selectedThreadUUID = nil
             selectedThreadUUID = nil
-
-            guard let board = selectedBoard else { return }
-            if !board.threadsLoaded {
-                Task { try? await runtime.getThreads(forBoard: board) }
+            if let board = selectedBoard, !board.threadsLoaded {
+                Task { await runtime.ensureThreadsLoaded(for: board) }
             }
         }
         #endif
@@ -1144,6 +1185,8 @@ struct BoardsView: View {
                                     Button("Move Thread") { threadToMove = thread }
                                 }
                                 if canDeleteThread(thread) {
+                                    Divider()
+                                    
                                     Button("Delete Thread", role: .destructive) { threadToDelete = thread }
                                 }
                             }
@@ -1289,7 +1332,7 @@ struct BoardsView: View {
         .onChange(of: selectedThreadUUID) { _, _ in
             runtime.selectedThreadUUID = selectedThreadUUID
             guard let thread = selectedThread else { return }
-            runtime.markThreadAsRead(thread)
+            runtime.markSelectedThreadAsReadIfVisible()
             if !thread.postsLoaded {
                 Task { try? await runtime.getPosts(forThread: thread) }
             }
@@ -1316,7 +1359,7 @@ struct BoardsView: View {
         .onChange(of: selectedThreadUUID) { _, _ in
             runtime.selectedThreadUUID = selectedThreadUUID
             guard let thread = selectedThread else { return }
-            runtime.markThreadAsRead(thread)
+            runtime.markSelectedThreadAsReadIfVisible()
             if !thread.postsLoaded {
                 Task { try? await runtime.getPosts(forThread: thread) }
             }
@@ -2252,7 +2295,7 @@ private struct ThreadRowView: View {
             Circle()
                 .fill(Color.accentColor)
                 .frame(width: 8, height: 8)
-                .opacity(thread.unreadPostsCount > 0 ? 1 : 0)
+                .opacity(thread.isUnreadThread ? 1 : 0)
                 .padding(.top, 5)
 
             VStack(alignment: .leading, spacing: 3) {

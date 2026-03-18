@@ -464,6 +464,26 @@ final class ConnectionController {
 #endif
     }
 
+    @MainActor
+    func shouldAutoMarkBoardThreadAsRead(in runtime: ConnectionRuntime, thread: BoardThread) -> Bool {
+#if os(macOS)
+        guard NSApp.isActive else { return false }
+        guard runtime.selectedTab == .boards else { return false }
+        guard runtime.selectedThreadUUID == thread.uuid else { return false }
+        guard runtime.selectedBoardPath == thread.boardPath else { return false }
+
+        cleanupWindowRegistry()
+        guard let window = windowsByConnectionID[runtime.id]?.window else {
+            windowsByConnectionID[runtime.id] = nil
+            return false
+        }
+
+        return window.isKeyWindow || window.isMainWindow
+#else
+        return true
+#endif
+    }
+
     // MARK: - Init
 
     init(
@@ -1290,6 +1310,7 @@ final class ConnectionController {
             Task {
                 try? await runtime.subscribeBoards()
                 try? await runtime.getBoards()
+                await runtime.bootstrapBoardThreads()
             }
         case "wired.account.privileges":
             var parsedPrivileges: [String: Any] = [:]
@@ -1321,8 +1342,7 @@ final class ConnectionController {
             // Account or group privilege changes can alter board/thread/post visibility.
             // Re-sync the boards tree from server so UI stays in sync without reconnect.
             Task { @MainActor in
-                runtime.resetBoards()
-                try? await runtime.getBoards()
+                await runtime.reloadBoardsAndThreads()
             }
         case "wired.account.accounts_changed":
             await MainActor.run {
@@ -1773,12 +1793,13 @@ final class ConnectionController {
                                             postDate: postDate, replies: replies, isOwn: isOwn)
                     thread.lastReplyDate = lastReplyDate
                     thread.lastReplyUUID = message.uuid(forField: "wired.board.latest_reply")
+                    runtime.applyBoardThreadListState(to: thread)
                     board.threads.append(thread)
                 }
             }
 
         case "wired.board.thread_list.done":
-            break   // view can observe board.threads directly
+            break
 
         // MARK: - Thread content (first post + replies)
 
@@ -1801,10 +1822,8 @@ final class ConnectionController {
                         isOwn: thread.isOwn,
                         isThreadBody: true
                     )
-                    if let lastReadAt = thread.lastReadAt {
-                        rootPost.isUnread = rootPost.postDate > lastReadAt
-                    }
                     thread.posts.append(rootPost)
+                    runtime.refreshThreadUnreadState(for: thread)
                 }
             }
 
@@ -1829,10 +1848,8 @@ final class ConnectionController {
                     if let editDate {
                         post.editDate = editDate
                     }
-                    if let lastReadAt = thread.lastReadAt {
-                        post.isUnread = post.postDate > lastReadAt
-                    }
                     thread.posts.append(post)
+                    runtime.refreshThreadUnreadState(for: thread)
                 }
             }
 
@@ -1841,16 +1858,9 @@ final class ConnectionController {
                 await MainActor.run {
                     guard let thread = runtime.thread(uuid: threadUUID) else { return }
                     thread.postsLoaded = true
-
-                    let isViewingThread =
-                        runtime.selectedTab == .boards &&
-                        runtime.selectedThreadUUID == thread.uuid &&
-                        runtime.selectedBoardPath == thread.boardPath
-
-                    if isViewingThread {
+                    runtime.refreshThreadUnreadState(for: thread)
+                    if self.shouldAutoMarkBoardThreadAsRead(in: runtime, thread: thread) {
                         runtime.markThreadAsRead(thread)
-                    } else {
-                        runtime.refreshPostUnreadState(for: thread)
                     }
                 }
             }
@@ -1904,8 +1914,7 @@ final class ConnectionController {
 
             // Board permission edits can hide/show boards for this account.
             Task { @MainActor in
-                runtime.resetBoards()
-                try? await runtime.getBoards()
+                await runtime.reloadBoardsAndThreads()
             }
 
         // MARK: - Live thread events
@@ -1926,8 +1935,12 @@ final class ConnectionController {
                                             subject: subject, nick: nick,
                                             postDate: postDate,
                                             isOwn: ownThread)
-                    if !ownThread {
-                        runtime.markThreadHasUnread(thread, increment: 1)
+                    thread.lastReplyDate = message.date(forField: "wired.board.latest_reply_date")
+                    thread.lastReplyUUID = message.uuid(forField: "wired.board.latest_reply")
+                    if ownThread {
+                        runtime.markOwnThreadAsRead(thread)
+                    } else {
+                        runtime.applyBoardThreadListState(to: thread)
                         self.triggerEvent(
                             .boardPostAdded,
                             runtime: runtime,
@@ -1964,18 +1977,23 @@ final class ConnectionController {
                             isOwn: false
                         )
                         thread.apply(message)
+                        runtime.applyBoardThreadListState(to: thread)
                         board.threads.append(thread)
-
-                        let isViewingThread =
-                            runtime.selectedTab == .boards &&
-                            runtime.selectedThreadUUID == thread.uuid &&
-                            runtime.selectedBoardPath == thread.boardPath
                         let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
+                        let latestReplyChanged = thread.lastReplyUUID != nil
 
-                        if isViewingThread {
+                        if isOwnPostEvent {
+                            runtime.markOwnThreadAsRead(
+                                thread,
+                                postUUID: message.uuid(forField: "wired.board.post")
+                            )
+                        } else if latestReplyChanged {
+                            runtime.applyRemoteThreadActivity(to: thread, latestReplyChanged: true)
+                        }
+
+                        if self.shouldAutoMarkBoardThreadAsRead(in: runtime, thread: thread) {
                             runtime.markThreadAsRead(thread)
-                        } else if !isOwnPostEvent {
-                            runtime.markThreadHasUnread(thread, increment: 1)
+                        } else if latestReplyChanged && !isOwnPostEvent {
                             self.triggerEvent(
                                 .boardPostAdded,
                                 runtime: runtime,
@@ -1991,21 +2009,24 @@ final class ConnectionController {
                 let previousLatestReplyUUID = thread.lastReplyUUID
                 let previousEditDate = thread.editDate
                 thread.apply(message)
-                let latestReplyChanged =
-                    (thread.lastReplyUUID != nil && thread.lastReplyUUID != previousLatestReplyUUID)
+                let latestReplyChanged = thread.lastReplyUUID != previousLatestReplyUUID
                 let threadEdited = thread.editDate != previousEditDate
 
-                let isViewingThread =
-                    runtime.selectedTab == .boards &&
-                    runtime.selectedThreadUUID == thread.uuid &&
-                    runtime.selectedBoardPath == thread.boardPath
-
                 let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
-                if isViewingThread {
+                let shouldAutoRead = self.shouldAutoMarkBoardThreadAsRead(in: runtime, thread: thread)
+
+                if isOwnPostEvent {
+                    runtime.markOwnThreadAsRead(
+                        thread,
+                        postUUID: message.uuid(forField: "wired.board.post")
+                    )
+                } else {
+                    runtime.applyRemoteThreadActivity(to: thread, latestReplyChanged: latestReplyChanged)
+                }
+
+                if shouldAutoRead {
                     runtime.markThreadAsRead(thread)
-                } else if !isOwnPostEvent {
-                    // Any remote thread change (reply, thread edit, post edit/delete) is unread.
-                    runtime.markThreadHasUnread(thread, increment: 1)
+                } else if latestReplyChanged && !isOwnPostEvent {
                     let boardPath = message.string(forField: "wired.board.board") ?? thread.boardPath
                     self.triggerEvent(
                         .boardPostAdded,
@@ -2015,6 +2036,11 @@ final class ConnectionController {
                         chatText: "Board activity in \(boardPath): \(thread.subject)"
                     )
                 }
+
+                let isViewingThread =
+                    runtime.selectedTab == .boards &&
+                    runtime.selectedThreadUUID == thread.uuid &&
+                    runtime.selectedBoardPath == thread.boardPath
 
                 if thread.postsLoaded, latestReplyChanged {
                     if let latestReplyUUID = thread.lastReplyUUID,
@@ -2031,6 +2057,9 @@ final class ConnectionController {
                             thread.posts.append(post)
                         }
                         runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
+                        if shouldAutoRead {
+                            runtime.markThreadAsRead(thread)
+                        }
                     } else if isViewingThread,
                               let postUUID = message.uuid(forField: "wired.board.post"),
                               let text = message.string(forField: "wired.board.text"),
@@ -2062,6 +2091,9 @@ final class ConnectionController {
                             thread.posts.append(post)
                         }
                         runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
+                        if shouldAutoRead {
+                            runtime.markThreadAsRead(thread)
+                        }
                         return nil
                     } else if isViewingThread {
                         // Pending local post was not found; drop stale marker then fallback reload.
