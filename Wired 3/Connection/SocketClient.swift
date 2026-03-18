@@ -128,12 +128,14 @@ actor SocketClient {
                 )
 
                 let url = baseURL
-                if let password, !password.isEmpty {
+                if let password {
+                    // Explicit password (including empty string from on-the-fly with no password typed).
+                    // Only nil triggers keychain lookup — nil means this is a bookmark connection.
                     url.password = password
                 } else {
                     url.password = KeychainSwift().get("\(url.login)@\(url.hostname)") ?? ""
                 }
-               
+
                 do {
                     try connection.connect(
                         withUrl: url,

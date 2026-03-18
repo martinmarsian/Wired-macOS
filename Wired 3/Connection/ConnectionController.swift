@@ -295,6 +295,8 @@ final class ConnectionController {
     var presentedNewConnectionWindowNumber: Int? = nil
     #endif
     var suppressPresentedNewConnectionSheet: Bool = false
+    var presentChangePassword: UUID? = nil
+    var presentChangePasswordWindowNumber: Int? = nil
     var requestedSelectionID: UUID? = nil
     var activeConnectionID: UUID? = nil
     var didPerformInitialLaunchFlow: Bool = false
@@ -500,6 +502,12 @@ final class ConnectionController {
         return runtimeStores
             .filter { activeTaskIDs.contains($0.id) && $0.status == .connected }
             .map(\.id)
+    }
+
+    @MainActor
+    var canChangePassword: Bool {
+        guard let id = activeConnectionID, let r = runtime(for: id), r.status == .connected else { return false }
+        return r.hasPrivilege("wired.account.account.change_password")
     }
 
     func activeBookmarkedConnectionID() -> UUID? {
