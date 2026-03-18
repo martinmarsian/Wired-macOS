@@ -128,12 +128,14 @@ actor SocketClient {
                 )
 
                 let url = baseURL
+                let keychainKey = "\(url.login)@\(url.hostname)"
+                let keychain = KeychainSwift()
                 if let password, !password.isEmpty {
                     url.password = password
                 } else {
-                    url.password = KeychainSwift().get("\(url.login)@\(url.hostname)") ?? ""
+                    url.password = keychain.get(keychainKey) ?? ""
                 }
-               
+
                 do {
                     try connection.connect(
                         withUrl: url,
@@ -147,6 +149,14 @@ actor SocketClient {
                     timeoutWorkItem.cancel()
                 } catch {
                     timeoutWorkItem.cancel()
+                    // If auth failed while using a keychain password, the server-side password
+                    // may have been cleared by an admin. Clear the stale keychain entry so the
+                    // next connection attempt succeeds with an empty password automatically.
+                    let isAuthFailure = error.localizedDescription.contains("mismatch") ||
+                                       error.localizedDescription.contains("Authentication failed")
+                    if isAuthFailure, !url.password.isEmpty, configuration.password == nil {
+                        keychain.delete(keychainKey)
+                    }
                     finishOnce(error)
                 }
             }
