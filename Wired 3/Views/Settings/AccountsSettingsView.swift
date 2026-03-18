@@ -878,10 +878,30 @@ private struct AccountEditorForm: View {
                                 }
                             }
 
-                            editableSecureRow(label: "Mot de passe", text: editor.password) { value in
-                                var copy = editor
-                                copy.password = value
-                                onUpdate(copy)
+                            row(label: "Mot de passe") {
+                                HStack(spacing: 4) {
+                                    SecureField("", text: Binding(
+                                        get: { editor.password },
+                                        set: { value in
+                                            var copy = editor
+                                            copy.password = value
+                                            onUpdate(copy)
+                                        }
+                                    ))
+                                    .textFieldStyle(.roundedBorder)
+                                    if !editor.password.isEmpty {
+                                        Button {
+                                            var copy = editor
+                                            copy.password = ""
+                                            onUpdate(copy)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Supprimer le mot de passe")
+                                    }
+                                }
                             }
 
                             editableRow(label: "Groupe primaire", text: editor.primaryGroup) { value in
