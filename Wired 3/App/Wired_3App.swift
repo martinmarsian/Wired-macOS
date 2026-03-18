@@ -137,8 +137,12 @@ private struct MainAppCommands: Commands {
             Divider()
 
             Button("Change password...") {
-
+                controller.presentChangePasswordWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
+                if let id = controller.activeConnectionID {
+                    controller.presentChangePassword = id
+                }
             }
+            .disabled(!controller.canChangePassword)
 
         }
 

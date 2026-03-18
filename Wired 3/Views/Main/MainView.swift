@@ -109,6 +109,24 @@ struct MainView: View {
         )
     }
 
+    private var changePasswordSheetBinding: Binding<Bool> {
+        Binding(
+            get: {
+                guard connectionController.presentChangePassword != nil else { return false }
+                #if os(macOS)
+                if let presenterWindowNumber = connectionController.presentChangePasswordWindowNumber {
+                    guard presenterWindowNumber == windowNumber else { return false }
+                }
+                #endif
+                return true
+            },
+            set: { if !$0 {
+                connectionController.presentChangePassword = nil
+                connectionController.presentChangePasswordWindowNumber = nil
+            }}
+        )
+    }
+
     private var listSelectionBinding: Binding<UUID?> {
         Binding(
             get: { listSelectionID },
@@ -143,6 +161,7 @@ struct MainView: View {
                     connectionController: connectionController,
                     onWindowBecameKey: {
                         listSelectionID = windowConnectionID
+                        connectionController.activeConnectionID = windowConnectionID
                     },
                     onWindowChanged: { window in
                         windowNumber = window.windowNumber
@@ -154,6 +173,12 @@ struct MainView: View {
                 .frame(width: 0, height: 0)
             )
             #endif
+            .sheet(isPresented: changePasswordSheetBinding) {
+                if let connectionID = connectionController.presentChangePassword {
+                    ChangePasswordView(connectionID: connectionID)
+                        .environment(connectionController)
+                }
+            }
             .sheet(item: newConnectionSheetBinding) { draft in
                 NewConnectionFormView(draft: draft) { id in
                     connectionController.suppressPresentedNewConnectionSheet = true

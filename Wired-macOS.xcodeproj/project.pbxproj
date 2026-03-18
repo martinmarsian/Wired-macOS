@@ -13,6 +13,7 @@
 		4C0C2DE82EF437DE00213277 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE22EF437DE00213277 /* Bookmark.swift */; };
 		4C0C2DE92EF437DE00213277 /* Wired_3App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE42EF437DE00213277 /* Wired_3App.swift */; };
 		4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */; };
+		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
 		4C0C2DEF2EF458E000213277 /* KeychainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DEE2EF458E000213277 /* KeychainSwift */; };
 		4C0C2DF32EF482D800213277 /* SocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DF22EF482D600213277 /* SocketClient.swift */; };
 		4C0C2DF52EF485A300213277 /* DelegateProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DF42EF485A300213277 /* DelegateProxy.swift */; };
@@ -108,6 +109,7 @@
 		4C0C2DE32EF437DE00213277 /* Wired_3.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Wired_3.entitlements; sourceTree = "<group>"; };
 		4C0C2DE42EF437DE00213277 /* Wired_3App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wired_3App.swift; sourceTree = "<group>"; };
 		4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkFormView.swift; sourceTree = "<group>"; };
+		4CAB00012F900001AB213277 /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		4C0C2DF22EF482D600213277 /* SocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketClient.swift; sourceTree = "<group>"; };
 		4C0C2DF42EF485A300213277 /* DelegateProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelegateProxy.swift; sourceTree = "<group>"; };
 		4C0C2DF62EF4872600213277 /* ConnectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionController.swift; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 				4C0C2DFF2EF5649C00213277 /* ConnectionRowView.swift */,
 				4C0C2DFB2EF558DF00213277 /* TabsView.swift */,
 				4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */,
+				4CAB00012F900001AB213277 /* ChangePasswordView.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -648,6 +651,7 @@
 				4C0C2E562F1192EE00213277 /* Transfer.swift in Sources */,
 				4C0C2E4C2F0B10A600213277 /* PublicChatFormView.swift in Sources */,
 				4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */,
+				4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */,
 				4C0C2E6B2F17ADC700213277 /* TimeInterval.swift in Sources */,
 				4C0C2DE92EF437DE00213277 /* Wired_3App.swift in Sources */,
 				4C0C2E692F17AC2100213277 /* TransfersView.swift in Sources */,
