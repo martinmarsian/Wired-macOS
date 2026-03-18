@@ -12,6 +12,8 @@ struct MessageConversationMessagesView: View {
     @State private var revealNewMessage = true
     var bottomOverlayInset: CGFloat = 0
 
+    private let bottomAnchorID = "message-conversation-bottom-anchor"
+
     var body: some View {
         ScrollViewReader { proxy in
             List {
@@ -38,6 +40,7 @@ struct MessageConversationMessagesView: View {
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    .id(bottomAnchorID)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -60,15 +63,13 @@ struct MessageConversationMessagesView: View {
                                 animatedNewMessageID = nil
                             }
                         }
-                        proxy.scrollTo(lastID, anchor: .bottom)
                     }
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
             .onAppear {
                 DispatchQueue.main.async {
-                    if let lastID = conversation.messages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
         }

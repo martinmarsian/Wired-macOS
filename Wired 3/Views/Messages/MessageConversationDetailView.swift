@@ -72,6 +72,7 @@ struct MessageConversationDetailView: View {
             .backgroundEdgeFade(top: 0, bottom: 60)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
+        .contentMargins(.bottom, 15, for: .scrollIndicators)
         .background(.background)
         .onAppear {
             runtime.resetUnreads(conversation)
