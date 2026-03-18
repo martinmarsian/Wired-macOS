@@ -46,7 +46,7 @@ struct ChatView: View {
     }
     var body: some View {
         HStack(spacing: 0) {
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 ChatMessagesView(
                     chat: chat,
                     topOverlayInset: topicOverlayInset,
@@ -69,7 +69,7 @@ struct ChatView: View {
                 
                 ChatTopicView(chat: chat)
                     .environment(runtime)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 HStack(alignment: .top, spacing: 0) {
                     ConversationComposer(

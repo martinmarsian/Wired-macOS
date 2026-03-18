@@ -24,38 +24,109 @@ struct ChatTopicView: View {
         runtime.hasPrivilege("wired.account.chat.set_topic")
     }
 
+    private var topicTimestampFormat: Date.FormatStyle {
+        .dateTime
+            .day(.twoDigits)
+            .month(.abbreviated)
+            .hour(.twoDigits(amPM: .omitted))
+            .minute(.twoDigits)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 if let topic = chat.topic, topic.topic != "" {
-                    Text("**Topic:** \(topic.topic) by *\(topic.nick)* at *\(topic.time.formatted())*")
+                    VStack(alignment: .leading, spacing: 0) {
+                        (
+                            Text("Topic: ")
+                                .fontWeight(.semibold)
+                            +
+                            Text(topic.topic)
+                        )
                         .multilineTextAlignment(.leading)
                         .lineLimit(isTopicExpanded ? nil : 1)
                         .font(.system(size: 13))
-                        .padding(10)
-                        .help(chat.topic?.topic ?? "")
                         .textSelection(.enabled)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 12)
+                    .help(chat.topic?.topic ?? "")
                 } else {
                     Text("*No topic set*")
                         .multilineTextAlignment(.leading)
                         .lineLimit(isTopicExpanded ? nil : 1)
                         .font(.system(size: 13))
-                        .padding(10)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
                 }
                 
                 Spacer()
-                
-                Button {
-                    topicText = ""
-                    showTopicSheet.toggle()
-                } label: {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 13))
-                        .padding(10)
+
+                HStack(spacing: 0) {
+                    if let topic = chat.topic, topic.topic != "" {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(topic.nick)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Text(topic.time.formatted(topicTimestampFormat))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
+                        .padding(.leading, 12)
+                        .padding(.trailing, 10)
+                        .padding(.vertical, 6)
+                    }
+
+                    Rectangle()
+                        .fill(.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+                        .frame(width: 1)
+                        .frame(height: 24)
+
+                    Button {
+                        topicText = ""
+                        showTopicSheet.toggle()
+                    } label: {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 13))
+                            .frame(width: 36, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSetTopic)
+                    .opacity(canSetTopic ? 1.0 : 0.45)
+                    .padding(.horizontal, 4)
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSetTopic)
-                .opacity(canSetTopic ? 1.0 : 0.45)
+                .background(
+                    Group {
+                        if isTopicExpanded {
+                            UnevenRoundedRectangle(
+                                cornerRadii: .init(
+                                    topLeading: 0,
+                                    bottomLeading: 8,
+                                    bottomTrailing: 0,
+                                    topTrailing: 19
+                                ),
+                                style: .continuous
+                            )
+                            .fill(.primary.opacity(colorScheme == .dark ? 0.10 : 0.05))
+                        } else {
+                            UnevenRoundedRectangle(
+                                cornerRadii: .init(
+                                    topLeading: 0,
+                                    bottomLeading: 0,
+                                    bottomTrailing: 19,
+                                    topTrailing: 19
+                                ),
+                                style: .continuous
+                            )
+                                .fill(.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
+                        }
+                    }
+                )
+                .fixedSize(horizontal: true, vertical: false)
             }
             .sheet(isPresented: $showTopicSheet, content: {
                 NavigationStack {
