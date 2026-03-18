@@ -133,6 +133,13 @@ private struct MainAppCommands: Commands {
                 }
             }
             .disabled(controller.bookmarkMenuItems().isEmpty)
+
+            Divider()
+
+            Button("Change password...") {
+
+            }
+
         }
 
     }
