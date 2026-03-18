@@ -12,6 +12,20 @@ import KeychainSwift
 @preconcurrency import WiredSwift
 import SocketSwift
 
+/// Thread-safe wrapper around a `DispatchWorkItem` so the TOFU trust handler
+/// (called from the network thread) can cancel the connection timeout while
+/// the user interacts with the trust dialog.
+final class AtomicWorkItemRef: @unchecked Sendable {
+    private let lock = NSLock()
+    var workItem: DispatchWorkItem? {
+        get { lock.lock(); defer { lock.unlock() }; return _workItem }
+        set { lock.lock(); defer { lock.unlock() }; _workItem = newValue }
+    }
+    private var _workItem: DispatchWorkItem?
+
+    func cancel() { workItem?.cancel() }
+}
+
 actor SocketClient {
     @AppStorage("UserNick") var userNick: String = "Wired Swift"
     @AppStorage("UserStatus") var userStatus = ""
@@ -60,11 +74,16 @@ actor SocketClient {
                 connection.icon = userIcon
             }
 
+            // Shared reference so the trust handler can suspend the connection timeout
+            // while the user interacts with the TOFU dialog.
+            let timeoutRef = AtomicWorkItemRef()
+
             // SECURITY (A_009): TOFU — verify server identity fingerprint
             let host = configuration.hostname
+            let port = configuration.url.port
             connection.serverTrustHandler = { fingerprint, isNewKey, strictIdentity in
                 switch ServerTrustStore.evaluate(fingerprint: fingerprint,
-                                                 host: host, port: 4871,
+                                                 host: host, port: port,
                                                  strictIdentity: strictIdentity) {
                 case .allow:
                     return true
@@ -74,18 +93,27 @@ actor SocketClient {
                     Logger.info("TOFU: stored new server identity for \(host) — \(fp)")
                     return true
 
-                case .changed(let stored, let received, let strict):
+                case .changed(let stored, let received, _):
                     Logger.warning("TOFU: server identity changed for \(host)!")
                     Logger.warning("  Expected : \(stored)")
                     Logger.warning("  Received : \(received)")
-                    if strict {
-                        Logger.error("TOFU: strict mode — aborting connection (possible MITM).")
-                        return false
+
+                    // Suspend connection timeout while the dialog is shown
+                    timeoutRef.cancel()
+
+                    // Ask the user whether to trust the new server identity
+                    let accepted = ServerTrustStore.askUserTrustDecision(
+                        host: host, port: port,
+                        storedFingerprint: stored,
+                        receivedFingerprint: received
+                    )
+                    if accepted {
+                        ServerTrustStore.storeFingerprint(received, host: host, port: port)
+                        Logger.info("TOFU: user accepted new identity for \(host).")
                     } else {
-                        Logger.warning("TOFU: non-strict mode — updating stored fingerprint.")
-                        ServerTrustStore.storeFingerprint(received, host: host, port: 4871)
-                        return true
+                        Logger.warning("TOFU: user rejected new identity for \(host).")
                     }
+                    return accepted
                 }
             }
 
@@ -95,7 +123,7 @@ actor SocketClient {
             continuation.onTermination = { @Sendable _ in
                 Task { await self.disconnect(id: id) }
             }
-            
+
             let cipher      = configuration.cipher
             let compression = configuration.compression
             let checksum    = configuration.checksum
@@ -122,6 +150,7 @@ actor SocketClient {
                         userInfo: [NSLocalizedDescriptionKey: "Connection timed out"]
                     ))
                 }
+                timeoutRef.workItem = timeoutWorkItem
                 DispatchQueue.global().asyncAfter(
                     deadline: .now() + timeoutSeconds,
                     execute: timeoutWorkItem

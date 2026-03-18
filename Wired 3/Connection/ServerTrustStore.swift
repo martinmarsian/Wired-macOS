@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import AppKit
 
 /// Persistent store for server identity fingerprints (TOFU).
 ///
@@ -78,5 +79,76 @@ struct ServerTrustStore {
             storeFingerprint(fingerprint, host: host, port: port)
             return .newKey(fingerprint: fingerprint)
         }
+    }
+
+    // MARK: - User trust dialog
+
+    /// Shows a modal alert on the main thread asking the user whether to trust
+    /// the new server identity. Called from a background thread — blocks until
+    /// the user responds.
+    ///
+    /// - Returns: `true` if the user accepts the new key, `false` otherwise.
+    static func askUserTrustDecision(
+        host: String, port: Int,
+        storedFingerprint stored: String,
+        receivedFingerprint received: String
+    ) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        var accepted = false
+
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = String(
+                localized: "Server Identity Changed",
+                comment: "TOFU alert title when server key changed"
+            )
+            alert.informativeText = String(
+                localized: """
+                The identity of \(host):\(port) has changed since the last \
+                connection. This may mean the server was reinstalled, or it \
+                could indicate a man-in-the-middle attack.
+
+                Previous fingerprint:
+                \(Self.formatted(stored))
+
+                New fingerprint:
+                \(Self.formatted(received))
+
+                Do you want to trust the new identity?
+                """,
+                comment: "TOFU alert body with old/new fingerprints"
+            )
+            alert.addButton(withTitle: String(
+                localized: "Trust New Identity",
+                comment: "TOFU alert accept button"
+            ))
+            alert.addButton(withTitle: String(
+                localized: "Disconnect",
+                comment: "TOFU alert reject button"
+            ))
+
+            let response = alert.runModal()
+            accepted = (response == .alertFirstButtonReturn)
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return accepted
+    }
+
+    // MARK: - Formatting helpers
+
+    /// Format a hex fingerprint as "SHA256:xx:xx:xx:…" for display in alerts.
+    private static func formatted(_ hexFingerprint: String) -> String {
+        var parts: [String] = []
+        var i = hexFingerprint.startIndex
+        while i < hexFingerprint.endIndex {
+            let end = hexFingerprint.index(i, offsetBy: 2, limitedBy: hexFingerprint.endIndex)
+                ?? hexFingerprint.endIndex
+            parts.append(String(hexFingerprint[i..<end]))
+            i = end
+        }
+        return "SHA256:" + parts.joined(separator: ":")
     }
 }
