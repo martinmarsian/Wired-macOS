@@ -10,6 +10,7 @@ struct MessageConversationMessagesView: View {
     let conversation: MessageConversation
     @State private var animatedNewMessageID: UUID?
     @State private var revealNewMessage = true
+    var bottomOverlayInset: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -31,8 +32,16 @@ struct MessageConversationMessagesView: View {
                         .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
                         .id(message.id)
                 }
+
+                Color.clear
+                    .frame(height: max(bottomOverlayInset, 0.1))
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(.clear)
             .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)

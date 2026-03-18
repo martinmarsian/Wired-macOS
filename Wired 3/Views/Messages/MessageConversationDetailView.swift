@@ -11,6 +11,14 @@ struct MessageConversationDetailView: View {
     let conversation: MessageConversation
     @State private var inputText: String = ""
 
+    private var composerOverlayInset: CGFloat {
+        #if os(macOS)
+        58
+        #else
+        76
+        #endif
+    }
+
     private var canSend: Bool {
         runtime.canSendMessage(to: conversation)
     }
@@ -23,9 +31,12 @@ struct MessageConversationDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            MessageConversationMessagesView(conversation: conversation)
-                .environment(runtime)
+        ZStack(alignment: .bottomLeading) {
+            MessageConversationMessagesView(
+                conversation: conversation,
+                bottomOverlayInset: composerOverlayInset
+            )
+            .environment(runtime)
 
             HStack(alignment: .top, spacing: 0) {
                 ConversationComposer(
@@ -58,8 +69,10 @@ struct MessageConversationDetailView: View {
                 .padding(.trailing, 8)
 #endif
             }
-            .background(.background)
+            .backgroundEdgeFade(top: 0, bottom: 60)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
+        .background(.background)
         .onAppear {
             runtime.resetUnreads(conversation)
         }
