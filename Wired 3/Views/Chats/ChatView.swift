@@ -141,7 +141,6 @@ struct ChatView: View {
             }
         )
 #endif
-        .toolbarBackground(.visible, for: .windowToolbar)
         .toolbar {
 #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) {

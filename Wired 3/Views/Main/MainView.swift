@@ -243,7 +243,9 @@ struct MainView: View {
                 #endif
         } detail: {
             detailPane(for: windowConnectionID)
+                .wiredContainerBackground()
         }
+        .wiredToolbarBackgroundVisible()
         .toolbar {
             mainToolbar
         }
@@ -862,8 +864,6 @@ struct MainView: View {
             newWindow.orderOut(nil)
             sourceWindow.addTabbedWindow(newWindow, ordered: .above)
             sourceWindow.tabGroup?.selectedWindow = newWindow
-            sourceWindow.tabbingMode = .disallowed
-            newWindow.tabbingMode = .disallowed
             newWindow.makeKeyAndOrderFront(nil)
         }
     }
@@ -980,7 +980,7 @@ private struct MainWindowCloseConfirmationView: NSViewRepresentable {
                 connectionController.unregisterWindow(previousWindow)
             }
 
-            window.tabbingMode = .disallowed
+            window.tabbingMode = .preferred
             window.tabbingIdentifier = "WiredMain"
 
             observedWindow = window

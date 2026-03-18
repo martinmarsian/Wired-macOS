@@ -151,7 +151,6 @@ struct TabsView: View {
         .navigationTitle(connectionTitle)
         .iPadInlineNavigationTitle()
         .toolbarTitleDisplayMode(.inline)
-        .toolbarBackground(.visible, for: .windowToolbar)
         .toolbar {
             if let runtime = connectionController.runtime(for: connectionID) {
                 ToolbarItemGroup(placement: .navigation) {

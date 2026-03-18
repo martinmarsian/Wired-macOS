@@ -90,19 +90,36 @@ struct UserInfosView: View {
                 } label: {
                     Text("App version")
                 }
-                
+
+                if let spec = runtime.connection?.spec {
+                    if let p7Version = spec.builtinProtocolVersion {
+                        LabeledContent {
+                            Text(p7Version).foregroundStyle(.secondary)
+                        } label: {
+                            Text("P7 Protocol")
+                        }
+                    }
+                    if let wiredName = spec.protocolName, let wiredVersion = spec.protocolVersion {
+                        LabeledContent {
+                            Text("\(wiredName) \(wiredVersion)").foregroundStyle(.secondary)
+                        } label: {
+                            Text("Wired Protocol")
+                        }
+                    }
+                }
+
                 LabeledContent {
                     Text(user.osName)
                 } label: {
                     Text("OS Name")
                 }
-                
+
                 LabeledContent {
                     Text(user.osVersion)
                 } label: {
                     Text("OS Version")
                 }
-                
+
                 LabeledContent {
                     Text(user.arch)
                 } label: {

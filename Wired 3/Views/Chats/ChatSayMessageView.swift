@@ -101,6 +101,7 @@ struct ChatSayMessageView: View {
                 icon
                     .resizable()
                     .frame(width: 32, height: 32)
+                    .padding(.bottom, 6)
             } else {
                 Image(systemName: "person.crop.circle.fill")
                     .resizable()

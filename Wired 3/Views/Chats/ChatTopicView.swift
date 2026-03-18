@@ -10,6 +10,8 @@ import SwiftUI
 
 struct ChatTopicView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
     @Environment(ConnectionRuntime.self) private var runtime
     
     @State private var topicText = ""
@@ -87,9 +89,15 @@ struct ChatTopicView: View {
             })
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.background)
-                    .shadow(color: .gray.opacity(0.3), radius: 4)
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .fill(.background.opacity(isTopicExpanded ? 1.0 : 0.9))
+                    .stroke(.gray, style: StrokeStyle(lineWidth: 0.3 / displayScale), antialiased: true)
+                    .shadow(
+                        color: colorScheme == .dark
+                            ? .black.opacity(0.3)
+                            : .gray.opacity(0.3),
+                        radius: 4
+                    )
             )
             
 #if os(macOS)

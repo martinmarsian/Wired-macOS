@@ -173,8 +173,6 @@ private struct MainAppCommands: Commands {
             newWindow.orderOut(nil)
             sourceWindow.addTabbedWindow(newWindow, ordered: .above)
             sourceWindow.tabGroup?.selectedWindow = newWindow
-            sourceWindow.tabbingMode = .disallowed
-            newWindow.tabbingMode = .disallowed
             newWindow.makeKeyAndOrderFront(nil)
         }
     }

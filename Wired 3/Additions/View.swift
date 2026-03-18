@@ -9,6 +9,39 @@ import SwiftUI
 import WiredSwift
 
 extension View {
+    /// Forces a visible toolbar background using the best API for the current OS.
+    /// On macOS 26+, we skip this entirely and let the system handle liquid glass natively.
+    @ViewBuilder
+    func wiredToolbarBackgroundVisible() -> some View {
+        #if os(macOS)
+        if #available(macOS 26.0, *) {
+            self // macOS 26: let the system handle toolbar glass natively
+        } else if #available(macOS 15.0, *) {
+            self.toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        } else {
+            self.toolbarBackground(.visible, for: .windowToolbar)
+        }
+        #else
+        self.toolbarBackground(.visible, for: .navigationBar)
+        #endif
+    }
+
+    /// Sets a persistent container background for the window.
+    /// Using `.background` (opaque) fixes toolbar stability and
+    /// prevents HSplitView separators from extending into the toolbar.
+    @ViewBuilder
+    func wiredContainerBackground() -> some View {
+        #if os(macOS)
+        if #available(macOS 26.0, *) {
+            self.containerBackground(.background, for: .window)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
     func errorAlert(error: Binding<Error?>,
                     source: String = "Unknown",
                     serverName: String? = nil,
