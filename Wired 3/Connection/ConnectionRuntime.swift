@@ -946,14 +946,16 @@ final class ConnectionRuntime: Identifiable {
         guard conversation.kind == .direct else { return nil }
         guard let nick = conversation.participantNick else { return nil }
 
+        // Check cached ID — but reject if it's our own ID (stale from a previous session)
         if let knownID = conversation.participantUserID,
+           knownID != userID,
            onlineUser(withID: knownID) != nil {
             return knownID
         }
 
         if let user = (chats + private_chats)
             .flatMap(\.users)
-            .first(where: { $0.nick == nick }) {
+            .first(where: { $0.nick == nick && $0.id != userID }) {
             conversation.participantUserID = user.id
             return user.id
         }
