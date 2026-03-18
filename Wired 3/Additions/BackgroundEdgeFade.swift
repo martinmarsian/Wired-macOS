@@ -7,11 +7,6 @@
 //
 
 import SwiftUI
-#if os(macOS)
-import AppKit
-#elseif os(iOS)
-import UIKit
-#endif
 
 struct BackgroundEdgeFade: ViewModifier {
     var top: CGFloat = 24
@@ -22,7 +17,7 @@ struct BackgroundEdgeFade: ViewModifier {
             .background(alignment: .top) {
                 if top > 0 {
                     Rectangle()
-                        .fill(Color.edgeFadeBackground)
+                        .fill(.background)
                         .mask {
                             LinearGradient(
                                 colors: [.edgeFadeMaskOpacity1, .clear],
@@ -37,7 +32,7 @@ struct BackgroundEdgeFade: ViewModifier {
             .background(alignment: .bottom) {
                 if bottom > 0 {
                     Rectangle()
-                        .fill(Color.edgeFadeBackground)
+                        .fill(.background)
                         .mask {
                             LinearGradient(
                                 colors: [.clear, .edgeFadeMaskOpacity1],
@@ -53,14 +48,6 @@ struct BackgroundEdgeFade: ViewModifier {
 }
 
 private extension Color {
-    #if os(macOS)
-    static let edgeFadeBackground = Color(nsColor: .textBackgroundColor)
-    #elseif os(iOS)
-    static let edgeFadeBackground = Color(uiColor: .systemBackground)
-    #else
-    static let edgeFadeBackground = Color.background
-    #endif
-
     // Alpha du masque (pas la couleur finale)
     static let edgeFadeMaskOpacity1 = Color.white
 }
