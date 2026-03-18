@@ -440,7 +440,6 @@ private struct ChatInputField: NSViewRepresentable {
         scrollView.focusTarget = textView
 
         scrollView.documentView = textView
-        context.coordinator.recomputeHeight()
         context.coordinator.applyTypingStyle()
         DispatchQueue.main.async {
             if let container = textView.textContainer {
@@ -468,7 +467,9 @@ private struct ChatInputField: NSViewRepresentable {
                 context.coordinator.recomputeHeight()
             }
         }
-        context.coordinator.recomputeHeight()
+        DispatchQueue.main.async {
+            context.coordinator.recomputeHeight()
+        }
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onHistoryUp = onHistoryUp
         context.coordinator.onHistoryDown = onHistoryDown

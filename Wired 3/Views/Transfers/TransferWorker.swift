@@ -12,7 +12,8 @@ import WiredSwift
 actor TransferWorker {
     private static let transferIOTimeout: TimeInterval = 120.0
 
-    private let transfer: Transfer
+    // All access to transfer goes through MainActor.run — safe across actor boundaries.
+    nonisolated(unsafe) private let transfer: Transfer
     private let spec: P7Spec
     private let downloadRoot: String
 
@@ -218,7 +219,7 @@ actor TransferWorker {
         guard let localRoot = transfer.localPath else {
             throw WiredError(withTitle: "Upload Error", message: "Missing local path")
         }
-        guard let remoteRoot = transfer.remotePath else {
+        guard transfer.remotePath != nil else {
             throw WiredError(withTitle: "Upload Error", message: "Missing remote path")
         }
 
@@ -867,18 +868,18 @@ actor TransferWorker {
     // MARK: - TransferConnection
 
     private func ensureTransferConnection() async -> TransferConnection {
-        if let existing = await MainActor.run { self.transfer.transferConnection } {
+        if let existing = await MainActor.run(body: { self.transfer.transferConnection }) {
             return existing
         }
 
         let connection = TransferConnection(withSpec: spec, transfer: transfer)
-        if let nick = await MainActor.run { self.transfer.connection?.nick } {
+        if let nick = await MainActor.run(body: { self.transfer.connection?.nick }) {
             connection.nick = nick
         }
-        if let status = await MainActor.run { self.transfer.connection?.status } {
+        if let status = await MainActor.run(body: { self.transfer.connection?.status }) {
             connection.status = status
         }
-        if let icon = await MainActor.run { self.transfer.connection?.icon } {
+        if let icon = await MainActor.run(body: { self.transfer.connection?.icon }) {
             connection.icon = icon
         }
         await mutate { $0.transferConnection = connection }
@@ -900,7 +901,7 @@ actor TransferWorker {
 
         // Disconnect and clear any per-transfer connection. When resuming transfers after an
         // app relaunch, this connection can be partially initialized; disconnect must be safe.
-        if let tconn = await MainActor.run { self.transfer.transferConnection } {
+        if let tconn = await MainActor.run(body: { self.transfer.transferConnection }) {
             tconn.disconnect()
         }
         await mutate { $0.transferConnection = nil }

@@ -2230,17 +2230,7 @@ private struct BoardRowView: View {
                 .foregroundStyle(board.writable ? .primary : .secondary)
             Text(board.name)
             Spacer(minLength: 8)
-            if board.unreadPostsCount > 0 {
-                Text(board.unreadPostsCount > 99 ? "99+" : "\(board.unreadPostsCount)")
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .frame(minWidth: 20, minHeight: 18)
-                    .background(Capsule().fill(Color.accentColor))
-            }
+            UnreadCountBadge(count: board.unreadPostsCount)
         }
     }
 }
@@ -2273,17 +2263,7 @@ private struct ThreadRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
                     Spacer(minLength: 6)
-                if thread.unreadPostsCount > 0 {
-                    Text(thread.unreadPostsCount > 99 ? "99+" : "\(thread.unreadPostsCount)")
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .frame(minWidth: 20, minHeight: 18)
-                        .background(Capsule().fill(Color.accentColor))
-                }
+                    UnreadCountBadge(count: thread.unreadPostsCount)
                 }
 
                 HStack(spacing: 6) {

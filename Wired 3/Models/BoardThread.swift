@@ -14,8 +14,8 @@ import WiredSwift
 final class BoardThread: Identifiable, Equatable, Hashable {
     let id: UUID = UUID()
 
-    static func == (lhs: BoardThread, rhs: BoardThread) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    nonisolated static func == (lhs: BoardThread, rhs: BoardThread) -> Bool { lhs.id == rhs.id }
+    nonisolated func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
     var uuid: String
     var boardPath: String

@@ -197,8 +197,8 @@ private final class RemoteFolderIconCache {
 
     private func makeIcon(for kind: RemoteFolderIconKind, size: CGFloat) -> NSImage {
         let frame = NSSize(width: size, height: size)
-        let base = (NSWorkspace.shared.icon(forFileType: UTType.folder.identifier).copy() as? NSImage)
-            ?? NSWorkspace.shared.icon(forFileType: UTType.folder.identifier)
+        let base = (NSWorkspace.shared.icon(for: .folder).copy() as? NSImage)
+            ?? NSWorkspace.shared.icon(for: .folder)
         base.size = frame
 
         guard kind != .directory else {
@@ -244,8 +244,8 @@ private func remoteItemIconImage(for item: FileItem, size: CGFloat) -> NSImage {
     switch item.type {
     case .file:
         let ext = (item.name as NSString).pathExtension
-        let fileType = ext.isEmpty ? UTType.data.identifier : (UTType(filenameExtension: ext)?.identifier ?? UTType.data.identifier)
-        icon = NSWorkspace.shared.icon(forFileType: fileType)
+        let contentType = ext.isEmpty ? UTType.data : (UTType(filenameExtension: ext) ?? .data)
+        icon = NSWorkspace.shared.icon(for: contentType)
     case .directory:
         icon = RemoteFolderIconCache.shared.icon(for: .directory, size: size)
     case .uploads:
@@ -2014,13 +2014,13 @@ private final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProvi
                                 userInfo: [NSLocalizedDescriptionKey: "Unable to start folder download transfer."]
                             ))
                         } else {
-                            completionLock.lock()
-                            terminalError = NSError(
-                                domain: "Wired.DragAndDrop",
-                                code: 13,
-                                userInfo: [NSLocalizedDescriptionKey: "Unable to start download transfer."]
-                            )
-                            completionLock.unlock()
+                            completionLock.withLock {
+                                terminalError = NSError(
+                                    domain: "Wired.DragAndDrop",
+                                    code: 13,
+                                    userInfo: [NSLocalizedDescriptionKey: "Unable to start download transfer."]
+                                )
+                            }
                             done.signal()
                         }
                         return
@@ -2028,13 +2028,13 @@ private final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProvi
 
                     if !self.isDirectory && !fm.fileExists(atPath: targetURL.path) {
                         guard fm.createFile(atPath: targetURL.path, contents: nil, attributes: nil) else {
-                            completionLock.lock()
-                            terminalError = NSError(
-                                domain: "Wired.DragAndDrop",
-                                code: 12,
-                                userInfo: [NSLocalizedDescriptionKey: "Unable to create placeholder file at destination."]
-                            )
-                            completionLock.unlock()
+                            completionLock.withLock {
+                                terminalError = NSError(
+                                    domain: "Wired.DragAndDrop",
+                                    code: 12,
+                                    userInfo: [NSLocalizedDescriptionKey: "Unable to create placeholder file at destination."]
+                                )
+                            }
                             done.signal()
                             return
                         }

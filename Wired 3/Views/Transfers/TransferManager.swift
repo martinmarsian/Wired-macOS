@@ -550,7 +550,7 @@ final class TransferManager: ObservableObject {
         let security = transferSecurityOptions(for: transfer.connectionID)
 
         let t = Task.detached(priority: .userInitiated) { [spec] in
-            let worker = await TransferWorker(
+            let worker = TransferWorker(
                 transfer: transfer,
                 spec: spec,
                 downloadRoot: downloadRoot,

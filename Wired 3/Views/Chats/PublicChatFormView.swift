@@ -57,7 +57,7 @@ struct PublicChatFormView: View {
             message.addParameter(field: "wired.chat.name", value: chatName)
             
             do {
-                try await runtime.send(message)
+                _ = try await runtime.send(message)
                 
                 dismiss()
                 

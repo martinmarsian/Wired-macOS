@@ -1163,6 +1163,7 @@ final class ConnectionController {
         let fallback = withStateLock { configurationsByID[id]?.autoReconnect ?? false }
 
         guard let modelContext else { return fallback }
+        nonisolated(unsafe) let ctx = modelContext
         return await MainActor.run {
             do {
                 var descriptor = FetchDescriptor<Bookmark>(
@@ -1171,7 +1172,7 @@ final class ConnectionController {
                     }
                 )
                 descriptor.fetchLimit = 1
-                let bookmark = try modelContext.fetch(descriptor).first
+                let bookmark = try ctx.fetch(descriptor).first
                 return bookmark?.autoReconnect ?? fallback
             } catch {
                 return fallback
@@ -1281,8 +1282,8 @@ final class ConnectionController {
             }
 
             let request = P7Message(withName: "wired.chat.get_chats", spec: spec!)
-            try? await runtime.send(request)
-            
+            _ = try? await runtime.send(request)
+
             // Keep board bootstrap off the main message-processing path:
             // some servers may never answer these requests, which would stall
             // chat join events and leave the UI on "Connecting...".
@@ -1312,8 +1313,9 @@ final class ConnectionController {
                 parsedPrivileges["wired.account.color"] = color
             }
 
+            let privileges = parsedPrivileges
             await MainActor.run {
-                runtime.privileges = parsedPrivileges
+                runtime.privileges = privileges
             }
 
             // Account or group privilege changes can alter board/thread/post visibility.
@@ -1940,134 +1942,138 @@ final class ConnectionController {
 
         case "wired.board.thread_changed":
             guard let uuid = message.uuid(forField: "wired.board.thread") else { break }
-            var threadNeedingReload: BoardThread? = nil
-            await MainActor.run {
-                if let thread = runtime.thread(uuid: uuid) {
-                    let previousLatestReplyUUID = thread.lastReplyUUID
-                    let previousEditDate = thread.editDate
-                    thread.apply(message)
-                    let latestReplyChanged =
-                        (thread.lastReplyUUID != nil && thread.lastReplyUUID != previousLatestReplyUUID)
-                    let threadEdited = thread.editDate != previousEditDate
+            let threadNeedingReload: BoardThread? = await MainActor.run {
+                guard let thread = runtime.thread(uuid: uuid) else {
+                    if let boardPath = message.string(forField: "wired.board.board"),
+                       let board = runtime.boardsByPath[boardPath] {
+                        // Thread may not be loaded yet on this connection; materialize it so unread badges stay correct.
+                        let subject = message.string(forField: "wired.board.subject") ?? "Thread"
+                        let nick = message.string(forField: "wired.user.nick") ?? ""
+                        let postDate =
+                            message.date(forField: "wired.board.latest_reply_date")
+                            ?? message.date(forField: "wired.board.post_date")
+                            ?? Date()
 
-                    let isViewingThread =
-                        runtime.selectedTab == .boards &&
-                        runtime.selectedThreadUUID == thread.uuid &&
-                        runtime.selectedBoardPath == thread.boardPath
-
-                    let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
-                    if isViewingThread {
-                        runtime.markThreadAsRead(thread)
-                    } else if !isOwnPostEvent {
-                        // Any remote thread change (reply, thread edit, post edit/delete) is unread.
-                        runtime.markThreadHasUnread(thread, increment: 1)
-                        let boardPath = message.string(forField: "wired.board.board") ?? thread.boardPath
-                        self.triggerEvent(
-                            .boardPostAdded,
-                            runtime: runtime,
-                            subtitle: message.string(forField: "wired.user.nick") ?? thread.nick,
-                            body: "\(thread.subject) (\(boardPath))",
-                            chatText: "Board activity in \(boardPath): \(thread.subject)"
+                        let thread = BoardThread(
+                            uuid: uuid,
+                            boardPath: boardPath,
+                            subject: subject,
+                            nick: nick,
+                            postDate: postDate,
+                            replies: Int(message.uint32(forField: "wired.board.replies") ?? 0),
+                            isOwn: false
                         )
-                    }
+                        thread.apply(message)
+                        board.threads.append(thread)
 
-                    if thread.postsLoaded, latestReplyChanged {
-                        if let latestReplyUUID = thread.lastReplyUUID,
-                           let pendingLocalUUID = runtime.pendingLocalPostUUID(forThread: thread.uuid),
-                           let localPost = thread.posts.first(where: { $0.uuid == pendingLocalUUID }) {
-                            // Reconcile optimistic local post with server-issued UUID/date.
-                            localPost.uuid = latestReplyUUID
-                            if let latestReplyDate = thread.lastReplyDate {
-                                localPost.postDate = latestReplyDate
-                            }
-                            // Ensure the reconciled post stays at the very end.
-                            if let index = thread.posts.firstIndex(where: { $0 === localPost }) {
+                        let isViewingThread =
+                            runtime.selectedTab == .boards &&
+                            runtime.selectedThreadUUID == thread.uuid &&
+                            runtime.selectedBoardPath == thread.boardPath
+                        let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
+
+                        if isViewingThread {
+                            runtime.markThreadAsRead(thread)
+                        } else if !isOwnPostEvent {
+                            runtime.markThreadHasUnread(thread, increment: 1)
+                            self.triggerEvent(
+                                .boardPostAdded,
+                                runtime: runtime,
+                                subtitle: nick,
+                                body: "\(subject) (\(boardPath))",
+                                chatText: "Board activity in \(boardPath): \(subject)"
+                            )
+                        }
+                    }
+                    return nil
+                }
+
+                let previousLatestReplyUUID = thread.lastReplyUUID
+                let previousEditDate = thread.editDate
+                thread.apply(message)
+                let latestReplyChanged =
+                    (thread.lastReplyUUID != nil && thread.lastReplyUUID != previousLatestReplyUUID)
+                let threadEdited = thread.editDate != previousEditDate
+
+                let isViewingThread =
+                    runtime.selectedTab == .boards &&
+                    runtime.selectedThreadUUID == thread.uuid &&
+                    runtime.selectedBoardPath == thread.boardPath
+
+                let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
+                if isViewingThread {
+                    runtime.markThreadAsRead(thread)
+                } else if !isOwnPostEvent {
+                    // Any remote thread change (reply, thread edit, post edit/delete) is unread.
+                    runtime.markThreadHasUnread(thread, increment: 1)
+                    let boardPath = message.string(forField: "wired.board.board") ?? thread.boardPath
+                    self.triggerEvent(
+                        .boardPostAdded,
+                        runtime: runtime,
+                        subtitle: message.string(forField: "wired.user.nick") ?? thread.nick,
+                        body: "\(thread.subject) (\(boardPath))",
+                        chatText: "Board activity in \(boardPath): \(thread.subject)"
+                    )
+                }
+
+                if thread.postsLoaded, latestReplyChanged {
+                    if let latestReplyUUID = thread.lastReplyUUID,
+                       let pendingLocalUUID = runtime.pendingLocalPostUUID(forThread: thread.uuid),
+                       let localPost = thread.posts.first(where: { $0.uuid == pendingLocalUUID }) {
+                        // Reconcile optimistic local post with server-issued UUID/date.
+                        localPost.uuid = latestReplyUUID
+                        if let latestReplyDate = thread.lastReplyDate {
+                            localPost.postDate = latestReplyDate
+                        }
+                        // Ensure the reconciled post stays at the very end.
+                        if let index = thread.posts.firstIndex(where: { $0 === localPost }) {
+                            let post = thread.posts.remove(at: index)
+                            thread.posts.append(post)
+                        }
+                        runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
+                    } else if isViewingThread,
+                              let postUUID = message.uuid(forField: "wired.board.post"),
+                              let text = message.string(forField: "wired.board.text"),
+                              let nick = message.string(forField: "wired.user.nick"),
+                              let postDate = message.date(forField: "wired.board.post_date") {
+                        // Remote reply while viewing: append incrementally to avoid full reload.
+                        if let existing = thread.posts.first(where: { $0.uuid == postUUID }) {
+                            existing.text = text
+                            existing.nick = nick
+                            existing.postDate = postDate
+                            existing.icon = message.data(forField: "wired.user.icon")
+                            existing.isOwn = message.bool(forField: "wired.board.own_post") ?? false
+                            existing.editDate = message.date(forField: "wired.board.edit_date")
+                            if let index = thread.posts.firstIndex(where: { $0 === existing }) {
                                 let post = thread.posts.remove(at: index)
                                 thread.posts.append(post)
                             }
-                            runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
-                        } else if isViewingThread,
-                                  let postUUID = message.uuid(forField: "wired.board.post"),
-                                  let text = message.string(forField: "wired.board.text"),
-                                  let nick = message.string(forField: "wired.user.nick"),
-                                  let postDate = message.date(forField: "wired.board.post_date") {
-                            // Remote reply while viewing: append incrementally to avoid full reload.
-                            if let existing = thread.posts.first(where: { $0.uuid == postUUID }) {
-                                existing.text = text
-                                existing.nick = nick
-                                existing.postDate = postDate
-                                existing.icon = message.data(forField: "wired.user.icon")
-                                existing.isOwn = message.bool(forField: "wired.board.own_post") ?? false
-                                existing.editDate = message.date(forField: "wired.board.edit_date")
-                                if let index = thread.posts.firstIndex(where: { $0 === existing }) {
-                                    let post = thread.posts.remove(at: index)
-                                    thread.posts.append(post)
-                                }
-                            } else {
-                                let post = BoardPost(
-                                    uuid: postUUID,
-                                    threadUUID: thread.uuid,
-                                    text: text,
-                                    nick: nick,
-                                    postDate: postDate,
-                                    icon: message.data(forField: "wired.user.icon"),
-                                    isOwn: message.bool(forField: "wired.board.own_post") ?? false
-                                )
-                                post.editDate = message.date(forField: "wired.board.edit_date")
-                                thread.posts.append(post)
-                            }
-                            runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
-                        } else if isViewingThread {
-                            // Pending local post was not found; drop stale marker then fallback reload.
-                            runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
-                            // If another user replied while this thread is visible, refresh posts.
-                            threadNeedingReload = thread
+                        } else {
+                            let post = BoardPost(
+                                uuid: postUUID,
+                                threadUUID: thread.uuid,
+                                text: text,
+                                nick: nick,
+                                postDate: postDate,
+                                icon: message.data(forField: "wired.user.icon"),
+                                isOwn: message.bool(forField: "wired.board.own_post") ?? false
+                            )
+                            post.editDate = message.date(forField: "wired.board.edit_date")
+                            thread.posts.append(post)
                         }
-                    } else if thread.postsLoaded, isViewingThread, threadEdited {
-                        // Thread/post edits should refresh the currently visible post list.
-                        threadNeedingReload = thread
+                        runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
+                        return nil
+                    } else if isViewingThread {
+                        // Pending local post was not found; drop stale marker then fallback reload.
+                        runtime.clearPendingLocalPostUUID(forThread: thread.uuid)
+                        // If another user replied while this thread is visible, refresh posts.
+                        return thread
                     }
-                } else if let boardPath = message.string(forField: "wired.board.board"),
-                          let board = runtime.boardsByPath[boardPath] {
-                    // Thread may not be loaded yet on this connection; materialize it so unread badges stay correct.
-                    let subject = message.string(forField: "wired.board.subject") ?? "Thread"
-                    let nick = message.string(forField: "wired.user.nick") ?? ""
-                    let postDate =
-                        message.date(forField: "wired.board.latest_reply_date")
-                        ?? message.date(forField: "wired.board.post_date")
-                        ?? Date()
-
-                    let thread = BoardThread(
-                        uuid: uuid,
-                        boardPath: boardPath,
-                        subject: subject,
-                        nick: nick,
-                        postDate: postDate,
-                        replies: Int(message.uint32(forField: "wired.board.replies") ?? 0),
-                        isOwn: false
-                    )
-                    thread.apply(message)
-                    board.threads.append(thread)
-
-                    let isViewingThread =
-                        runtime.selectedTab == .boards &&
-                        runtime.selectedThreadUUID == thread.uuid &&
-                        runtime.selectedBoardPath == thread.boardPath
-                    let isOwnPostEvent = message.bool(forField: "wired.board.own_post") ?? false
-
-                    if isViewingThread {
-                        runtime.markThreadAsRead(thread)
-                    } else if !isOwnPostEvent {
-                        runtime.markThreadHasUnread(thread, increment: 1)
-                        self.triggerEvent(
-                            .boardPostAdded,
-                            runtime: runtime,
-                            subtitle: nick,
-                            body: "\(subject) (\(boardPath))",
-                            chatText: "Board activity in \(boardPath): \(subject)"
-                        )
-                    }
+                } else if thread.postsLoaded, isViewingThread, threadEdited {
+                    // Thread/post edits should refresh the currently visible post list.
+                    return thread
                 }
+                return nil
             }
             if let threadNeedingReload {
                 Task { @MainActor in

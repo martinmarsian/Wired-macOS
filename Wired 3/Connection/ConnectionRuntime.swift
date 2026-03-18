@@ -1020,10 +1020,10 @@ final class ConnectionRuntime: Identifiable {
         let message = P7Message(withName: "wired.chat.join_chat", spec: spec!)
         
         message.addParameter(field: "wired.chat.id", value: chatID)
-        
-        try await self.send(message)
+
+        _ = try await self.send(message)
     }
-    
+
     func leaveChat(_ chatID: UInt32) async throws {
         let message = P7Message(withName: "wired.chat.leave_chat", spec: spec!)
         
@@ -1153,10 +1153,10 @@ final class ConnectionRuntime: Identifiable {
         let message = P7Message(withName: "wired.chat.delete_public_chat", spec: spec!)
         
         message.addParameter(field: "wired.chat.id", value: chatID)
-        
-        try await self.send(message)
+
+        _ = try await self.send(message)
     }
-    
+
     func setChatTopic(_ chatID: UInt32, topic: String) async throws {
         let message = P7Message(withName: "wired.chat.set_topic", spec: spec!)
 
@@ -1270,12 +1270,12 @@ final class ConnectionRuntime: Identifiable {
 
     func getBoards() async throws {
         let m = P7Message(withName: "wired.board.get_boards", spec: spec!)
-        try await send(m)
+        _ = try await send(m)
     }
 
     func subscribeBoards() async throws {
         let m = P7Message(withName: "wired.board.subscribe_boards", spec: spec!)
-        try await send(m)
+        _ = try await send(m)
     }
 
     func getThreads(forBoard board: Board) async throws {
@@ -1283,7 +1283,7 @@ final class ConnectionRuntime: Identifiable {
         board.threads.removeAll()
         let m = P7Message(withName: "wired.board.get_threads", spec: spec!)
         m.addParameter(field: "wired.board.board", value: board.path)
-        try await send(m)
+        _ = try await send(m)
         board.threadsLoaded = true
     }
 
@@ -1292,7 +1292,7 @@ final class ConnectionRuntime: Identifiable {
         thread.posts.removeAll()
         let m = P7Message(withName: "wired.board.get_thread", spec: spec!)
         m.addParameter(field: "wired.board.thread", value: thread.uuid)
-        try await send(m)
+        _ = try await send(m)
     }
 
     func addThread(toBoard board: Board, subject: String, text: String) async throws {

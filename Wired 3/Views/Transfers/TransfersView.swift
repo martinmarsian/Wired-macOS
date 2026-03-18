@@ -395,22 +395,22 @@ private struct TransferItemIconView: View {
 
     #if os(macOS)
     private func iconImage() -> NSImage {
-        let icon = NSWorkspace.shared.icon(forFileType: fileTypeIdentifier())
+        let icon = NSWorkspace.shared.icon(for: fileContentType())
         icon.size = NSSize(width: size, height: size)
         return icon
     }
 
-    private func fileTypeIdentifier() -> String {
+    private func fileContentType() -> UTType {
         if transfer.isFolder {
-            return UTType.folder.identifier
+            return .folder
         }
 
         let name = (transfer.name as NSString)
         let ext = name.pathExtension
         if ext.isEmpty {
-            return UTType.data.identifier
+            return .data
         }
-        return ext
+        return UTType(filenameExtension: ext) ?? .data
     }
     #endif
 }

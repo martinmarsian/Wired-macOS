@@ -46,10 +46,10 @@ struct MainView: View {
         if UIDevice.current.userInterfaceIdiom == .pad {
             return $iPadSplitVisibility
         }
+        return .constant(.automatic)
 #elseif os(macOS)
         return $macSplitVisibility
 #endif
-        return .constant(.automatic)
     }
 
     private var activeTransfersCount: Int {
