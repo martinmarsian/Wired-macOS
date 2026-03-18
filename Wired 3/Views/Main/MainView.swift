@@ -427,7 +427,7 @@ struct MainView: View {
                 }
                 .animation(.spring(response: 0.25, dampingFraction: 0.72), value: activeTransfersCount)
             }
-            .foregroundStyle(isTransfersVisible ? .blue : .black)
+            .foregroundStyle(isTransfersVisible ? .blue : .primary)
             .buttonStyle(.plain)
             .help("Show Transfers")
 

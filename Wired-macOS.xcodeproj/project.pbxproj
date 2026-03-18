@@ -13,7 +13,6 @@
 		4C0C2DE82EF437DE00213277 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE22EF437DE00213277 /* Bookmark.swift */; };
 		4C0C2DE92EF437DE00213277 /* Wired_3App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE42EF437DE00213277 /* Wired_3App.swift */; };
 		4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */; };
-		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
 		4C0C2DEF2EF458E000213277 /* KeychainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DEE2EF458E000213277 /* KeychainSwift */; };
 		4C0C2DF32EF482D800213277 /* SocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DF22EF482D600213277 /* SocketClient.swift */; };
 		4C0C2DF52EF485A300213277 /* DelegateProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DF42EF485A300213277 /* DelegateProxy.swift */; };
@@ -78,6 +77,7 @@
 		4C95F16E2F56CB7D005CD1BA /* BoardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1682F56CB7D005CD1BA /* BoardsView.swift */; };
 		4C95F1712F571884005CD1BA /* wired.xml in Resources */ = {isa = PBXBuildFile; fileRef = 4C95F1702F571884005CD1BA /* wired.xml */; };
 		4CA1B0012F70000100213277 /* BoardDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA1B0112F70000100213277 /* BoardDragPayload.swift */; };
+		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
 		4CF01A922F20000100213277 /* FileInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF01A912F20000100213277 /* FileInfoSheet.swift */; };
 		4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A962F200A1100213277 /* UploadsBadge.icns */; };
 		4CF01A952F200A1100213277 /* DropBoxBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A972F200A1100213277 /* DropBoxBadge.icns */; };
@@ -110,7 +110,6 @@
 		4C0C2DE32EF437DE00213277 /* Wired_3.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Wired_3.entitlements; sourceTree = "<group>"; };
 		4C0C2DE42EF437DE00213277 /* Wired_3App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wired_3App.swift; sourceTree = "<group>"; };
 		4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkFormView.swift; sourceTree = "<group>"; };
-		4CAB00012F900001AB213277 /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		4C0C2DF22EF482D600213277 /* SocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketClient.swift; sourceTree = "<group>"; };
 		4C0C2DF42EF485A300213277 /* DelegateProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelegateProxy.swift; sourceTree = "<group>"; };
 		4C0C2DF62EF4872600213277 /* ConnectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionController.swift; sourceTree = "<group>"; };
@@ -173,6 +172,7 @@
 		4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyView.swift; sourceTree = "<group>"; };
 		4C95F1702F571884005CD1BA /* wired.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = wired.xml; sourceTree = "<group>"; };
 		4CA1B0112F70000100213277 /* BoardDragPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardDragPayload.swift; sourceTree = "<group>"; };
+		4CAB00012F900001AB213277 /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		4CB1F6E426068DDD00017676 /* SocketSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = SocketSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4CB1F6E626068DDD00017676 /* WiredSwift.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = WiredSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4CF01A912F20000100213277 /* FileInfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInfoSheet.swift; sourceTree = "<group>"; };
