@@ -10,6 +10,7 @@ struct MessageConversationMessagesView: View {
     @AppStorage("TimestampInChat") private var timestampInChat: Bool = false
     @AppStorage("TimestampEveryMin") private var timestampEveryMin: Int = 5
     let conversation: MessageConversation
+    var searchText: String = ""
     @State private var animatedNewMessageID: UUID?
     @State private var revealNewMessage = true
     var bottomOverlayInset: CGFloat = 0
@@ -20,15 +21,31 @@ struct MessageConversationMessagesView: View {
         TimeInterval(max(timestampEveryMin, 1) * 60)
     }
 
+    private var normalizedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !normalizedSearchText.isEmpty
+    }
+
+    private var filteredMessages: [MessageEvent] {
+        conversation.filteredMessages(matching: normalizedSearchText)
+    }
+
+    private var visibleMessageIDs: Set<UUID> {
+        Set(filteredMessages.map(\.id))
+    }
+
     private var displayItems: [MessageConversationDisplayItem] {
         guard timestampInChat else {
-            return conversation.messages.map(MessageConversationDisplayItem.message)
+            return filteredMessages.map(MessageConversationDisplayItem.message)
         }
 
         var items: [MessageConversationDisplayItem] = []
         var lastInsertedTimestampDate: Date?
 
-        for message in conversation.messages {
+        for message in filteredMessages {
             if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
                 items.append(.timestamp(anchorMessageID: message.id, date: message.date))
                 lastInsertedTimestampDate = message.date
@@ -41,6 +58,19 @@ struct MessageConversationMessagesView: View {
     }
 
     var body: some View {
+        if isSearching && filteredMessages.isEmpty {
+            ContentUnavailableView(
+                "No Matching Messages",
+                systemImage: "magnifyingglass",
+                description: Text("No message in \"\(conversation.title)\" matches \"\(normalizedSearchText)\".")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            messagesList
+        }
+    }
+
+    private var messagesList: some View {
         ScrollViewReader { proxy in
             List {
                 ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
@@ -79,9 +109,11 @@ struct MessageConversationMessagesView: View {
             .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
-            .onChange(of: conversation.messages.count) {
+            .onChange(of: conversation.messages.last?.id) {
                 DispatchQueue.main.async {
-                    if let lastID = conversation.messages.last?.id {
+                    if let lastMessage = conversation.messages.last,
+                       visibleMessageIDs.contains(lastMessage.id) {
+                        let lastID = lastMessage.id
                         animatedNewMessageID = lastID
                         revealNewMessage = false
                         DispatchQueue.main.async {
@@ -109,6 +141,11 @@ struct MessageConversationMessagesView: View {
                 }
             }
             .onChange(of: timestampEveryMin) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: normalizedSearchText) {
                 DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }

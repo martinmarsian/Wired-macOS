@@ -9,6 +9,7 @@ struct MessageConversationDetailView: View {
     @Environment(ConnectionRuntime.self) private var runtime
 
     let conversation: MessageConversation
+    var searchText: String = ""
     @State private var inputText: String = ""
 
     private var composerOverlayInset: CGFloat {
@@ -34,6 +35,7 @@ struct MessageConversationDetailView: View {
         ZStack(alignment: .bottomLeading) {
             MessageConversationMessagesView(
                 conversation: conversation,
+                searchText: searchText,
                 bottomOverlayInset: composerOverlayInset
             )
             .environment(runtime)

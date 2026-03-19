@@ -10,16 +10,40 @@ struct MessagesView: View {
     @State private var conversationIDPendingDeletion: UUID?
     @State private var searchText: String = ""
     
+    private var normalizedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !normalizedSearchText.isEmpty
+    }
+
+    private var filteredConversations: [MessageConversation] {
+        runtime.messageConversations.filter { $0.matchesSearch(normalizedSearchText) }
+    }
+
     private var selectedConversation: MessageConversation? {
-        runtime.messageConversation(withID: runtime.selectedMessageConversationID)
+        guard let conversation = runtime.messageConversation(withID: runtime.selectedMessageConversationID) else {
+            return nil
+        }
+
+        guard conversation.matchesSearch(normalizedSearchText) else {
+            return nil
+        }
+
+        return conversation
     }
 
     private var directConversations: [MessageConversation] {
-        runtime.messageConversations.filter { $0.kind == .direct }
+        filteredConversations.filter { $0.kind == .direct }
     }
 
     private var broadcastConversations: [MessageConversation] {
-        runtime.messageConversations.filter { $0.kind == .broadcast }
+        filteredConversations.filter { $0.kind == .broadcast }
+    }
+
+    private var hasSearchResults: Bool {
+        !filteredConversations.isEmpty
     }
 
     private var pendingDeletionConversation: MessageConversation? {
@@ -38,25 +62,45 @@ struct MessagesView: View {
                     get: { runtime.selectedMessageConversationID },
                     set: { runtime.selectedMessageConversationID = $0 }
                 )) {
-                    Section("Private Messages") {
-                        ForEach(directConversations) { conversation in
-                            MessageConversationRow(conversation: conversation)
-                                .environment(runtime)
-                                .tag(conversation.id)
-                                .contextMenu {
-                                    Button("Delete") {
-                                        conversationIDPendingDeletion = conversation.id
+                    if !directConversations.isEmpty {
+                        Section("Private Messages") {
+                            ForEach(directConversations) { conversation in
+                                MessageConversationRow(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                                    .tag(conversation.id)
+                                    .contextMenu {
+                                        Button("Delete") {
+                                            conversationIDPendingDeletion = conversation.id
+                                        }
                                     }
-                                }
+                            }
                         }
                     }
 
-                    Section("Broadcasts") {
-                        ForEach(broadcastConversations) { conversation in
-                            MessageConversationRow(conversation: conversation)
-                                .environment(runtime)
-                                .tag(conversation.id)
+                    if !broadcastConversations.isEmpty {
+                        Section("Broadcasts") {
+                            ForEach(broadcastConversations) { conversation in
+                                MessageConversationRow(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                                    .tag(conversation.id)
+                            }
                         }
+                    }
+
+                    if isSearching && !hasSearchResults {
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("No conversation or message matches \"\(normalizedSearchText)\".")
+                        )
+                        .listRowInsets(EdgeInsets(top: 24, leading: 12, bottom: 24, trailing: 12))
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
@@ -86,8 +130,23 @@ struct MessagesView: View {
 
             Group {
                 if let conversation = selectedConversation {
-                    MessageConversationDetailView(conversation: conversation)
+                    MessageConversationDetailView(
+                        conversation: conversation,
+                        searchText: normalizedSearchText
+                    )
                         .environment(runtime)
+                } else if isSearching && !hasSearchResults {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try another search.")
+                    )
+                } else if isSearching {
+                    ContentUnavailableView(
+                        "Select a Conversation",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Choose a conversation from the filtered results.")
+                    )
                 } else {
                     ContentUnavailableView(
                         "No Conversation",
@@ -138,33 +197,59 @@ struct MessagesView: View {
 #else
         NavigationStack {
             List {
-                Section("Private Messages") {
-                    ForEach(directConversations) { conversation in
-                        NavigationLink {
-                            MessageConversationDetailView(conversation: conversation)
-                                .environment(runtime)
-                                .navigationTitle(conversation.title)
-                        } label: {
-                            MessageConversationRow(conversation: conversation)
-                                .environment(runtime)
+                if !directConversations.isEmpty {
+                    Section("Private Messages") {
+                        ForEach(directConversations) { conversation in
+                            NavigationLink {
+                                MessageConversationDetailView(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                                    .navigationTitle(conversation.title)
+                            } label: {
+                                MessageConversationRow(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                            }
                         }
                     }
                 }
 
-                Section("Broadcasts") {
-                    ForEach(broadcastConversations) { conversation in
-                        NavigationLink {
-                            MessageConversationDetailView(conversation: conversation)
-                                .environment(runtime)
-                                .navigationTitle(conversation.title)
-                        } label: {
-                            MessageConversationRow(conversation: conversation)
-                                .environment(runtime)
+                if !broadcastConversations.isEmpty {
+                    Section("Broadcasts") {
+                        ForEach(broadcastConversations) { conversation in
+                            NavigationLink {
+                                MessageConversationDetailView(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                                    .navigationTitle(conversation.title)
+                            } label: {
+                                MessageConversationRow(
+                                    conversation: conversation,
+                                    searchText: normalizedSearchText
+                                )
+                                    .environment(runtime)
+                            }
                         }
                     }
                 }
             }
             .listStyle(.plain)
+            .overlay {
+                if isSearching && !hasSearchResults {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("No conversation or message matches \"\(normalizedSearchText)\".")
+                    )
+                }
+            }
+            .searchable(text: $searchText)
             .onAppear {
                 _ = runtime.ensureBroadcastConversation()
             }

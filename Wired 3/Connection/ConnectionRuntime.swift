@@ -81,6 +81,57 @@ final class MessageConversation: Identifiable {
     }
 }
 
+extension MessageEvent {
+    func matchesSearch(_ rawQuery: String) -> Bool {
+        let query = rawQuery.trimmedMessageSearchQuery
+        guard !query.isEmpty else { return true }
+
+        return senderNick.localizedStandardContains(query)
+            || text.localizedStandardContains(query)
+    }
+}
+
+extension MessageConversation {
+    func matchesSearch(_ rawQuery: String) -> Bool {
+        let query = rawQuery.trimmedMessageSearchQuery
+        guard !query.isEmpty else { return true }
+
+        return matchesMetadata(query) || messages.contains { $0.matchesSearch(query) }
+    }
+
+    func filteredMessages(matching rawQuery: String) -> [MessageEvent] {
+        let query = rawQuery.trimmedMessageSearchQuery
+        guard !query.isEmpty else { return messages }
+
+        return messages.filter { $0.matchesSearch(query) }
+    }
+
+    func previewText(matching rawQuery: String) -> String? {
+        let query = rawQuery.trimmedMessageSearchQuery
+        guard !query.isEmpty else { return messages.last?.text }
+
+        return messages.last(where: { $0.matchesSearch(query) })?.text ?? messages.last?.text
+    }
+
+    private func matchesMetadata(_ query: String) -> Bool {
+        if title.localizedStandardContains(query) {
+            return true
+        }
+
+        if let participantNick, participantNick.localizedStandardContains(query) {
+            return true
+        }
+
+        return false
+    }
+}
+
+private extension String {
+    var trimmedMessageSearchQuery: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 @Observable
 @MainActor
 final class ConnectionRuntime: Identifiable {

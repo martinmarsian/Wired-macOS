@@ -8,6 +8,11 @@ import SwiftUI
 struct MessageConversationRow: View {
     @Environment(ConnectionRuntime.self) private var runtime
     let conversation: MessageConversation
+    var searchText: String = ""
+
+    private var previewText: String? {
+        conversation.previewText(matching: searchText)
+    }
 
     var body: some View {
         HStack {
@@ -17,7 +22,7 @@ struct MessageConversationRow: View {
                 Text(conversation.title)
                     .lineLimit(1)
 
-                if let body = conversation.messages.last?.text, !body.isEmpty {
+                if let body = previewText, !body.isEmpty {
                     Text(body)
                         .font(.caption)
                         .foregroundStyle(.secondary)
