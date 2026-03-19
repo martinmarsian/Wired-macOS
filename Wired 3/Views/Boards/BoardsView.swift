@@ -402,6 +402,12 @@ struct BoardsView: View {
         return visibleThreads.first(where: { $0.uuid == selectedThreadUUID }) ?? runtime.thread(uuid: selectedThreadUUID)
     }
 
+    private func threadsForBoardListAction(_ board: Board) -> [BoardThread] {
+        allBoardsFlat()
+            .filter { $0.path == board.path || $0.path.hasPrefix(board.path + "/") }
+            .flatMap(\.threads)
+    }
+
     private func canEditThread(_ thread: BoardThread) -> Bool {
         runtime.hasPrivilege("wired.account.board.edit_all_threads_and_posts")
         || (runtime.hasPrivilege("wired.account.board.edit_own_threads_and_posts") && thread.isOwn)
@@ -749,13 +755,19 @@ struct BoardsView: View {
                                             }
                                         }
                                         .contextMenu {
+                                            let smartBoardThreads = filteredThreads(for: smartBoard)
+                                            let canMarkSmartBoardRead = smartBoardThreads.contains { $0.unreadPostsCount > 0 }
+                                            let canMarkSmartBoardUnread = smartBoardThreads.contains { $0.unreadPostsCount == 0 }
+
                                             Button("Mark as read") {
-                                                
+                                                runtime.markThreadsAsRead(smartBoardThreads)
                                             }
+                                            .disabled(!canMarkSmartBoardRead)
                                             
                                             Button("Mark as unread") {
-                                                
+                                                runtime.markThreadsAsUnread(smartBoardThreads)
                                             }
+                                            .disabled(!canMarkSmartBoardUnread)
                                             
                                             Divider()
                                             
@@ -821,12 +833,18 @@ struct BoardsView: View {
                                     }
                                 }
                                 .contextMenu {
+                                    let boardThreads = threadsForBoardListAction(board)
+                                    let canMarkBoardRead = boardThreads.contains { $0.unreadPostsCount > 0 }
+                                    let canMarkBoardUnread = boardThreads.contains { $0.unreadPostsCount == 0 }
+
                                     Button("Mark as read") {
-                                        
+                                        runtime.markThreadsAsRead(boardThreads)
                                     }
+                                    .disabled(!canMarkBoardRead)
                                     Button("Mark as unread") {
-                                        
+                                        runtime.markThreadsAsUnread(boardThreads)
                                     }
+                                    .disabled(!canMarkBoardUnread)
                                     
                                     if runtime.hasPrivilege("wired.account.board.rename_boards") {
                                         Divider()
@@ -901,12 +919,13 @@ struct BoardsView: View {
                     Spacer()
                     
                     Button {
-                        // TODO: mark all board thread/post as read
+                        runtime.markAllBoardThreadsAsRead()
                     } label: {
                         Image(systemName: "checkmark.rectangle.stack.fill")
                     }
                     .help("Mark all as read")
                     .buttonStyle(.plain)
+                    .disabled(runtime.totalUnreadBoardPosts == 0)
                 }
                 .padding(9)
                 

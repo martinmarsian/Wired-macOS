@@ -511,7 +511,7 @@ final class ConnectionRuntime: Identifiable {
         connectionController.updateNotificationsBadge()
     }
 
-    func markThreadAsRead(_ thread: BoardThread) {
+    private func markThreadAsRead(_ thread: BoardThread, persist: Bool, updateBadge: Bool) {
         boardReadIDs.insert(thread.uuid)
         if let latestReplyUUID = thread.lastReplyUUID {
             boardReadIDs.insert(latestReplyUUID)
@@ -519,8 +519,14 @@ final class ConnectionRuntime: Identifiable {
         for post in thread.posts where !post.isThreadBody {
             boardReadIDs.insert(post.uuid)
         }
-        persistBoardReadIDs()
-        refreshThreadUnreadState(for: thread)
+        if persist {
+            persistBoardReadIDs()
+        }
+        refreshThreadUnreadState(for: thread, updateBadge: updateBadge)
+    }
+
+    func markThreadAsRead(_ thread: BoardThread) {
+        markThreadAsRead(thread, persist: true, updateBadge: true)
     }
 
     func markThreadAsRead(boardPath: String, threadUUID: String) {
@@ -528,14 +534,48 @@ final class ConnectionRuntime: Identifiable {
         markThreadAsRead(thread)
     }
 
-    func markThreadAsUnread(_ thread: BoardThread) {
+    private func markThreadAsUnread(_ thread: BoardThread, persist: Bool, updateBadge: Bool) {
         if let latestReplyUUID = thread.lastReplyUUID {
             boardReadIDs.remove(latestReplyUUID)
         } else {
             boardReadIDs.remove(thread.uuid)
         }
+        if persist {
+            persistBoardReadIDs()
+        }
+        refreshThreadUnreadState(for: thread, updateBadge: updateBadge)
+    }
+
+    func markThreadAsUnread(_ thread: BoardThread) {
+        markThreadAsUnread(thread, persist: true, updateBadge: true)
+    }
+
+    func markThreadsAsRead(_ threads: [BoardThread]) {
+        let uniqueThreads = Array(Dictionary(grouping: threads, by: \.uuid).values.compactMap(\.first))
+        guard !uniqueThreads.isEmpty else { return }
+
+        for thread in uniqueThreads {
+            markThreadAsRead(thread, persist: false, updateBadge: false)
+        }
+
         persistBoardReadIDs()
-        refreshThreadUnreadState(for: thread)
+        connectionController.updateNotificationsBadge()
+    }
+
+    func markThreadsAsUnread(_ threads: [BoardThread]) {
+        let uniqueThreads = Array(Dictionary(grouping: threads, by: \.uuid).values.compactMap(\.first))
+        guard !uniqueThreads.isEmpty else { return }
+
+        for thread in uniqueThreads {
+            markThreadAsUnread(thread, persist: false, updateBadge: false)
+        }
+
+        persistBoardReadIDs()
+        connectionController.updateNotificationsBadge()
+    }
+
+    func markAllBoardThreadsAsRead() {
+        markThreadsAsRead(boardsByPath.values.flatMap(\.threads))
     }
 
     func applyBoardThreadListState(to thread: BoardThread) {
