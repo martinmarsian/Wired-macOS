@@ -108,7 +108,11 @@ struct ChatsView: View {
                         VStack {
                             Button {
                                 Task {
-                                    try? await runtime.joinChat(chatID)
+                                    do {
+                                        try await runtime.joinChat(chatID)
+                                    } catch {
+                                        runtime.lastError = error
+                                    }
                                 }
                             } label: {
                                 Text("Join Chat")

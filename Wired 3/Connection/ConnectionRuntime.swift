@@ -616,12 +616,16 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func appendChat(_ chat: Chat) {
-        guard !chats.contains(where: { $0.id == chat.id }) else { return }
+        guard !chats.contains(where: { $0.id == chat.id }) else {
+            return
+        }
         chats.append(chat)
     }
 
     func appendPrivateChat(_ chat: Chat) {
-        guard private_chats.contains(where: { $0.id == chat.id }) == false else { return }
+        guard private_chats.contains(where: { $0.id == chat.id }) == false else {
+            return
+        }
         private_chats.append(chat)
     }
 
@@ -634,11 +638,18 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func chat(withID chatID: UInt32) -> Chat? {
-        if let chat = chats.first(where: { $0.id == chatID }) {
-            return chat
+        let publicChat = chats.first(where: { $0.id == chatID })
+        let privateChat = private_chats.first(where: { $0.id == chatID })
+
+        if let publicChat {
+            return publicChat
         }
 
-        return private_chats.first(where: { $0.id == chatID })
+        if let privateChat {
+            return privateChat
+        }
+
+        return nil
     }
 
     // MARK: - Messages
@@ -1125,8 +1136,12 @@ final class ConnectionRuntime: Identifiable {
     func send(_ message: P7Message) async throws -> P7Message? {
         isIdle = false
         lastMessageSentAt = .now
-        
-        return try await connectionController.socketClient.send(message, on: id)
+
+        do {
+            return try await connectionController.socketClient.send(message, on: id)
+        } catch {
+            throw error
+        }
     }
     
     // MARK: -

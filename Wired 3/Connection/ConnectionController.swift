@@ -1368,7 +1368,13 @@ final class ConnectionController {
                 await runtime.appendChat(chat)
                 
                 if chat.id == 1 {
-                    try? await runtime.joinChat(chat.id)
+                    do {
+                        try await runtime.joinChat(chat.id)
+                    } catch {
+                        await MainActor.run {
+                            runtime.lastError = error
+                        }
+                    }
                 }
             }
         case "wired.chat.chat_created":

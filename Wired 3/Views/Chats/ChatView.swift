@@ -120,7 +120,11 @@ struct ChatView: View {
 #if os(iOS)
             if chat.joined == false {
                 Task {
-                    try? await runtime.joinChat(chat.id)
+                    do {
+                        try await runtime.joinChat(chat.id)
+                    } catch {
+                        runtime.lastError = error
+                    }
                 }
             }
 #endif

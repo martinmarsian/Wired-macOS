@@ -39,7 +39,7 @@ struct ChatRowView: View {
                         do {
                             try await runtime.leaveChat(chat.id)
                         } catch {
-                            
+                            runtime.lastError = error
                         }
                     }
                 }
@@ -51,7 +51,7 @@ struct ChatRowView: View {
                             try await runtime.joinChat(chat.id)
                             
                         } catch {
-                            
+                            runtime.lastError = error
                         }
                     }
                 }
