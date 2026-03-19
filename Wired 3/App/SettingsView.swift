@@ -342,7 +342,7 @@ struct ChatHighlightRule: Identifiable, Codable, Equatable {
 
 struct ChatSettingsView: View {
     @AppStorage("TimestampInChat") var timestampInChat: Bool = false
-    @AppStorage("TimestampEverySec") var timestampEverySec = 300
+    @AppStorage("TimestampEveryMin") var timestampEveryMin = 5
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
     
     @AppStorage("SubstituteEmoji") var substituteEmoji: Bool = true
@@ -366,10 +366,10 @@ struct ChatSettingsView: View {
         Form {
             Section("Messages") {
                 Toggle("Timestamp in chat", isOn: $timestampInChat)
-                TextField("Every (sec.)", text: Binding<String>(get: {
-                    "\(timestampEverySec)"
+                TextField("Every (min.)", text: Binding<String>(get: {
+                    "\(timestampEveryMin)"
                 }, set: { string, _ in
-                    timestampEverySec = Int(string) ?? 300
+                    timestampEveryMin = max(Int(string) ?? 5, 1)
                 }))
                 
             }
@@ -1080,5 +1080,4 @@ struct EventsSettingsView: View {
 #endif
     }
 }
-
 

@@ -13,6 +13,8 @@ import AppKit
 
 struct ChatMessagesView: View {
     @Environment(ConnectionRuntime.self) private var runtime
+    @AppStorage("TimestampInChat") private var timestampInChat: Bool = false
+    @AppStorage("TimestampEveryMin") private var timestampEveryMin: Int = 5
     @State private var animatedNewMessageID: UUID?
     @State private var revealNewMessage = true
     
@@ -24,6 +26,30 @@ struct ChatMessagesView: View {
 
     private let bottomAnchorID = "chat-messages-bottom-anchor"
     private let scrollIndicatorBottomInset: CGFloat = 30
+
+    private var effectiveTimestampInterval: TimeInterval {
+        TimeInterval(max(timestampEveryMin, 1) * 60)
+    }
+
+    private var displayItems: [ChatDisplayItem] {
+        guard timestampInChat else {
+            return chat.messages.map(ChatDisplayItem.message)
+        }
+
+        var items: [ChatDisplayItem] = []
+        var lastInsertedTimestampDate: Date?
+
+        for message in chat.messages {
+            if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
+                items.append(.timestamp(anchorMessageID: message.id, date: message.date))
+                lastInsertedTimestampDate = message.date
+            }
+
+            items.append(.message(message))
+        }
+
+        return items
+    }
     
     var body: some View {
         ScrollViewReader { proxy in
@@ -36,34 +62,39 @@ struct ChatMessagesView: View {
                         .listRowBackground(Color.clear)
                 }
 
-                ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
-                    if message.type == .say {
-                        let previous = index > 0 ? chat.messages[index - 1] : nil
-                        let next = index < (chat.messages.count - 1) ? chat.messages[index + 1] : nil
-                        let sameAsPrevious = previous?.type == .say && previous?.user.id == message.user.id
-                        let sameAsNext = next?.type == .say && next?.user.id == message.user.id
+                ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
+                    switch item {
+                    case .timestamp(_, let date):
+                        ChatInlineTimestampView(date: date)
+                    case .message(let message):
+                        if message.type == .say {
+                            let previous = index > 0 ? displayItems[index - 1].chatMessage : nil
+                            let next = index < (displayItems.count - 1) ? displayItems[index + 1].chatMessage : nil
+                            let sameAsPrevious = previous?.type == .say && previous?.user.id == message.user.id
+                            let sameAsNext = next?.type == .say && next?.user.id == message.user.id
 
-                        ChatSayMessageView(
-                            message: message,
-                            showNickname: !sameAsPrevious,
-                            showAvatar: !sameAsNext,
-                            isGroupedWithNext: sameAsNext
-                        )
-                            .environment(runtime)
-                            .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
-                            .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
-                    }
-                    else if message.type == .me {
-                        ChatMeMessageView(message: message)
-                            .environment(runtime)
-                            .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
-                            .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
-                    }
-                    else if message.type == .join || message.type == .leave || message.type == .event {
-                        ChatEventView(message: message)
-                            .environment(runtime)
-                            .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
-                            .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+                            ChatSayMessageView(
+                                message: message,
+                                showNickname: !sameAsPrevious,
+                                showAvatar: !sameAsNext,
+                                isGroupedWithNext: sameAsNext
+                            )
+                                .environment(runtime)
+                                .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
+                                .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+                        }
+                        else if message.type == .me {
+                            ChatMeMessageView(message: message)
+                                .environment(runtime)
+                                .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
+                                .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+                        }
+                        else if message.type == .join || message.type == .leave || message.type == .event {
+                            ChatEventView(message: message)
+                                .environment(runtime)
+                                .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
+                                .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+                        }
                     }
                 }
 
@@ -117,7 +148,71 @@ struct ChatMessagesView: View {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
+            .onChange(of: timestampInChat) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: timestampEveryMin) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
         }
+    }
+
+    private func shouldInsertTimestamp(before message: ChatEvent, lastTimestampDate: Date?) -> Bool {
+        guard let lastTimestampDate else { return true }
+        return message.date.timeIntervalSince(lastTimestampDate) >= effectiveTimestampInterval
+    }
+}
+
+private enum ChatDisplayItem: Identifiable {
+    case timestamp(anchorMessageID: UUID, date: Date)
+    case message(ChatEvent)
+
+    var id: String {
+        switch self {
+        case .timestamp(let anchorMessageID, _):
+            return "timestamp-\(anchorMessageID.uuidString)"
+        case .message(let message):
+            return "message-\(message.id.uuidString)"
+        }
+    }
+
+    var chatMessage: ChatEvent? {
+        switch self {
+        case .timestamp:
+            return nil
+        case .message(let message):
+            return message
+        }
+    }
+}
+
+private struct ChatInlineTimestampView: View {
+    let date: Date
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+
+            Text(date.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(.primary.opacity(0.06))
+                )
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
     }
 }
 
