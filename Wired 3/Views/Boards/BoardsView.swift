@@ -929,8 +929,7 @@ struct BoardsView: View {
                     .buttonStyle(.plain)
                     .disabled(runtime.totalUnreadBoardPosts == 0)
                 }
-                .padding(9)
-                
+                .padding(7)
             }
         }
         .sheet(isPresented: $showNewBoard) {
