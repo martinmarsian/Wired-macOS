@@ -36,6 +36,7 @@ struct RemoteTreeNode: Identifiable, Hashable {
 final class FilesViewModel: ObservableObject {
 
     @Published var columns: [FileColumn] = []
+    @Published var selectedFileViewType: FileViewType = .columns
     @Published var treeChildrenByPath: [String: [FileItem]] = [:]
     @Published var treeRootPath: String = "/"
     @Published var expandedTreePaths: Set<String> = ["/"]

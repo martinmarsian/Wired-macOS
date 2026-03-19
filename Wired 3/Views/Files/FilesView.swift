@@ -298,7 +298,6 @@ struct FilesView: View {
 
     @ObservedObject var filesViewModel: FilesViewModel
 
-    @State private var selectedFileViewType: FileViewType = .columns
     @State private var pendingDeleteItems: [FileItem] = []
     @State private var showDeleteSelectionConfirmation: Bool = false
     @State private var createFolderTargetOverride: FileItem? = nil
@@ -316,7 +315,7 @@ struct FilesView: View {
     @State private var currentSearchTask: Task<Void, Never>? = nil
 
     private var selectedItem: FileItem? {
-        switch selectedFileViewType {
+        switch filesViewModel.selectedFileViewType {
         case .columns:
             guard let primarySelectionPath else { return nil }
             return itemForPath(primarySelectionPath)
@@ -364,7 +363,7 @@ struct FilesView: View {
         }
 
         var selected: FileItem
-        switch selectedFileViewType {
+        switch filesViewModel.selectedFileViewType {
         case .columns:
             guard let lastColumn = filesViewModel.columns.last,
                   let selectedID = lastColumn.selection,
@@ -615,7 +614,7 @@ struct FilesView: View {
                 Divider()
             }
 
-            switch selectedFileViewType {
+            switch filesViewModel.selectedFileViewType {
             case .tree:
                 treeContent
 
@@ -660,7 +659,7 @@ struct FilesView: View {
                     filesViewModel: filesViewModel,
                     parentDirectory: selectedFile,
                     onCreated: { createdPath in
-                        guard selectedFileViewType == .columns else { return }
+                        guard filesViewModel.selectedFileViewType == .columns else { return }
                         Task { @MainActor in
                             let didReveal = await filesViewModel.revealRemotePath(createdPath)
                             guard didReveal else { return }
@@ -731,7 +730,7 @@ struct FilesView: View {
             serverName: nil,
             connectionID: connectionID
         )
-        .onChange(of: selectedFileViewType) { _, newValue in
+        .onChange(of: filesViewModel.selectedFileViewType) { _, newValue in
             primarySelectionPath = nil
             selectedItemsForToolbar.removeAll()
             Task {
@@ -776,7 +775,7 @@ struct FilesView: View {
 
     private var toolbar: some View {
         HStack {
-            Picker("", selection: $selectedFileViewType) {
+            Picker("", selection: $filesViewModel.selectedFileViewType) {
                 Image(systemName: "rectangle.split.3x1").tag(FileViewType.columns)
                 Image(systemName: "list.bullet.indent").tag(FileViewType.tree)
             }
@@ -808,7 +807,7 @@ struct FilesView: View {
 
             Button {
                 Task {
-                    switch selectedFileViewType {
+                    switch filesViewModel.selectedFileViewType {
                     case .tree:
                         await filesViewModel.loadTreeRoot()
                     case .columns:
@@ -1109,7 +1108,7 @@ struct FilesView: View {
     @MainActor
     private func applyHistoryNavigation(to directoryPath: String) async {
         let normalized = normalizedRemotePath(directoryPath)
-        switch selectedFileViewType {
+        switch filesViewModel.selectedFileViewType {
         case .columns:
             let didReveal = await filesViewModel.revealRemotePath(normalized)
             if didReveal, normalized != "/",
