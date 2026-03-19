@@ -24,6 +24,10 @@ struct ChatTopicView: View {
         runtime.hasPrivilege("wired.account.chat.set_topic")
     }
 
+    private var hasTopic: Bool {
+        !(chat.topic?.topic ?? "").isEmpty
+    }
+
     private var topicTimestampFormat: Date.FormatStyle {
         .dateTime
             .day(.twoDigits)
@@ -34,7 +38,7 @@ struct ChatTopicView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
+            HStack(alignment: hasTopic ? .top : .center) {
                 if let topic = chat.topic, topic.topic != "" {
                     VStack(alignment: .leading, spacing: 0) {
                         (
@@ -56,6 +60,7 @@ struct ChatTopicView: View {
                         .multilineTextAlignment(.leading)
                         .lineLimit(isTopicExpanded ? nil : 1)
                         .font(.system(size: 13))
+                        .foregroundStyle(.gray)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 12)
                 }
@@ -99,33 +104,35 @@ struct ChatTopicView: View {
                     .opacity(canSetTopic ? 1.0 : 0.45)
                     .padding(.horizontal, 4)
                 }
-                .background(
+                .background {
                     Group {
-                        if isTopicExpanded {
-                            UnevenRoundedRectangle(
-                                cornerRadii: .init(
-                                    topLeading: 0,
-                                    bottomLeading: 8,
-                                    bottomTrailing: 0,
-                                    topTrailing: 19
-                                ),
-                                style: .continuous
-                            )
-                            .fill(.primary.opacity(colorScheme == .dark ? 0.10 : 0.05))
-                        } else {
-                            UnevenRoundedRectangle(
-                                cornerRadii: .init(
-                                    topLeading: 0,
-                                    bottomLeading: 0,
-                                    bottomTrailing: 19,
-                                    topTrailing: 19
-                                ),
-                                style: .continuous
-                            )
+                        if let topic = chat.topic, topic.topic != "" {
+                            if isTopicExpanded {
+                                UnevenRoundedRectangle(
+                                    cornerRadii: .init(
+                                        topLeading: 0,
+                                        bottomLeading: 8,
+                                        bottomTrailing: 0,
+                                        topTrailing: 19
+                                    ),
+                                    style: .continuous
+                                )
+                                .fill(.primary.opacity(colorScheme == .dark ? 0.10 : 0.05))
+                            } else {
+                                UnevenRoundedRectangle(
+                                    cornerRadii: .init(
+                                        topLeading: 0,
+                                        bottomLeading: 0,
+                                        bottomTrailing: 19,
+                                        topTrailing: 19
+                                    ),
+                                    style: .continuous
+                                )
                                 .fill(.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
+                            }
                         }
                     }
-                )
+                }
                 .fixedSize(horizontal: true, vertical: false)
             }
             .sheet(isPresented: $showTopicSheet, content: {
