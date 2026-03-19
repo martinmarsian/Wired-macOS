@@ -271,7 +271,7 @@ struct MainView: View {
                 .wiredContainerBackground()
         }
         .wiredToolbarBackgroundVisible()
-        .toolbar {
+        .wiredWindowToolbar(mode: splitViewToolbarMode) {
             mainToolbar
         }
         .sheet(item: $editedBookmark) { bookmark in
@@ -328,6 +328,9 @@ struct MainView: View {
             Divider()
 
             transfersToggleBar
+        }
+        .wiredWindowToolbar(mode: sidebarToolbarMode) {
+            mainToolbar
         }
     }
 
@@ -514,16 +517,51 @@ struct MainView: View {
             EditButton()
         }
         #endif
-        ToolbarItem {
+        #if os(macOS)
+        ToolbarItem(placement: .primaryAction) {
             Button {
-                #if os(macOS)
                 connectionController.presentedNewConnectionWindowNumber = windowNumber
-                #endif
                 connectionController.presentNewConnection()
             } label: {
                 Label("New Connection", systemImage: "plus")
             }
         }
+        #else
+        ToolbarItem {
+            Button {
+                connectionController.presentNewConnection()
+            } label: {
+                Label("New Connection", systemImage: "plus")
+            }
+        }
+        #endif
+    }
+
+    private var splitViewToolbarMode: WiredWindowToolbarMode {
+        #if os(macOS)
+        if #available(macOS 15.0, *) {
+            return .full
+        }
+
+        // On Sonoma, attaching custom toolbar items directly to the root split view
+        // crashes in AppKit while the window toolbar is being assembled.
+        return .systemOnly
+        #else
+        return .full
+        #endif
+    }
+
+    private var sidebarToolbarMode: WiredWindowToolbarMode {
+        #if os(macOS)
+        if #available(macOS 15.0, *) {
+            return .disabled
+        }
+
+        // Reattach the custom toolbar item from the sidebar content instead.
+        return .full
+        #else
+        return .disabled
+        #endif
     }
 
     private var transfersPanel: some View {

@@ -8,7 +8,31 @@
 import SwiftUI
 import WiredSwift
 
+enum WiredWindowToolbarMode {
+    case full
+    case systemOnly
+    case disabled
+}
+
 extension View {
+    @ViewBuilder
+    func wiredWindowToolbar<ToolbarItems: ToolbarContent>(
+        mode: WiredWindowToolbarMode = .full,
+        @ToolbarContentBuilder _ content: () -> ToolbarItems
+    ) -> some View {
+        switch mode {
+        case .full:
+            self.toolbar {
+                content()
+            }
+        case .systemOnly:
+            self.toolbar {
+            }
+        case .disabled:
+            self
+        }
+    }
+
     /// Forces a visible toolbar background using the best API for the current OS.
     /// On macOS 26+, we skip this entirely and let the system handle liquid glass natively.
     @ViewBuilder
