@@ -48,7 +48,8 @@ final class FilesViewModel: ObservableObject {
 
     @Published var isSearchMode: Bool = false
     @Published var isSearching: Bool = false
-
+    @Published var searchText: String = ""
+    
     @Published var error: Error? = nil {
         didSet {
             if let error, isPermissionDeniedError(error) {

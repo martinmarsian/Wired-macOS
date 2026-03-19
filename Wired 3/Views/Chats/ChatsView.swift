@@ -17,7 +17,8 @@ struct ChatsView: View {
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     
     @State var showCreatePublicChatSheet = false
-
+    @State private var searchText: String = ""
+    
     private var selectedChat: Chat? {
         guard let chatID = runtime.selectedChatID else { return nil }
         return runtime.chat(withID: chatID)
@@ -129,6 +130,7 @@ struct ChatsView: View {
                 }
             }        
         }
+        .searchable(text: $searchText)
         .sheet(isPresented: $showCreatePublicChatSheet) {
             PublicChatFormView()
                 .environment(runtime)

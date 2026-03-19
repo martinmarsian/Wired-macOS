@@ -8,7 +8,8 @@ import SwiftUI
 struct MessagesView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @State private var conversationIDPendingDeletion: UUID?
-
+    @State private var searchText: String = ""
+    
     private var selectedConversation: MessageConversation? {
         runtime.messageConversation(withID: runtime.selectedMessageConversationID)
     }
@@ -97,6 +98,7 @@ struct MessagesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .searchable(text: $searchText)
         .onAppear {
             _ = runtime.ensureBroadcastConversation()
             if runtime.selectedMessageConversationID == nil {

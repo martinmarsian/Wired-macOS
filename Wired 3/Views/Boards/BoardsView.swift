@@ -120,7 +120,8 @@ struct BoardsView: View {
     @State private var boardDropTargetPath: String?
     @State private var isRootBoardDropTargeted = false
     @State private var smartBoardDropTargetID: String?
-
+    @State private var searchText: String = ""
+    
     private var boardListSelection: Binding<String?> {
         Binding(
             get: {
@@ -579,6 +580,7 @@ struct BoardsView: View {
 
     var body: some View {
         layout
+        .searchable(text: $searchText)
         .task {
             loadSmartBoards()
         }

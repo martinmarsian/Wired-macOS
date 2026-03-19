@@ -313,7 +313,6 @@ struct FilesView: View {
     @State private var currentDirectoryPath: String = "/"
     @State private var isApplyingHistoryNavigation: Bool = false
     
-    @State private var searchText: String = ""
     @State private var currentSearchTask: Task<Void, Never>? = nil
 
     private var selectedItem: FileItem? {
@@ -603,7 +602,7 @@ struct FilesView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         let count = filesViewModel.columns.first?.items.count ?? 0
-                        Text("\(count) result\(count == 1 ? "" : "s") for \u{201C}\(searchText)\u{201D}")
+                        Text("\(count) result\(count == 1 ? "" : "s") for \u{201C}\(filesViewModel.searchText)\u{201D}")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -622,6 +621,23 @@ struct FilesView: View {
 
             case .columns:
                 columnsContent
+            }
+        }
+        .searchable(text: $filesViewModel.searchText)
+        .onChange(of: filesViewModel.searchText, debounceTime: .milliseconds(500)) {
+            if filesViewModel.searchText.isEmpty && filesViewModel.isSearchMode {
+                currentSearchTask?.cancel()
+                currentSearchTask = nil
+                Task { await filesViewModel.clearSearch() }
+            } else if filesViewModel.searchText.count > 2 {
+                currentSearchTask?.cancel()
+                currentSearchTask = nil
+                
+                triggerSearch()
+            } else {
+                currentSearchTask?.cancel()
+                currentSearchTask = nil
+                Task { await filesViewModel.clearSearch() }
             }
         }
         .fileImporter(
@@ -852,53 +868,53 @@ struct FilesView: View {
 
             Spacer()
 
-            HStack(spacing: 4) {
-                TextField("", text: $searchText, prompt: Text("Search Files…"))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 260)
-                    .onSubmit { triggerSearch() }
-                    .onChange(of: searchText) { _, newValue in
-                        if newValue.isEmpty && filesViewModel.isSearchMode {
-                            currentSearchTask?.cancel()
-                            currentSearchTask = nil
-                            Task { await filesViewModel.clearSearch() }
-                        }
-                    }
-
-                if filesViewModel.isSearching {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Button { triggerSearch() } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .help("Search Files")
-                    .disabled(searchText.count < 3)
-                }
-
-                if filesViewModel.isSearchMode {
-                    Button {
-                        searchText = ""
-                        currentSearchTask?.cancel()
-                        currentSearchTask = nil
-                        Task { await filesViewModel.clearSearch() }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear Search")
-                }
-            }
+//            HStack(spacing: 4) {
+//                TextField("", text: $searchText, prompt: Text("Search Files…"))
+//                    .textFieldStyle(.roundedBorder)
+//                    .frame(maxWidth: 260)
+//                    .onSubmit { triggerSearch() }
+//                    .onChange(of: searchText) { _, newValue in
+//                        if newValue.isEmpty && filesViewModel.isSearchMode {
+//                            currentSearchTask?.cancel()
+//                            currentSearchTask = nil
+//                            Task { await filesViewModel.clearSearch() }
+//                        }
+//                    }
+//
+//                if filesViewModel.isSearching {
+//                    ProgressView()
+//                        .scaleEffect(0.7)
+//                        .frame(width: 16, height: 16)
+//                } else {
+//                    Button { triggerSearch() } label: {
+//                        Image(systemName: "magnifyingglass")
+//                    }
+//                    .help("Search Files")
+//                    .disabled(searchText.count < 3)
+//                }
+//
+//                if filesViewModel.isSearchMode {
+//                    Button {
+//                        searchText = ""
+//                        currentSearchTask?.cancel()
+//                        currentSearchTask = nil
+//                        Task { await filesViewModel.clearSearch() }
+//                    } label: {
+//                        Image(systemName: "xmark.circle.fill")
+//                    }
+//                    .buttonStyle(.plain)
+//                    .help("Clear Search")
+//                }
+//            }
         }
         .padding()
     }
 
     private func triggerSearch() {
-        guard searchText.count >= 3 else { return }
+        guard filesViewModel.searchText.count >= 3 else { return }
         currentSearchTask?.cancel()
         currentSearchTask = Task {
-            await filesViewModel.search(query: searchText)
+            await filesViewModel.search(query: filesViewModel.searchText)
         }
     }
 
@@ -1117,7 +1133,7 @@ struct FilesView: View {
         if filesViewModel.isSearchMode {
             currentSearchTask?.cancel()
             currentSearchTask = nil
-            searchText = ""
+            filesViewModel.searchText = ""
             await filesViewModel.clearSearch()
         }
 
