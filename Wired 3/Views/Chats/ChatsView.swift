@@ -106,6 +106,12 @@ struct ChatsView: View {
                             .environment(runtime)
                     } else {
                         VStack {
+                            ContentUnavailableView(
+                                "Join Chat",
+                                systemImage: "ellipsis.message",
+                                description: Text("You are not joined to this chat.")
+                            )
+                            
                             Button {
                                 Task {
                                     do {
