@@ -365,7 +365,7 @@ struct ChatSettingsView: View {
     var body: some View {
         Form {
             Section("Messages") {
-                Toggle("Timestamp in chat", isOn: $timestampInChat)
+                Toggle("Timestamp in Chats and Messages", isOn: $timestampInChat)
                 TextField("Every (min.)", text: Binding<String>(get: {
                     "\(timestampEveryMin)"
                 }, set: { string, _ in
