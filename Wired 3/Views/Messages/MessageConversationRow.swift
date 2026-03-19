@@ -27,13 +27,22 @@ struct MessageConversationRow: View {
 
             Spacer()
 
-            if conversation.unreadMessagesCount > 0 {
-                Text("\(conversation.unreadMessagesCount)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.accentColor))
+            VStack(alignment: .trailing, spacing: 6) {
+                if let lastMessageDate = conversation.lastMessageDate {
+                    RelativeDateText(date: lastMessageDate)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                if conversation.unreadMessagesCount > 0 {
+                    Text("\(conversation.unreadMessagesCount)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.accentColor))
+                }
             }
         }
     }

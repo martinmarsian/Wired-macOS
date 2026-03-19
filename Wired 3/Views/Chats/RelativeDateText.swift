@@ -39,6 +39,63 @@ struct RelativeDateText: View {
     }
 }
 
+struct HoverableRelativeDateText: View {
+    let date: Date
+
+#if os(macOS)
+    @State private var isPopoverPresented = false
+#endif
+
+    var body: some View {
+        RelativeDateText(date: date)
+#if os(macOS)
+            .onHover { isHovering in
+                isPopoverPresented = isHovering
+            }
+            .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
+                RelativeDatePopover(date: date)
+            }
+#endif
+    }
+}
+
+private struct RelativeDatePopover: View {
+    let date: Date
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(Self.fullDateFormatter.string(from: date))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(Self.fullTimeFormatter.string(from: date))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .multilineTextAlignment(.center)
+        }
+        .frame(minWidth: 100)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+    }
+
+    private static let fullDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    private static let fullTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+}
+
 private struct RelativeDateTimelineSchedule: TimelineSchedule {
     let referenceDate: Date
 

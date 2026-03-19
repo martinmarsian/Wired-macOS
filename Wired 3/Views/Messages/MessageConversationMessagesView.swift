@@ -195,7 +195,7 @@ private struct MessageBubbleRow: View {
             }
 
             if timestampEveryMessage {
-                RelativeDateText(date: message.date)
+                HoverableRelativeDateText(date: message.date)
                     .foregroundStyle(.gray)
                     .monospacedDigit()
                     .font(.caption)

@@ -38,7 +38,7 @@ struct ChatMeMessageView: View {
             Spacer()
             
             if timestampEveryMessage {
-                RelativeDateText(date: message.date)
+                HoverableRelativeDateText(date: message.date)
                     .foregroundStyle(.gray)
                     .monospacedDigit()
                     .font(.caption)
