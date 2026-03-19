@@ -93,6 +93,13 @@ private struct MainAppCommands: Commands {
     let controller: ConnectionController
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings...") {
+                openWindow(id: "settings")
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Connection") {
                 controller.presentedNewConnectionWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
@@ -462,9 +469,11 @@ struct Wired_3App: App {
         }
         .modelContainer(sharedModelContainer)
 
-        Settings {
+        Window("Settings", id: "settings") {
             SettingsView()
         }
+        .defaultSize(width: 980, height: 640)
+        .windowResizability(.contentSize)
 #else
         WindowGroup {
             AppRootView()

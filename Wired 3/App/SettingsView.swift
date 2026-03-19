@@ -46,59 +46,45 @@ struct SettingsView: View {
     @State private var selectedPane: SettingsPane = .general
 
     var body: some View {
-        Group {
 #if os(macOS)
-            NavigationSplitView(columnVisibility: .constant(.all)) {
-                List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                    Label(pane.title, systemImage: pane.symbolName)
-                        .tag(pane)
-                }
-                .listStyle(.sidebar)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 260)
-                .toolbar(removing: .sidebarToggle)
+        NavigationSplitView() {
+            List(SettingsPane.allCases, selection: $selectedPane) { pane in
+                Label(pane.title, systemImage: pane.symbolName)
+                    .tag(pane)
             }
-            detail: {
-                NavigationStack {
-                    Group {
-                        if selectedPane == .events {
-                            detailView(for: selectedPane)
-                                .padding(20)
-                        } else {
-                            ScrollView {
-                                detailView(for: selectedPane)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                                    .padding(20)
-                            }
-                        }
-                    }
-                    .navigationTitle(selectedPane.title)
-                }
-                .id(selectedPane)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                //.background(Color(nsColor: .underPageBackgroundColor))
-            }
-            .navigationSplitViewStyle(.balanced)
-            .frame(minWidth: 980, minHeight: 640)
-#else
-            TabView {
-                Tab("General", systemImage: "gear") {
-                    GeneralSettingsView()
-                }
-
-                Tab("Chat", systemImage: "message.fill") {
-                    ChatSettingsView()
-                }
-
-                Tab("Files", systemImage: "folder.fill") {
-                    FilesSettingsView()
-                }
-
-                Tab("Events", systemImage: "bell.fill") {
-                    EventsSettingsView()
-                }
-            }
-#endif
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 260)
+            .navigationTitle("Settings")
+            //.toolbar(removing: .sidebarToggle)
         }
+        detail: {
+            NavigationStack {
+                detailView(for: selectedPane)
+            }
+            .id(selectedPane)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .wiredToolbarBackgroundVisible()
+        .frame(minWidth: 980, minHeight: 640)
+#else
+        TabView {
+            Tab("General", systemImage: "gear") {
+                GeneralSettingsView()
+            }
+
+            Tab("Chat", systemImage: "message.fill") {
+                ChatSettingsView()
+            }
+
+            Tab("Files", systemImage: "folder.fill") {
+                FilesSettingsView()
+            }
+
+            Tab("Events", systemImage: "bell.fill") {
+                EventsSettingsView()
+            }
+        }
+#endif
     }
 
 #if os(macOS)
@@ -129,8 +115,10 @@ struct GeneralSettingsView: View {
     @AppStorage("UserNick") var userNick: String = "Wired Swift"
     @AppStorage("UserStatus") var userStatus = ""
     @AppStorage("UserIcon") var userIcon: String?
+    #if os(macOS)
     @AppStorage("CheckActiveConnectionsBeforeClosingWindowTab")
     var checkActiveConnectionsBeforeClosingWindowTab: Bool = true
+    #endif
 
     @State private var debouncer = Debouncer()
     @State private var showIconImporter = false
@@ -144,43 +132,46 @@ struct GeneralSettingsView: View {
            let image = AppImageCodec.image(fromBase64: base64) {
             return image
         }
-
         return Image("DefaultIcon")
     }
 
     var body: some View {
-#if os(macOS)
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsSection(title: "Identity") {
-                SettingsRow("Icon") {
+        Form {
+            Section("Identity") {
+                LabeledContent("Icon") {
                     HStack(spacing: 8) {
                         userIconImage.resizable()
                             .frame(width: 32, height: 32)
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        #if os(macOS)
                         Button("Choose...") {
                             showIconImporter.toggle()
                         }
-                        .fileImporter(
-                            isPresented: $showIconImporter,
-                            allowedContentTypes: [.image],
-                            allowsMultipleSelection: false
-                        ) { result in
-                            switch result {
-                            case .success(let urls):
-                                if let url = urls.first {
-                                    self.handleImage(url)
-                                }
-                            case .failure(let error):
-                                print("Import error:", error)
-                            }
-                        }
                         .controlSize(.small)
+                        #endif
                     }
                 }
-                SettingsDivider()
-                SettingsRow("Nickname") {
+                #if os(macOS)
+                .fileImporter(
+                    isPresented: $showIconImporter,
+                    allowedContentTypes: [.image],
+                    allowsMultipleSelection: false
+                ) { result in
+                    switch result {
+                    case .success(let urls):
+                        if let url = urls.first {
+                            self.handleImage(url)
+                        }
+                    case .failure(let error):
+                        print("Import error:", error)
+                    }
+                }
+                #endif
+
+                LabeledContent("Nickname") {
                     TextField("Nickname", text: $userNick)
                         .labelsHidden()
+                        #if os(macOS)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 200)
                         .onChange(of: userNick, debounceTime: .milliseconds(800), debouncer: $debouncer) {
@@ -191,11 +182,15 @@ struct GeneralSettingsView: View {
                             NotificationCenter.default.post(name: .wiredUserNickDidChange, object: userNick)
                             return .handled
                         }
+                        #else
+                        .multilineTextAlignment(.trailing)
+                        #endif
                 }
-                SettingsDivider()
-                SettingsRow("Status") {
+
+                LabeledContent("Status") {
                     TextField("Status", text: $userStatus)
                         .labelsHidden()
+                        #if os(macOS)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 200)
                         .onChange(of: userStatus, debounceTime: .milliseconds(800), debouncer: $debouncer) {
@@ -206,18 +201,20 @@ struct GeneralSettingsView: View {
                             notifyUserStatusChange()
                             return .handled
                         }
+                        #else
+                        .multilineTextAlignment(.trailing)
+                        #endif
                 }
             }
 
-            SettingsSection(title: "Behavior") {
-                SettingsRow("Window Closing") {
-                    Toggle("Check for active connections before closing",
-                           isOn: $checkActiveConnectionsBeforeClosingWindowTab)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                }
+            #if os(macOS)
+            Section("Behavior") {
+                Toggle("Check for active connections before closing",
+                       isOn: $checkActiveConnectionsBeforeClosingWindowTab)
             }
+            #endif
         }
+        .formStyle(.grouped)
         .onDisappear {
             debouncer.cancel()
             notifyUserStatusChange()
@@ -225,38 +222,10 @@ struct GeneralSettingsView: View {
         .onChange(of: userIcon) { oldValue, newValue in
             NotificationCenter.default.post(name: .wiredUserIconDidChange, object: userIcon)
         }
-#else
-        Form {
-            LabeledContent("Icon") {
-                userIconImage.resizable()
-                    .frame(width: 32, height: 32)
-            }
-            HStack {
-                Text("Nickname")
-                Spacer()
-                TextField("Nickname", text: $userNick)
-                    .multilineTextAlignment(.trailing)
-                    .bold()
-            }
-            HStack {
-                Text("Status")
-                Spacer()
-                TextField("Status", text: $userStatus)
-                    .multilineTextAlignment(.trailing)
-                    .bold()
-            }
-        }
-        .onDisappear {
-            debouncer.cancel()
-            notifyUserStatusChange()
-        }
-        .onChange(of: userIcon) { oldValue, newValue in
-            NotificationCenter.default.post(name: .wiredUserIconDidChange, object: userIcon)
-        }
-#endif
+        .navigationTitle("General")
     }
 
-#if os(macOS)
+    #if os(macOS)
     func handleImage(_ url: URL) {
         Task.detached {
             guard url.startAccessingSecurityScopedResource() else { return }
@@ -274,7 +243,7 @@ struct GeneralSettingsView: View {
             }
         }
     }
-#endif
+    #endif
 }
 
 
@@ -390,125 +359,124 @@ struct ChatSettingsView: View {
     var highlightRules: [ChatHighlightRule]
 
     var body: some View {
-#if os(macOS)
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsSection(title: "Messages") {
-                SettingsRow("Substitute Emoji") {
-                    Toggle("", isOn: $substituteEmoji)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                }
+        Form {
+            Section("Messages") {
+                Toggle("Substitute Emoji", isOn: $substituteEmoji)
             }
 
-            SettingsSection(title: "Emoji") {
-                SettingsNavigationRow("Emoji Substitutions") {
-                    HStack(spacing: 8) {
+            Section("Emoji") {
+                NavigationLink {
+                    ChatEmojiSubstitutionsSettingsView(substitutions: $emojiSubstitutions)
+                } label: {
+                    LabeledContent("Emoji Substitutions") {
                         if !emojiSubstitutions.isEmpty {
                             Text("\(emojiSubstitutions.count)")
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
                     }
-                } destination: {
-                    ChatEmojiSubstitutionsSettingsView(substitutions: $emojiSubstitutions)
                 }
             }
 
-            SettingsSection(title: "Highlights") {
-                SettingsNavigationRow("Hightlights") {
-                    HStack(spacing: 8) {
+            Section("Highlights") {
+                NavigationLink {
+                    ChatHighlightsSettingsView(highlightRules: $highlightRules)
+                } label: {
+                    LabeledContent("Highlights") {
                         if !highlightRules.isEmpty {
                             Text("\(highlightRules.count)")
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
                     }
-                } destination: {
-                    ChatHighlightsSettingsView(highlightRules: $highlightRules)
                 }
             }
         }
-#else
-        Form {
-            LabeledContent("Substitute Emoji") {
-                Toggle("", isOn: $substituteEmoji)
-            }
-
-            NavigationLink("Emoji Substitutions") {
-                ChatEmojiSubstitutionsSettingsView(substitutions: $emojiSubstitutions)
-            }
-
-            NavigationLink("Hightlights") {
-                ChatHighlightsSettingsView(highlightRules: $highlightRules)
-            }
-        }
-#endif
+        .formStyle(.grouped)
+        .navigationTitle("Chat")
     }
 }
 
 struct ChatHighlightsSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var highlightRules: [ChatHighlightRule]
     @State private var pendingDeleteRuleID: UUID? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            List {
-                if highlightRules.isEmpty {
-                    Text("No highlights yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach($highlightRules) { $rule in
+        List {
+            if highlightRules.isEmpty {
+                Text("No highlights yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach($highlightRules) { $rule in
+                    HStack(spacing: 10) {
+                        TextField("Keyword", text: $rule.keyword)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 180)
+
+                        ColorPicker(
+                            "",
+                            selection: Binding(
+                                get: { rule.color.swiftUIColor },
+                                set: { rule.color = CodableColor(swiftUIColor: $0) }
+                            ),
+                            supportsOpacity: true
+                        )
+                        .labelsHidden()
+                        .frame(width: 42)
+
+                        Spacer(minLength: 8)
+
                         HStack(spacing: 10) {
-                            TextField("Keyword", text: $rule.keyword)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 180)
+                            Text(previewText(for: rule.keyword))
+                                .lineLimit(1)
+                                .messageBubbleStyle(
+                                    isFromYou: false,
+                                    customFillColor: rule.color.swiftUIColor,
+                                    customForegroundColor: rule.color.contrastTextColor
+                                )
+                                .frame(maxWidth: 360, alignment: .trailing)
 
-                            ColorPicker(
-                                "",
-                                selection: Binding(
-                                    get: { rule.color.swiftUIColor },
-                                    set: { rule.color = CodableColor(swiftUIColor: $0) }
-                                ),
-                                supportsOpacity: true
-                            )
-                            .labelsHidden()
-                            .frame(width: 42)
-
-                            Spacer(minLength: 8)
-
-                            HStack(spacing: 10) {
-                                Text(previewText(for: rule.keyword))
-                                    .lineLimit(1)
-                                    .messageBubbleStyle(
-                                        isFromYou: false,
-                                        customFillColor: rule.color.swiftUIColor,
-                                        customForegroundColor: rule.color.contrastTextColor
-                                    )
-                                    .frame(maxWidth: 360, alignment: .trailing)
-
-                                Button(role: .destructive) {
-                                    pendingDeleteRuleID = rule.id
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
+                            Button(role: .destructive) {
+                                pendingDeleteRuleID = rule.id
+                            } label: {
+                                Image(systemName: "trash")
                             }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .buttonStyle(.borderless)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-                        .alignmentGuide(.listRowSeparatorTrailing) { dimensions in
-                            dimensions.width
-                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                    .alignmentGuide(.listRowSeparatorTrailing) { dimensions in
+                        dimensions.width
                     }
                 }
             }
-            .listStyle(.plain)
         }
-        .navigationTitle("Hightlights")
+        .listStyle(.plain)
+        .navigationTitle("Highlights")
+        #if os(macOS)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    highlightRules.append(.defaultRule)
+                } label: {
+                    Label("Add Highlight", systemImage: "plus")
+                }
+            }
+        }
+        #else
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -518,6 +486,7 @@ struct ChatHighlightsSettingsView: View {
                 }
             }
         }
+        #endif
         .confirmationDialog(
             "Delete Highlight?",
             isPresented: Binding(
@@ -563,6 +532,7 @@ struct ChatHighlightsSettingsView: View {
 }
 
 struct ChatEmojiSubstitutionsSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var substitutions: [String: String]
     @State private var rules: [Rule] = []
     @State private var pendingDeleteRuleID: UUID? = nil
@@ -581,64 +551,82 @@ struct ChatEmojiSubstitutionsSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            List {
-                if rules.isEmpty {
-                    Text("No emoji substitutions yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach($rules) { $rule in
-                        HStack(spacing: 10) {
-                            TextField("Code", text: $rule.code)
+        List {
+            if rules.isEmpty {
+                Text("No emoji substitutions yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach($rules) { $rule in
+                    HStack(spacing: 10) {
+                        TextField("Code", text: $rule.code)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 180)
+
+                        HStack(spacing: 6) {
+                            TextField("Emoji", text: $rule.emoji)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 180)
-
-                            HStack(spacing: 6) {
-                                TextField("Emoji", text: $rule.emoji)
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 56)
-                                    .focused($focusedEmojiRuleID, equals: rule.id)
-#if os(macOS)
-                                Button {
-                                    openEmojiPicker(for: rule.id)
-                                } label: {
-                                    Image(systemName: "face.smiling")
-                                }
-                                .buttonStyle(.borderless)
-#endif
+                                .multilineTextAlignment(.center)
+                                .frame(width: 56)
+                                .focused($focusedEmojiRuleID, equals: rule.id)
+                            #if os(macOS)
+                            Button {
+                                openEmojiPicker(for: rule.id)
+                            } label: {
+                                Image(systemName: "face.smiling")
                             }
+                            .buttonStyle(.borderless)
+                            #endif
+                        }
 
-                            Spacer(minLength: 8)
+                        Spacer(minLength: 8)
 
-                            HStack(spacing: 10) {
-                                Text(previewText(code: rule.code, emoji: rule.emoji))
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 320, alignment: .trailing)
-                                    .foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            Text(previewText(code: rule.code, emoji: rule.emoji))
+                                .lineLimit(1)
+                                .frame(maxWidth: 320, alignment: .trailing)
+                                .foregroundStyle(.secondary)
 
-                                Button(role: .destructive) {
-                                    pendingDeleteRuleID = rule.id
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
+                            Button(role: .destructive) {
+                                pendingDeleteRuleID = rule.id
+                            } label: {
+                                Image(systemName: "trash")
                             }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .buttonStyle(.borderless)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-                        .alignmentGuide(.listRowSeparatorTrailing) { dimensions in
-                            dimensions.width
-                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                    .alignmentGuide(.listRowSeparatorTrailing) { dimensions in
+                        dimensions.width
                     }
                 }
             }
-            .listStyle(.plain)
         }
+        .listStyle(.plain)
         .navigationTitle("Emoji Substitutions")
+        #if os(macOS)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    rules.append(Rule(code: "", emoji: "😊"))
+                    saveRules()
+                } label: {
+                    Label("Add Substitution", systemImage: "plus")
+                }
+            }
+        }
+        #else
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -649,6 +637,7 @@ struct ChatEmojiSubstitutionsSettingsView: View {
                 }
             }
         }
+        #endif
         .confirmationDialog(
             "Delete Emoji Substitution?",
             isPresented: Binding(
@@ -722,10 +711,10 @@ struct FilesSettingsView: View {
     @AppStorage("DownloadPath") var downloadPath: String = NSHomeDirectory().stringByAppendingPathComponent(path: "Downloads")
 
     var body: some View {
-#if os(macOS)
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsSection(title: "Downloads") {
-                SettingsRow("Download Folder") {
+        Form {
+            Section("Downloads") {
+                LabeledContent("Download Folder") {
+                    #if os(macOS)
                     HStack(spacing: 8) {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: downloadPath))
                             .resizable()
@@ -738,15 +727,17 @@ struct FilesSettingsView: View {
                         }
                         .controlSize(.small)
                     }
+                    #else
+                    Text(downloadPath)
+                    #endif
                 }
             }
         }
-#else
-        Text(downloadPath)
-#endif
+        .formStyle(.grouped)
+        .navigationTitle("Files")
     }
 
-#if os(macOS)
+    #if os(macOS)
     private func showFolderPicker() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -758,7 +749,7 @@ struct FilesSettingsView: View {
             downloadPath = url.path
         }
     }
-#endif
+    #endif
 }
 
 struct EventsSettingsView: View {
@@ -796,25 +787,32 @@ struct EventsSettingsView: View {
         Group {
 #if os(macOS)
             VStack(alignment: .leading, spacing: 16) {
-                SettingsSection(title: "Volume") {
-                    SettingsRow("Volume", icon: "speaker.wave.2.fill") {
-                        HStack(spacing: 10) {
-                            Slider(
-                                value: Binding(
-                                    get: { eventsVolume },
-                                    set: { eventsVolume = $0 }
-                                ),
-                                in: 0.0 ... 1.0
-                            )
-                            .frame(width: 200)
+                Form {
+                    Section("Volume") {
+                        LabeledContent {
+                            HStack(spacing: 10) {
+                                Slider(
+                                    value: Binding(
+                                        get: { eventsVolume },
+                                        set: { eventsVolume = $0 }
+                                    ),
+                                    in: 0.0 ... 1.0
+                                )
+                                .frame(width: 200)
 
-                            Text("\(Int((eventsVolume * 100).rounded()))%")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                                .frame(width: 44, alignment: .trailing)
+                                Text("\(Int((eventsVolume * 100).rounded()))%")
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                                    .frame(width: 44, alignment: .trailing)
+                            }
+                        } label: {
+                            Label("Volume", systemImage: "speaker.wave.2.fill")
                         }
                     }
                 }
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .frame(height: 100)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Event Configuration")
@@ -942,6 +940,7 @@ struct EventsSettingsView: View {
         .onChange(of: configurations) { _, value in
             WiredEventsStore.saveConfigurations(normalized(value))
         }
+        .navigationTitle("Events")
     }
 
     private var tableRows: [EventTableRow] {
@@ -1069,116 +1068,3 @@ struct EventsSettingsView: View {
 }
 
 
-// MARK: - macOS System Settings-style reusable components
-
-#if os(macOS)
-
-/// A rounded-rect card container with an optional header title,
-/// matching the macOS Ventura+ System Settings appearance.
-struct SettingsSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    init(title: String = "", @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !title.isEmpty {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(spacing: 0) {
-                content
-            }
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-    }
-}
-
-/// A single row inside a SettingsSection: label on the left, controls on the right.
-struct SettingsRow<Content: View>: View {
-    let label: String
-    let icon: String?
-    let alignment: VerticalAlignment
-    @ViewBuilder let content: Content
-
-    init(
-        _ label: String,
-        icon: String? = nil,
-        alignment: VerticalAlignment = .center,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.label = label
-        self.icon = icon
-        self.alignment = alignment
-        self.content = content()
-    }
-
-    var body: some View {
-        HStack(alignment: alignment) {
-            if let icon {
-                Image(systemName: icon)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
-            }
-            Text(label)
-            Spacer(minLength: 8)
-            content
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-}
-
-/// A reusable "push" row for nested settings pages in the detail NavigationStack.
-struct SettingsNavigationRow<Trailing: View, Destination: View>: View {
-    let title: String
-    @ViewBuilder let trailing: Trailing
-    @ViewBuilder let destination: Destination
-
-    init(
-        _ title: String,
-        @ViewBuilder trailing: () -> Trailing = { EmptyView() },
-        @ViewBuilder destination: () -> Destination
-    ) {
-        self.title = title
-        self.trailing = trailing()
-        self.destination = destination()
-    }
-
-    var body: some View {
-        NavigationLink {
-            destination
-        } label: {
-            HStack {
-                Text(title)
-                    .foregroundStyle(.primary)
-                Spacer()
-                trailing
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-    }
-}
-
-/// A thin divider inset from the leading edge, matching Apple's in-card divider style.
-struct SettingsDivider: View {
-    var body: some View {
-        Divider()
-            .padding(.leading, 16)
-    }
-}
-
-#endif
