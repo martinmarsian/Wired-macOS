@@ -341,6 +341,10 @@ struct ChatHighlightRule: Identifiable, Codable, Equatable {
 }
 
 struct ChatSettingsView: View {
+    @AppStorage("TimestampInChat") var timestampInChat: Bool = false
+    @AppStorage("TimestampEverySec") var timestampEverySec = 300
+    @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
+    
     @AppStorage("SubstituteEmoji") var substituteEmoji: Bool = true
 
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
@@ -361,10 +365,20 @@ struct ChatSettingsView: View {
     var body: some View {
         Form {
             Section("Messages") {
-                Toggle("Substitute Emoji", isOn: $substituteEmoji)
+                Toggle("Timestamp in chat", isOn: $timestampInChat)
+                TextField("Every (sec.)", text: Binding<String>(get: {
+                    "\(timestampEverySec)"
+                }, set: { string, _ in
+                    timestampEverySec = Int(string) ?? 300
+                }))
+                
             }
-
+            Section {
+                Toggle("Timestamp every message", isOn: $timestampEveryMessage)
+            }
+            
             Section("Emoji") {
+                Toggle("Substitute Emoji", isOn: $substituteEmoji)
                 NavigationLink {
                     ChatEmojiSubstitutionsSettingsView(substitutions: $emojiSubstitutions)
                 } label: {

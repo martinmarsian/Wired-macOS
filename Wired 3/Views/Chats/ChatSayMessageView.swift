@@ -10,7 +10,9 @@ import SwiftUI
 
 struct ChatSayMessageView: View {
     @Environment(ConnectionRuntime.self) private var runtime
+    @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
     @AppStorageCodable(key: "ChatHighlightRules", defaultValue: [])
+    
     private var highlightRules: [ChatHighlightRule]
     
     var message: ChatEvent
@@ -18,71 +20,90 @@ struct ChatSayMessageView: View {
     var showAvatar: Bool = true
     var isGroupedWithNext: Bool = false
     
+    @State var isHovered: Bool = false
+    
     var body: some View {
         let isFromYou = message.user.id == runtime.userID
         let matchedRule = matchedHighlightRule(in: message.text)
         let bubbleFillColor = matchedRule?.color.swiftUIColor
         let bubbleTextColor = matchedRule?.color.contrastTextColor
         let linkColor = bubbleTextColor ?? (isFromYou ? .white : .blue)
-
-        HStack(alignment: .bottom) {
-            if isFromYou {
-                Spacer()
-                VStack(alignment: .trailing) {
-                    if showNickname {
-                        Text(message.user.nick)
-                            .font(.caption)
-                            .foregroundStyle(.gray)
-                            .padding(.trailing, 10)
+        
+        VStack(alignment: isFromYou ? .trailing : .leading) {
+            HStack(alignment: .bottom) {
+                if isFromYou {
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        if showNickname {
+                            Text(message.user.nick)
+                                .font(.caption)
+                                .foregroundStyle(.gray)
+                                .padding(.trailing, 10)
+                        }
+                        Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
+                            .messageBubbleStyle(
+                                isFromYou: isFromYou,
+                                customFillColor: bubbleFillColor,
+                                customForegroundColor: bubbleTextColor,
+                                showsTail: !isGroupedWithNext
+                            )
+                            .containerRelativeFrame(
+                                .horizontal,
+                                count: 4,
+                                span: 3,
+                                spacing: 0,
+                                alignment: .trailing
+                            )
                     }
-                    Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
-                        .messageBubbleStyle(
-                            isFromYou: isFromYou,
-                            customFillColor: bubbleFillColor,
-                            customForegroundColor: bubbleTextColor,
-                            showsTail: !isGroupedWithNext
-                        )
-                        .containerRelativeFrame(
-                            .horizontal,
-                            count: 4,
-                            span: 3,
-                            spacing: 0,
-                            alignment: .trailing
-                        )
-                }
-                .padding(.bottom, isGroupedWithNext ? 2 : 8)
-                avatarView
-            } else {
-                avatarView
-                VStack(alignment: .leading) {
-                    if showNickname {
-                        Text(message.user.nick)
-                            .font(.caption)
-                            .foregroundStyle(.gray)
-                            .padding(.leading, 10)
+                    .padding(.bottom, isGroupedWithNext ? 2 : 8)
+                    
+                    avatarView
+                    
+                } else {
+                    avatarView
+                    
+                    VStack(alignment: .leading) {
+                        if showNickname {
+                            Text(message.user.nick)
+                                .font(.caption)
+                                .foregroundStyle(.gray)
+                                .padding(.leading, 10)
+                        }
+                        Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
+                            .messageBubbleStyle(
+                                isFromYou: isFromYou,
+                                customFillColor: bubbleFillColor,
+                                customForegroundColor: bubbleTextColor,
+                                showsTail: !isGroupedWithNext
+                            )
+                            .containerRelativeFrame(
+                                .horizontal,
+                                count: 4,
+                                span: 3,
+                                spacing: 0,
+                                alignment: .leading
+                            )
                     }
-                    Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
-                        .messageBubbleStyle(
-                            isFromYou: isFromYou,
-                            customFillColor: bubbleFillColor,
-                            customForegroundColor: bubbleTextColor,
-                            showsTail: !isGroupedWithNext
-                        )
-                        .containerRelativeFrame(
-                            .horizontal,
-                            count: 4,
-                            span: 3,
-                            spacing: 0,
-                            alignment: .leading
-                        )
+                    .padding(.bottom, isGroupedWithNext ? 2 : 8)
+                    Spacer()
                 }
-                .padding(.bottom, isGroupedWithNext ? 2 : 8)
-                Spacer()
+            }
+            
+            if timestampEveryMessage {
+                RelativeDateText(date: message.date)
+                    .foregroundStyle(.gray)
+                    .monospacedDigit()
+                    .font(.caption)
+                    .padding(.bottom, 3)
+                    .padding(isFromYou ? .trailing : .leading, 45)
             }
         }
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .id(message.id)
+        .onHover { isHover in
+            isHovered = isHover
+        }
     }
 
     private func matchedHighlightRule(in text: String) -> ChatHighlightRule? {

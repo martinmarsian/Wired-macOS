@@ -35,6 +35,7 @@
 		4C0C2E332EFDBA9E00213277 /* ChatMeMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2E322EFDBA9E00213277 /* ChatMeMessageView.swift */; };
 		4C0C2E352EFDBD4000213277 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2E342EFDBD4000213277 /* SettingsView.swift */; };
 		4C0C2E382EFF06BF00213277 /* DebouncedOnChange in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2E372EFF06BF00213277 /* DebouncedOnChange */; };
+		4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDBA0022F80000100213277 /* RelativeDateText.swift */; };
 		4C0C2E3A2F00421F00213277 /* ChatUsersList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2E392F00421F00213277 /* ChatUsersList.swift */; };
 		4C0C2E3C2F0042FA00213277 /* ChatMessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2E3B2F0042FA00213277 /* ChatMessagesView.swift */; };
 		4C0C2E3E2F00648600213277 /* ChatRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2E3D2F00648600213277 /* ChatRowView.swift */; };
@@ -131,6 +132,7 @@
 		4C0C2E322EFDBA9E00213277 /* ChatMeMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMeMessageView.swift; sourceTree = "<group>"; };
 		4C0C2E342EFDBD4000213277 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4C0C2E392F00421F00213277 /* ChatUsersList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatUsersList.swift; sourceTree = "<group>"; };
+		4CDBA0022F80000100213277 /* RelativeDateText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeDateText.swift; sourceTree = "<group>"; };
 		4C0C2E3B2F0042FA00213277 /* ChatMessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessagesView.swift; sourceTree = "<group>"; };
 		4C0C2E3D2F00648600213277 /* ChatRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRowView.swift; sourceTree = "<group>"; };
 		4C0C2E3F2F012F3E00213277 /* UserListRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserListRowView.swift; sourceTree = "<group>"; };
@@ -285,6 +287,7 @@
 				4C0C2E3B2F0042FA00213277 /* ChatMessagesView.swift */,
 				4C0C2E1D2EFD7C6300213277 /* ChatSayMessageView.swift */,
 				4C0C2E322EFDBA9E00213277 /* ChatMeMessageView.swift */,
+				4CDBA0022F80000100213277 /* RelativeDateText.swift */,
 				4C0C2E1F2EFD7DD200213277 /* ChatEventView.swift */,
 				4C0C2E172EFD455300213277 /* MessageBubble.swift */,
 			);
@@ -652,6 +655,7 @@
 				4C8A826B2F5ED07200C271A8 /* MessageConversationDetailView.swift in Sources */,
 				4C0C2E482F07F6EF00213277 /* View.swift in Sources */,
 				4C0C2E332EFDBA9E00213277 /* ChatMeMessageView.swift in Sources */,
+				4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */,
 				4C0C2E562F1192EE00213277 /* Transfer.swift in Sources */,
 				4C0C2E4C2F0B10A600213277 /* PublicChatFormView.swift in Sources */,
 				4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */,

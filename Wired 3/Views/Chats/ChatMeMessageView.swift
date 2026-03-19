@@ -10,11 +10,21 @@ import SwiftUI
 
 struct ChatMeMessageView: View {
     @Environment(ConnectionRuntime.self) private var runtime
+    @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
     
     var message: ChatEvent
     
     var body: some View {
         HStack(alignment: .bottom) {
+            if timestampEveryMessage {
+                RelativeDateText(date: message.date)
+                    .foregroundStyle(.clear)
+                    .monospacedDigit()
+                    .font(.caption)
+            }
+            
+            Spacer()
+            
             (
                 Text("**\(message.user.nick)** ")
                 +
@@ -25,9 +35,14 @@ struct ChatMeMessageView: View {
                 .foregroundStyle(.gray)
                 .font(.caption)
             
-            Text(message.date, style: .relative)
-                .foregroundStyle(.gray)
-                .font(.caption)
+            Spacer()
+            
+            if timestampEveryMessage {
+                RelativeDateText(date: message.date)
+                    .foregroundStyle(.gray)
+                    .monospacedDigit()
+                    .font(.caption)
+            }
         }
         .listRowSeparator(.hidden)
         .id(message.id)
