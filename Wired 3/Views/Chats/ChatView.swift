@@ -15,6 +15,7 @@ struct ChatView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     
     var chat: Chat
+    var searchText: String = ""
     @State private var chatInput: String = ""
 #if os(iOS)
     @State private var chatScrollTrigger: Int = 0
@@ -49,6 +50,7 @@ struct ChatView: View {
             ZStack(alignment: .topLeading) {
                 ChatMessagesView(
                     chat: chat,
+                    searchText: searchText,
                     topOverlayInset: topicOverlayInset,
                     bottomOverlayInset: composerOverlayInset,
                     keyboardShowTrigger: {

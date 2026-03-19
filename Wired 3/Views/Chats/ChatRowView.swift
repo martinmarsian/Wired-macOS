@@ -12,17 +12,32 @@ struct ChatRowView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     
     var chat: Chat
+    var searchText: String = ""
     @State var showEditPublicChatSheet = false
     @State var showDeletePublicChatConfirm = false
 #if os(macOS)
     @State private var isDropTargeted = false
 #endif
+
+    private var previewText: String? {
+        chat.previewText(matching: searchText)
+    }
     
     var body: some View {
         HStack {
             Image(systemName: "message.fill")
                 .foregroundStyle(chat.joined ? Color.green : Color.black)
-            Text(chat.name)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(chat.name)
+
+                if let previewText, !previewText.isEmpty {
+                    Text(previewText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             
             Spacer()
 

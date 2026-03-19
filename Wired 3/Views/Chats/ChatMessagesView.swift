@@ -19,6 +19,7 @@ struct ChatMessagesView: View {
     @State private var revealNewMessage = true
     
     var chat: Chat
+    var searchText: String = ""
     var topOverlayInset: CGFloat = 0
     var bottomOverlayInset: CGFloat = 0
     var keyboardShowTrigger: Int = 0
@@ -31,15 +32,31 @@ struct ChatMessagesView: View {
         TimeInterval(max(timestampEveryMin, 1) * 60)
     }
 
+    private var normalizedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !normalizedSearchText.isEmpty
+    }
+
+    private var filteredMessages: [ChatEvent] {
+        chat.filteredMessages(matching: normalizedSearchText)
+    }
+
+    private var visibleMessageIDs: Set<UUID> {
+        Set(filteredMessages.map(\.id))
+    }
+
     private var displayItems: [ChatDisplayItem] {
         guard timestampInChat else {
-            return chat.messages.map(ChatDisplayItem.message)
+            return filteredMessages.map(ChatDisplayItem.message)
         }
 
         var items: [ChatDisplayItem] = []
         var lastInsertedTimestampDate: Date?
 
-        for message in chat.messages {
+        for message in filteredMessages {
             if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
                 items.append(.timestamp(anchorMessageID: message.id, date: message.date))
                 lastInsertedTimestampDate = message.date
@@ -52,6 +69,19 @@ struct ChatMessagesView: View {
     }
     
     var body: some View {
+        if isSearching && filteredMessages.isEmpty {
+            ContentUnavailableView(
+                "No Matching Messages",
+                systemImage: "magnifyingglass",
+                description: Text("No message in \"\(chat.name)\" matches \"\(normalizedSearchText)\".")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            messagesList
+        }
+    }
+
+    private var messagesList: some View {
         ScrollViewReader { proxy in
             List {
                 if topOverlayInset > 0 {
@@ -119,9 +149,11 @@ struct ChatMessagesView: View {
             .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
-            .onChange(of: chat.messages.count) {
+            .onChange(of: chat.messages.last?.id) {
                 DispatchQueue.main.async {
-                    if let lastID = chat.messages.last?.id {
+                    if let lastMessage = chat.messages.last,
+                       visibleMessageIDs.contains(lastMessage.id) {
+                        let lastID = lastMessage.id
                         animatedNewMessageID = lastID
                         revealNewMessage = false
                         DispatchQueue.main.async {
@@ -154,6 +186,11 @@ struct ChatMessagesView: View {
                 }
             }
             .onChange(of: timestampEveryMin) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: normalizedSearchText) {
                 DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }

@@ -18,10 +18,32 @@ struct ChatsView: View {
     
     @State var showCreatePublicChatSheet = false
     @State private var searchText: String = ""
+
+    private var normalizedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !normalizedSearchText.isEmpty
+    }
+
+    private var filteredPublicChats: [Chat] {
+        runtime.chats.filter { $0.matchesSearch(normalizedSearchText) }
+    }
+
+    private var filteredPrivateChats: [Chat] {
+        runtime.private_chats.filter { $0.matchesSearch(normalizedSearchText) }
+    }
+
+    private var hasSearchResults: Bool {
+        !(filteredPublicChats.isEmpty && filteredPrivateChats.isEmpty)
+    }
     
     private var selectedChat: Chat? {
         guard let chatID = runtime.selectedChatID else { return nil }
-        return runtime.chat(withID: chatID)
+        guard let chat = runtime.chat(withID: chatID) else { return nil }
+        guard chat.matchesSearch(normalizedSearchText) else { return nil }
+        return chat
     }
         
     var body: some View {
@@ -32,24 +54,36 @@ struct ChatsView: View {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     List(selection: $runtime.selectedChatID) {
-                        Section {
-                            ForEach(runtime.chats) { chat in
-                                ChatRowView(chat: chat)
-                                    .environment(runtime)
+                        if !filteredPublicChats.isEmpty {
+                            Section {
+                                ForEach(filteredPublicChats) { chat in
+                                    ChatRowView(chat: chat, searchText: normalizedSearchText)
+                                        .environment(runtime)
+                                }
+                            } header: {
+                                Text("Public Chats")
                             }
-                        } header: {
-                            Text("Public Chats")
                         }
                         
-                        if runtime.private_chats.count > 0 {
+                        if !filteredPrivateChats.isEmpty {
                             Section {
-                                ForEach(runtime.private_chats) { chat in
-                                    ChatRowView(chat: chat)
+                                ForEach(filteredPrivateChats) { chat in
+                                    ChatRowView(chat: chat, searchText: normalizedSearchText)
                                         .environment(runtime)
                                 }
                             } header: {
                                 Text("Private Chats")
                             }
+                        }
+
+                        if isSearching && !hasSearchResults {
+                            ContentUnavailableView(
+                                "No Results",
+                                systemImage: "magnifyingglass",
+                                description: Text("No chat or message matches \"\(normalizedSearchText)\".")
+                            )
+                            .listRowInsets(EdgeInsets(top: 24, leading: 12, bottom: 24, trailing: 12))
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .onChange(of: runtime.selectedChatID) { old, new in
@@ -100,34 +134,55 @@ struct ChatsView: View {
                 
                 Divider()
                 
-                if let chatID = runtime.selectedChatID,
-                   let chat = selectedChat {
-                    if chat.joined == true {
-                        ChatView(chat: chat)
-                            .environment(runtime)
-                    } else {
-                        VStack {
-                            ContentUnavailableView(
-                                "Join Chat",
-                                systemImage: "ellipsis.message",
-                                description: Text("You are not joined to this chat.")
-                            )
-                            
-                            Button {
-                                Task {
-                                    do {
-                                        try await runtime.joinChat(chatID)
-                                    } catch {
-                                        runtime.lastError = error
+                Group {
+                    if let chatID = runtime.selectedChatID,
+                       let chat = selectedChat {
+                        if chat.joined == true {
+                            ChatView(chat: chat, searchText: normalizedSearchText)
+                                .environment(runtime)
+                        } else {
+                            VStack {
+                                ContentUnavailableView(
+                                    "Join Chat",
+                                    systemImage: "ellipsis.message",
+                                    description: Text("You are not joined to this chat.")
+                                )
+                                
+                                Button {
+                                    Task {
+                                        do {
+                                            try await runtime.joinChat(chatID)
+                                        } catch {
+                                            runtime.lastError = error
+                                        }
                                     }
+                                } label: {
+                                    Text("Join Chat")
                                 }
-                            } label: {
-                                Text("Join Chat")
                             }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
+                    } else if isSearching && !hasSearchResults {
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try another search.")
+                        )
+                    } else if isSearching {
+                        ContentUnavailableView(
+                            "Select a Chat",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text("Choose a chat from the filtered results.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "No Chat",
+                            systemImage: "ellipsis.message",
+                            description: Text("Select a chat from the list.")
+                        )
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }        
         }
         .searchable(text: $searchText)
@@ -164,37 +219,51 @@ struct ChatsView: View {
 #elseif os(iOS)
         NavigationStack {
             List(selection: $runtime.selectedChatID) {
-                Section {
-                    ForEach(runtime.chats) { chat in
-                        NavigationLink {
-                            ChatView(chat: chat)
-                                .environment(runtime)
-                                .navigationTitle(chat.name)
-                        } label: {
-                            ChatRowView(chat: chat)
-                                .environment(runtime)
+                if !filteredPublicChats.isEmpty {
+                    Section {
+                        ForEach(filteredPublicChats) { chat in
+                            NavigationLink {
+                                ChatView(chat: chat, searchText: normalizedSearchText)
+                                    .environment(runtime)
+                                    .navigationTitle(chat.name)
+                            } label: {
+                                ChatRowView(chat: chat, searchText: normalizedSearchText)
+                                    .environment(runtime)
+                            }
                         }
+                    } header: {
+                        Text("Public Chats")
                     }
-                } header: {
-                    Text("Public Chats")
                 }
                 
-                Section {
-                    ForEach(runtime.private_chats) { chat in
-                        NavigationLink {
-                            ChatView(chat: chat)
-                                .environment(runtime)
-                                .navigationTitle(chat.name)
-                        } label: {
-                            ChatRowView(chat: chat)
-                                .environment(runtime)
+                if !filteredPrivateChats.isEmpty {
+                    Section {
+                        ForEach(filteredPrivateChats) { chat in
+                            NavigationLink {
+                                ChatView(chat: chat, searchText: normalizedSearchText)
+                                    .environment(runtime)
+                                    .navigationTitle(chat.name)
+                            } label: {
+                                ChatRowView(chat: chat, searchText: normalizedSearchText)
+                                    .environment(runtime)
+                            }
                         }
+                    } header: {
+                        Text("Private Chats")
                     }
-                } header: {
-                    Text("Private Chats")
                 }
             }
             .listStyle(.plain)
+            .overlay {
+                if isSearching && !hasSearchResults {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("No chat or message matches \"\(normalizedSearchText)\".")
+                    )
+                }
+            }
+            .searchable(text: $searchText)
             .onAppear {
                 ensureDefaultSelectedChat()
             }
