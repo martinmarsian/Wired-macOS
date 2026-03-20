@@ -116,7 +116,11 @@ struct ServerSettingsView: View {
         case .monitor:
             PlaceholderCategoryView(title: "Moniteur")
         case .events:
-            PlaceholderCategoryView(title: "Évènements")
+            if let runtime {
+                ServerEventsSettingsView(runtime: runtime)
+            } else {
+                PlaceholderCategoryView(title: "Évènements")
+            }
         case .log:
             PlaceholderCategoryView(title: "Log")
         case .accounts:
@@ -1033,6 +1037,435 @@ private struct BanListEditorSheet: View {
                 }
             }
         }
+    }
+}
+
+private enum EventArchiveScope: Hashable, Identifiable {
+    case current
+    case archive(Date)
+
+    var id: String {
+        switch self {
+        case .current:
+            return "current"
+        case .archive(let date):
+            return "archive-\(date.timeIntervalSince1970)"
+        }
+    }
+
+    func title(calendar: Calendar) -> String {
+        switch self {
+        case .current:
+            return "Évènements récents"
+        case .archive(let date):
+            let weekStart = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
+            return "Semaine du \(weekStart.formatted(date: .abbreviated, time: .omitted))"
+        }
+    }
+
+    var fromDate: Date? {
+        switch self {
+        case .current:
+            return nil
+        case .archive(let date):
+            return date
+        }
+    }
+}
+
+@MainActor
+private final class ServerEventsSettingsViewModel: ObservableObject {
+    @Published var selectedScope: EventArchiveScope = .current
+    @Published var currentEvents: [WiredServerEventRecord] = []
+    @Published var archivedEventsByScope: [Date: [WiredServerEventRecord]] = [:]
+    @Published var selectedNick: String?
+    @Published var selectedLogin: String?
+    @Published var selectedIP: String?
+    @Published var selectedCategory: WiredServerEventCategory?
+    @Published var searchText = ""
+    @Published var firstEventDate: Date?
+    @Published var isLoading = false
+    @Published var error: Error?
+
+    private weak var runtime: ConnectionRuntime?
+    private var hasLoadedInitialData = false
+    private var isSubscribedToEvents = false
+    private let calendar = Calendar.current
+
+    func configure(runtime: ConnectionRuntime) {
+        self.runtime = runtime
+    }
+
+    var canViewEvents: Bool {
+        runtime?.hasPrivilege("wired.account.events.view_events") ?? false
+    }
+
+    var availableScopes: [EventArchiveScope] {
+        var scopes: [EventArchiveScope] = [.current]
+        guard let firstEventDate else { return scopes }
+
+        var cursor = calendar.dateInterval(of: .weekOfYear, for: firstEventDate)?.start ?? firstEventDate
+        let currentWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        var archiveScopes: [EventArchiveScope] = []
+
+        while cursor <= currentWeek {
+            archiveScopes.append(.archive(cursor))
+            guard let next = calendar.date(byAdding: .day, value: 7, to: cursor) else { break }
+            cursor = next
+        }
+
+        scopes.append(contentsOf: archiveScopes.reversed())
+        return scopes
+    }
+
+    var filteredEvents: [WiredServerEventRecord] {
+        activeEvents
+            .filter { event in
+                if let selectedNick, event.nick != selectedNick { return false }
+                if let selectedLogin, event.login != selectedLogin { return false }
+                if let selectedIP, event.ip != selectedIP { return false }
+                if let selectedCategory, event.category != selectedCategory { return false }
+
+                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !query.isEmpty {
+                    let haystack = [
+                        event.nick,
+                        event.login,
+                        event.ip,
+                        event.messageText,
+                        event.protocolName,
+                    ]
+                    .joined(separator: " ")
+                    if !haystack.localizedStandardContains(query) {
+                        return false
+                    }
+                }
+
+                return true
+            }
+            .sorted { lhs, rhs in
+                if lhs.time != rhs.time {
+                    return lhs.time > rhs.time
+                }
+                return lhs.id > rhs.id
+            }
+    }
+
+    var availableNicks: [String] {
+        uniqueValues(\.nick)
+    }
+
+    var availableLogins: [String] {
+        uniqueValues(\.login)
+    }
+
+    var availableIPs: [String] {
+        uniqueValues(\.ip)
+    }
+
+    var availableCategories: [WiredServerEventCategory] {
+        Array(Set(activeEvents.map(\.category))).sorted { $0.title < $1.title }
+    }
+
+    func loadIfNeeded() async {
+        if !hasLoadedInitialData {
+            await refresh(forceScopeReload: true)
+            hasLoadedInitialData = true
+        }
+        await subscribeToEventsIfNeeded()
+    }
+
+    func refresh(forceScopeReload: Bool) async {
+        guard let runtime, canViewEvents else { return }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            firstEventDate = try await runtime.fetchFirstEventTime()
+            currentEvents = try await runtime.fetchCurrentEvents()
+            if forceScopeReload, case .archive(let fromDate) = selectedScope {
+                archivedEventsByScope[fromDate] = try await runtime.fetchArchivedEvents(from: fromDate)
+            }
+            normalizeFilters()
+        } catch {
+            self.error = error
+        }
+    }
+
+    func loadSelectedScopeIfNeeded() async {
+        guard let runtime, canViewEvents else { return }
+
+        if case .archive(let fromDate) = selectedScope, archivedEventsByScope[fromDate] == nil {
+            isLoading = true
+            defer { isLoading = false }
+
+            do {
+                archivedEventsByScope[fromDate] = try await runtime.fetchArchivedEvents(from: fromDate)
+            } catch {
+                self.error = error
+            }
+        }
+
+        normalizeFilters()
+    }
+
+    func subscribeToEventsIfNeeded() async {
+        guard let runtime, canViewEvents, !isSubscribedToEvents else { return }
+
+        do {
+            try await runtime.subscribeToEvents()
+            isSubscribedToEvents = true
+        } catch let wiredError as WiredError {
+            if wiredError.message.contains("already_subscribed") {
+                isSubscribedToEvents = true
+            } else {
+                self.error = wiredError
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
+    func unsubscribeFromEventsIfNeeded() async {
+        guard let runtime, isSubscribedToEvents else { return }
+
+        do {
+            try await runtime.unsubscribeFromEvents()
+            isSubscribedToEvents = false
+        } catch let wiredError as WiredError {
+            if wiredError.message.contains("not_subscribed") {
+                isSubscribedToEvents = false
+            } else {
+                self.error = wiredError
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
+    func handleLiveEvent(_ event: WiredServerEventRecord) {
+        guard currentEvents.contains(where: { $0.id == event.id }) == false else { return }
+        currentEvents.append(event)
+        normalizeFilters()
+    }
+
+    private var activeEvents: [WiredServerEventRecord] {
+        switch selectedScope {
+        case .current:
+            return currentEvents
+        case .archive(let fromDate):
+            return archivedEventsByScope[fromDate] ?? []
+        }
+    }
+
+    private func uniqueValues(_ keyPath: KeyPath<WiredServerEventRecord, String>) -> [String] {
+        let values = activeEvents.map { $0[keyPath: keyPath] }
+        let nonEmptyValues = values.filter { !$0.isEmpty }
+        let uniqueValues = Set(nonEmptyValues)
+        return uniqueValues.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private func normalizeFilters() {
+        if let selectedNick, !availableNicks.contains(selectedNick) {
+            self.selectedNick = nil
+        }
+        if let selectedLogin, !availableLogins.contains(selectedLogin) {
+            self.selectedLogin = nil
+        }
+        if let selectedIP, !availableIPs.contains(selectedIP) {
+            self.selectedIP = nil
+        }
+        if let selectedCategory, !availableCategories.contains(selectedCategory) {
+            self.selectedCategory = nil
+        }
+    }
+}
+
+private struct ServerEventsSettingsView: View {
+    let runtime: ConnectionRuntime
+
+    @StateObject private var viewModel = ServerEventsSettingsViewModel()
+
+    var body: some View {
+        Group {
+            if !viewModel.canViewEvents {
+                ContentUnavailableView(
+                    "Accès refusé",
+                    systemImage: "lock",
+                    description: Text("Permission requise: wired.account.events.view_events")
+                )
+            } else {
+                content
+            }
+        }
+        .task(id: "\(runtime.userID)-\(runtime.status)") {
+            viewModel.configure(runtime: runtime)
+            await viewModel.loadIfNeeded()
+            await viewModel.loadSelectedScopeIfNeeded()
+        }
+        .onChange(of: viewModel.selectedScope) { _, _ in
+            Task { await viewModel.loadSelectedScopeIfNeeded() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .wiredServerEventReceived)) { notification in
+            guard let payload = notification.object as? RemoteServerEvent else { return }
+            guard payload.connectionID == runtime.id else { return }
+            viewModel.handleLiveEvent(payload.event)
+        }
+        .onDisappear {
+            Task {
+                await viewModel.unsubscribeFromEventsIfNeeded()
+            }
+        }
+        .errorAlert(
+            error: Binding(
+                get: { viewModel.error },
+                set: { viewModel.error = $0 }
+            ),
+            source: "Events Settings",
+            serverName: nil,
+            connectionID: runtime.id
+        )
+    }
+
+    private var content: some View {
+        VStack(spacing: 12) {
+            filtersBar
+
+            if viewModel.filteredEvents.isEmpty, !viewModel.isLoading {
+                ContentUnavailableView("Aucun évènement", systemImage: "flag")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                eventsTable
+            }
+        }
+        .overlay {
+            if viewModel.isLoading {
+                ProgressView()
+            }
+        }
+    }
+
+    private var filtersBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Picker("Période", selection: $viewModel.selectedScope) {
+                    ForEach(viewModel.availableScopes) { scope in
+                        Text(scope.title(calendar: .current)).tag(scope)
+                    }
+                }
+                .frame(maxWidth: 260)
+
+                Spacer()
+
+                Button {
+                    Task {
+                        await viewModel.refresh(forceScopeReload: true)
+                        await viewModel.loadSelectedScopeIfNeeded()
+                    }
+                } label: {
+                    Label("Rafraîchir", systemImage: "arrow.clockwise")
+                }
+                .disabled(viewModel.isLoading)
+            }
+
+            HStack(spacing: 10) {
+                Picker("Pseudo", selection: $viewModel.selectedNick) {
+                    Text("Tous les pseudos").tag(Optional<String>.none)
+                    ForEach(viewModel.availableNicks, id: \.self) { nick in
+                        Text(nick).tag(Optional(nick))
+                    }
+                }
+                .frame(maxWidth: 180)
+
+                Picker("Identifiant", selection: $viewModel.selectedLogin) {
+                    Text("Tous les identifiants").tag(Optional<String>.none)
+                    ForEach(viewModel.availableLogins, id: \.self) { login in
+                        Text(login).tag(Optional(login))
+                    }
+                }
+                .frame(maxWidth: 180)
+
+                Picker("IP", selection: $viewModel.selectedIP) {
+                    Text("Toutes les IP").tag(Optional<String>.none)
+                    ForEach(viewModel.availableIPs, id: \.self) { ip in
+                        Text(ip).tag(Optional(ip))
+                    }
+                }
+                .frame(maxWidth: 160)
+
+                Picker("Catégorie", selection: $viewModel.selectedCategory) {
+                    Text("Toutes les catégories").tag(Optional<WiredServerEventCategory>.none)
+                    ForEach(viewModel.availableCategories, id: \.self) { category in
+                        Text(category.title).tag(Optional(category))
+                    }
+                }
+                .frame(maxWidth: 160)
+
+                TextField("Rechercher", text: $viewModel.searchText)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+    }
+
+    @ViewBuilder
+    private var eventsTable: some View {
+#if os(macOS)
+        Table(viewModel.filteredEvents) {
+            TableColumn("") { event in
+                Image(systemName: event.category.systemImageName)
+                    .help(event.category.title)
+            }
+            .width(32)
+            .alignment(.center)
+
+            TableColumn("Message") { event in
+                Text(event.messageText)
+                    .lineLimit(2)
+            }
+            
+            TableColumn("Date et heure") { event in
+                Text(event.time.formatted(date: .abbreviated, time: .shortened))
+                    .monospacedDigit()
+            }
+            .width(170)
+
+            TableColumn("Pseudonyme") { event in
+                Text(event.nick.isEmpty ? " " : event.nick)
+            }
+            .width(min: 110, ideal: 120, max: 140)
+
+            TableColumn("Identifiant") { event in
+                Text(event.login.isEmpty ? " " : event.login)
+            }
+            .width(min: 110, ideal: 120, max: 140)
+
+            TableColumn("IP") { event in
+                Text(event.ip)
+                    .monospaced()
+            }
+            .width(110)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+#else
+        List(viewModel.filteredEvents) { event in
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: event.category.systemImageName)
+                    Text(event.messageText)
+                }
+                Text("\(event.nick) · \(event.login) · \(event.ip)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(event.time.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+#endif
     }
 }
 

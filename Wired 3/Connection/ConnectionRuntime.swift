@@ -1350,6 +1350,77 @@ final class ConnectionRuntime: Identifiable {
         }
         _ = try await send(message)
     }
+
+    func fetchFirstEventTime() async throws -> Date {
+        let message = P7Message(withName: "wired.event.get_first_time", spec: spec!)
+
+        do {
+            guard let response = try await send(message) else {
+                return Date(timeIntervalSince1970: 0)
+            }
+
+            guard response.name == "wired.event.first_time" else {
+                return Date(timeIntervalSince1970: 0)
+            }
+
+            return response.date(forField: "wired.event.first_time") ?? Date(timeIntervalSince1970: 0)
+        } catch {
+            throw normalizedRequestError(error)
+        }
+    }
+
+    func fetchCurrentEvents(limit: UInt32 = 1000) async throws -> [WiredServerEventRecord] {
+        let message = P7Message(withName: "wired.event.get_events", spec: spec!)
+        message.addParameter(field: "wired.event.last_event_count", value: limit)
+        return try await fetchEvents(using: message)
+    }
+
+    func fetchArchivedEvents(from fromTime: Date, numberOfDays: UInt32 = 7) async throws -> [WiredServerEventRecord] {
+        let message = P7Message(withName: "wired.event.get_events", spec: spec!)
+        message.addParameter(field: "wired.event.from_time", value: fromTime)
+        message.addParameter(field: "wired.event.number_of_days", value: numberOfDays)
+        return try await fetchEvents(using: message)
+    }
+
+    func subscribeToEvents() async throws {
+        let message = P7Message(withName: "wired.event.subscribe", spec: spec!)
+        _ = try await send(message)
+    }
+
+    func unsubscribeFromEvents() async throws {
+        let message = P7Message(withName: "wired.event.unsubscribe", spec: spec!)
+        _ = try await send(message)
+    }
+
+    func deleteEvents(from fromTime: Date?, to toTime: Date?) async throws {
+        let message = P7Message(withName: "wired.event.delete_events", spec: spec!)
+        if let fromTime {
+            message.addParameter(field: "wired.event.from_time", value: fromTime)
+        }
+        if let toTime {
+            message.addParameter(field: "wired.event.to_time", value: toTime)
+        }
+        _ = try await send(message)
+    }
+
+    private func fetchEvents(using message: P7Message) async throws -> [WiredServerEventRecord] {
+        let connection = try requireAsyncConnection()
+
+        do {
+            let stream = try connection.sendAndWaitMany(message)
+            var events: [WiredServerEventRecord] = []
+
+            for try await response in stream {
+                guard response.name == "wired.event.event_list" else { continue }
+                guard let event = WiredServerEventRecord(message: response) else { continue }
+                events.append(event)
+            }
+
+            return events
+        } catch {
+            throw normalizedRequestError(error)
+        }
+    }
     
     
     // MARK: -

@@ -16,6 +16,12 @@ import AppKit
 
 extension Notification.Name {
     static let wiredAccountAccountsChanged = Notification.Name("wiredAccountAccountsChanged")
+    static let wiredServerEventReceived = Notification.Name("wiredServerEventReceived")
+}
+
+struct RemoteServerEvent {
+    let connectionID: UUID
+    let event: WiredServerEventRecord
 }
 
 enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
@@ -1360,6 +1366,15 @@ final class ConnectionController {
                     object: nil,
                     userInfo: ["runtimeID": id]
                 )
+            }
+        case "wired.event.event":
+            if let event = WiredServerEventRecord(message: message) {
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .wiredServerEventReceived,
+                        object: RemoteServerEvent(connectionID: id, event: event)
+                    )
+                }
             }
 
 //        case "wired.user.info":
