@@ -18,6 +18,7 @@ struct ChatsView: View {
     
     @State var showCreatePublicChatSheet = false
     @State private var searchText: String = ""
+    @State private var isShowingSearchProgress = false
 
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,6 +128,13 @@ struct ChatsView: View {
                         .frame(maxWidth: 30)
                         
                         Spacer()
+
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 14, height: 14)
+                            .opacity(isShowingSearchProgress ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.15), value: isShowingSearchProgress)
+                            .help("Updating chat search results")
                     }
                     .padding(9)
                 }
@@ -186,6 +194,20 @@ struct ChatsView: View {
             }        
         }
         .searchable(text: $searchText)
+        .onChange(of: normalizedSearchText) { _, query in
+            guard !query.isEmpty else {
+                isShowingSearchProgress = false
+                return
+            }
+
+            isShowingSearchProgress = true
+
+            DispatchQueue.main.async {
+                if normalizedSearchText == query {
+                    isShowingSearchProgress = false
+                }
+            }
+        }
         .sheet(isPresented: $showCreatePublicChatSheet) {
             PublicChatFormView()
                 .environment(runtime)
