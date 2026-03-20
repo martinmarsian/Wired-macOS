@@ -9,6 +9,43 @@
 import SwiftUI
 import WiredSwift
 
+struct BoardSearchResult: Identifiable, Hashable {
+    let boardPath: String
+    let threadUUID: String
+    let postUUID: String?
+    let subject: String
+    let nick: String
+    let postDate: Date
+    let editDate: Date?
+    let snippet: String
+
+    var id: String {
+        threadUUID + "|" + (postUUID ?? "thread")
+    }
+
+    init?(_ message: P7Message) {
+        guard
+            let boardPath = message.string(forField: "wired.board.board"),
+            let threadUUID = message.uuid(forField: "wired.board.thread"),
+            let subject = message.string(forField: "wired.board.subject"),
+            let nick = message.string(forField: "wired.user.nick"),
+            let postDate = message.date(forField: "wired.board.post_date"),
+            let snippet = message.string(forField: "wired.board.snippet")
+        else {
+            return nil
+        }
+
+        self.boardPath = boardPath
+        self.threadUUID = threadUUID
+        self.postUUID = message.uuid(forField: "wired.board.post")
+        self.subject = subject
+        self.nick = nick
+        self.postDate = postDate
+        self.editDate = message.date(forField: "wired.board.edit_date")
+        self.snippet = snippet
+    }
+}
+
 @Observable
 @MainActor
 final class BoardThread: Identifiable, Equatable, Hashable {

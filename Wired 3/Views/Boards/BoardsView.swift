@@ -87,6 +87,12 @@ private struct FlattenedBoardRow: Identifiable {
     var id: String { boardPath }
 }
 
+private struct BoardSearchSelectionSnapshot {
+    let boardPath: String?
+    let smartBoardID: String?
+    let threadUUID: String?
+}
+
 
 // MARK: - BoardsView
 
@@ -121,6 +127,9 @@ struct BoardsView: View {
     @State private var isRootBoardDropTargeted = false
     @State private var smartBoardDropTargetID: String?
     @State private var searchText: String = ""
+    @State private var selectedBoardSearchResultID: String?
+    @State private var boardSearchSelectionSnapshot: BoardSearchSelectionSnapshot?
+    @State private var shouldRestoreBoardSearchSelection = true
     
     private var boardListSelection: Binding<String?> {
         Binding(
@@ -145,6 +154,18 @@ struct BoardsView: View {
     private var selectedBoard: Board? {
         guard let selectedBoardPath else { return nil }
         return runtime.board(path: selectedBoardPath)
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchMode: Bool {
+        trimmedSearchText.count >= 3
+    }
+
+    private var boardSearchTaskID: String {
+        trimmedSearchText
     }
 
     private var boardExpansionStorageKey: String {
@@ -403,6 +424,16 @@ struct BoardsView: View {
         return visibleThreads.first(where: { $0.uuid == selectedThreadUUID }) ?? runtime.thread(uuid: selectedThreadUUID)
     }
 
+    private var selectedBoardSearchResult: BoardSearchResult? {
+        guard let selectedBoardSearchResultID else { return nil }
+        return runtime.boardSearchResults.first(where: { $0.id == selectedBoardSearchResultID })
+    }
+
+    private func thread(for searchResult: BoardSearchResult) -> BoardThread? {
+        runtime.thread(boardPath: searchResult.boardPath, uuid: searchResult.threadUUID)
+        ?? runtime.thread(uuid: searchResult.threadUUID)
+    }
+
     private func threadsForBoardListAction(_ board: Board) -> [BoardThread] {
         allBoardsFlat()
             .filter { $0.path == board.path || $0.path.hasPrefix(board.path + "/") }
@@ -432,7 +463,9 @@ struct BoardsView: View {
     }
 
     private func canReply(to thread: BoardThread) -> Bool {
-        guard selectedSmartBoard == nil else { return false }
+        if selectedSmartBoard != nil && !isSearchMode {
+            return false
+        }
         return runtime.board(path: thread.boardPath)?.writable ?? false
     }
 
@@ -584,8 +617,32 @@ struct BoardsView: View {
         .task {
             loadSmartBoards()
         }
+        .task(id: boardSearchTaskID) {
+            guard isSearchMode else { return }
+
+            beginBoardSearchSessionIfNeeded()
+
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+                try Task.checkCancellation()
+                try await runtime.searchBoards(query: trimmedSearchText, scopeBoardPath: nil)
+            } catch {
+                if error is CancellationError {
+                    return
+                }
+                runtime.lastError = error
+            }
+        }
+        .onChange(of: isSearchMode) { _, isActive in
+            if isActive {
+                beginBoardSearchSessionIfNeeded()
+            } else {
+                endBoardSearchSession()
+            }
+        }
         .onChange(of: selectedSmartBoardID) { _, smartID in
             guard smartID != nil else { return }
+            commitBoardSearchSelectionIfNeeded()
             selectedThreadUUID = nil
             runtime.selectedBoardPath = nil
             runtime.selectedThreadUUID = nil
@@ -704,6 +761,128 @@ struct BoardsView: View {
 
         for board in boards {
             for thread in board.threads where !thread.postsLoaded {
+                try? await runtime.getPosts(forThread: thread)
+            }
+        }
+    }
+
+    private func beginBoardSearchSessionIfNeeded() {
+        guard boardSearchSelectionSnapshot == nil else { return }
+
+        boardSearchSelectionSnapshot = BoardSearchSelectionSnapshot(
+            boardPath: selectedBoardPath,
+            smartBoardID: selectedSmartBoardID,
+            threadUUID: selectedThreadUUID
+        )
+        shouldRestoreBoardSearchSelection = true
+        selectedBoardSearchResultID = nil
+    }
+
+    private func commitBoardSearchSelectionIfNeeded() {
+        guard boardSearchSelectionSnapshot != nil else { return }
+        shouldRestoreBoardSearchSelection = false
+
+        if isSearchMode {
+            searchText = ""
+        } else {
+            endBoardSearchSession()
+        }
+    }
+
+    private func endBoardSearchSession() {
+        runtime.clearBoardSearch()
+        selectedBoardSearchResultID = nil
+        let snapshot = boardSearchSelectionSnapshot
+        boardSearchSelectionSnapshot = nil
+        let shouldRestoreSelection = shouldRestoreBoardSearchSelection
+        shouldRestoreBoardSearchSelection = true
+
+        guard shouldRestoreSelection, let snapshot else { return }
+
+        selectedSmartBoardID = snapshot.smartBoardID
+        selectedBoardPath = snapshot.boardPath
+        selectedThreadUUID = snapshot.threadUUID
+        runtime.selectedBoardPath = snapshot.boardPath
+        runtime.selectedThreadUUID = snapshot.threadUUID
+    }
+
+    private func openSearchResult(_ result: BoardSearchResult) {
+        Task {
+            if runtime.board(path: result.boardPath) == nil {
+                await runtime.reloadBoardsAndThreads()
+            }
+
+            guard let board = runtime.board(path: result.boardPath) else {
+                return
+            }
+
+            runtime.selectedBoardPath = board.path
+
+            if !board.threadsLoaded {
+                await runtime.ensureThreadsLoaded(for: board)
+            }
+
+            guard let thread = runtime.thread(boardPath: board.path, uuid: result.threadUUID)
+                ?? runtime.thread(uuid: result.threadUUID) else {
+                return
+            }
+
+            selectedThreadUUID = thread.uuid
+            runtime.selectedThreadUUID = thread.uuid
+
+            if let postUUID = result.postUUID {
+                runtime.pendingBoardPostScrollTarget = PendingBoardPostScrollTarget(
+                    threadUUID: thread.uuid,
+                    postUUID: postUUID
+                )
+            } else {
+                runtime.pendingBoardPostScrollTarget = nil
+            }
+
+            if !thread.postsLoaded || result.postUUID != nil {
+                try? await runtime.getPosts(forThread: thread)
+            }
+        }
+    }
+
+    private func revealSearchResultInBoard(_ result: BoardSearchResult) {
+        Task {
+            commitBoardSearchSelectionIfNeeded()
+            selectedSmartBoardID = nil
+
+            if runtime.board(path: result.boardPath) == nil {
+                await runtime.reloadBoardsAndThreads()
+            }
+
+            guard let board = runtime.board(path: result.boardPath) else {
+                return
+            }
+
+            selectedBoardPath = board.path
+            runtime.selectedBoardPath = board.path
+
+            if !board.threadsLoaded {
+                await runtime.ensureThreadsLoaded(for: board)
+            }
+
+            guard let thread = runtime.thread(boardPath: board.path, uuid: result.threadUUID)
+                ?? runtime.thread(uuid: result.threadUUID) else {
+                return
+            }
+
+            selectedThreadUUID = thread.uuid
+            runtime.selectedThreadUUID = thread.uuid
+
+            if let postUUID = result.postUUID {
+                runtime.pendingBoardPostScrollTarget = PendingBoardPostScrollTarget(
+                    threadUUID: thread.uuid,
+                    postUUID: postUUID
+                )
+            } else {
+                runtime.pendingBoardPostScrollTarget = nil
+            }
+
+            if !thread.postsLoaded || result.postUUID != nil {
                 try? await runtime.getPosts(forThread: thread)
             }
         }
@@ -919,6 +1098,13 @@ struct BoardsView: View {
                     .frame(maxWidth: 30)
                     
                     Spacer()
+
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 14, height: 14)
+                        .opacity(runtime.isPerformingBoardNetworkActivity ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.15), value: runtime.isPerformingBoardNetworkActivity)
+                        .help("Boards network activity")
                     
                     Button {
                         runtime.markAllBoardThreadsAsRead()
@@ -1031,6 +1217,9 @@ struct BoardsView: View {
             Text(smartBoardToDelete?.name ?? "")
         }
         .onChange(of: selectedBoardPath) { _, _ in
+            if selectedBoardPath != nil {
+                commitBoardSearchSelectionIfNeeded()
+            }
             runtime.selectedBoardPath = selectedBoardPath
             runtime.selectedThreadUUID = nil
             selectedThreadUUID = nil
@@ -1175,11 +1364,68 @@ struct BoardsView: View {
 
     // MARK: - Threads list
 
+    @ViewBuilder
+    private var boardSearchResultsContent: some View {
+        if runtime.isSearchingBoards && runtime.boardSearchResults.isEmpty {
+            ProgressView("Searching boards…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.boardsTextBackground)
+        } else if runtime.boardSearchResults.isEmpty {
+            ContentUnavailableView("No Search Results", systemImage: "magnifyingglass")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.boardsTextBackground)
+        } else {
+            List(runtime.boardSearchResults, selection: $selectedBoardSearchResultID) { result in
+                BoardSearchResultRowView(result: result)
+                    .tag(result.id)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 10))
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                    .contentShape(Rectangle())
+            }
+            .contextMenu(forSelectionType: String.self) { selection in
+                if selection.count == 1,
+                   let resultID = selection.first,
+                   let result = runtime.boardSearchResults.first(where: { $0.id == resultID }),
+                   let thread = thread(for: result) {
+                    Button(threadReadStateLabel(for: thread)) {
+                        toggleThreadReadState(thread)
+                    }
+                    Divider()
+                    if canEditThread(thread) {
+                        Button("Edit Thread") { threadToEdit = thread }
+                    }
+                    if runtime.hasPrivilege("wired.account.board.move_threads") {
+                        Button("Move Thread") { threadToMove = thread }
+                    }
+                    if canDeleteThread(thread) {
+                        Button("Delete Thread", role: .destructive) { threadToDelete = thread }
+                    }
+                    Divider()
+                    Button("Reveal in Board") {
+                        selectedBoardSearchResultID = result.id
+                        revealSearchResultInBoard(result)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.boardsTextBackground)
+            .onChange(of: selectedBoardSearchResultID) { _, resultID in
+                guard let resultID,
+                      let result = runtime.boardSearchResults.first(where: { $0.id == resultID }) else {
+                    return
+                }
+                openSearchResult(result)
+            }
+        }
+    }
+
     private var threadsList: some View {
         #if os(macOS)
         VStack(spacing: 0) {
             Group {
-                if selectedSmartBoard != nil {
+                if isSearchMode {
+                    boardSearchResultsContent
+                } else if selectedSmartBoard != nil {
                     if visibleThreads.isEmpty {
                         ContentUnavailableView("No Matching Threads", systemImage: "line.3.horizontal.decrease.circle")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1276,7 +1522,7 @@ struct BoardsView: View {
                         Label("New", systemImage: "square.and.pencil")
                     }
                     .buttonStyle(.plain)
-                    .disabled(selectedSmartBoard != nil || !(selectedBoard?.writable ?? false))
+                    .disabled(isSearchMode || selectedSmartBoard != nil || !(selectedBoard?.writable ?? false))
 
                     Button {
                         showReply = true
@@ -1284,11 +1530,13 @@ struct BoardsView: View {
                         Label("Reply", systemImage: "arrowshape.turn.up.left")
                     }
                     .buttonStyle(.plain)
-                    .disabled(selectedThread == nil || selectedSmartBoard != nil || !(selectedBoard?.writable ?? false))
+                    .disabled(selectedThread == nil || (selectedThread.map(canReply(to:)) != true))
                     
                     Spacer()
 
-                    threadSortMenu
+                    if !isSearchMode {
+                        threadSortMenu
+                    }
                 }
                 .padding(.horizontal, 9)
                 .padding(.top, 7)
@@ -1359,7 +1607,9 @@ struct BoardsView: View {
         }
         #else
         VStack(spacing: 0) {
-            if selectedSmartBoard != nil || selectedBoard != nil {
+            if isSearchMode {
+                boardSearchResultsContent
+            } else if selectedSmartBoard != nil || selectedBoard != nil {
                 if visibleThreads.isEmpty {
                     ContentUnavailableView("No Threads", systemImage: "text.bubble")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1392,7 +1642,11 @@ struct BoardsView: View {
     private var postsDetail: some View {
         Group {
             if let thread = selectedThread {
-                PostsDetailView(boardPath: thread.boardPath, threadUUID: thread.uuid)
+                PostsDetailView(
+                    boardPath: thread.boardPath,
+                    threadUUID: thread.uuid,
+                    highlightQuery: isSearchMode ? trimmedSearchText : nil
+                )
                     .environment(runtime)
             } else {
                 ContentUnavailableView("Select a Thread", systemImage: "text.alignleft")
@@ -1400,6 +1654,63 @@ struct BoardsView: View {
             }
         }
         .background(Color.boardsTextBackground)
+    }
+}
+
+private struct BoardSearchResultRowView: View {
+    @Environment(ConnectionRuntime.self) private var runtime
+    let result: BoardSearchResult
+
+    private var thread: BoardThread? {
+        runtime.thread(boardPath: result.boardPath, uuid: result.threadUUID)
+        ?? runtime.thread(uuid: result.threadUUID)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 5) {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 8, height: 8)
+                .opacity(thread?.isUnreadThread == true ? 1 : 0)
+                .padding(.top, 5)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(result.subject)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+
+                    Spacer(minLength: 6)
+
+                    UnreadCountBadge(count: thread?.unreadPostsCount ?? 0)
+                }
+
+                Text(result.snippet.isEmpty ? result.subject : result.snippet)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    Text(result.boardPath)
+                    Text(thread?.nick ?? result.nick)
+
+                    Spacer()
+
+                    if let thread, thread.replies > 0 {
+                        Label("\(thread.replies)", systemImage: "bubble.right")
+                    }
+
+                    Text(PostRowView.dateString(thread?.lastReplyDate ?? result.editDate ?? result.postDate))
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
     }
 }
 
@@ -2360,6 +2671,7 @@ private struct PostsDetailView: View {
 
     let boardPath: String
     let threadUUID: String
+    let highlightQuery: String?
     @State private var postToEdit: BoardPost?
     @State private var postToDelete: BoardPost?
     @State private var replyComposerContext: ReplyComposerContext?
@@ -2418,6 +2730,28 @@ private struct PostsDetailView: View {
                 action()
             }
         }
+    }
+
+    @discardableResult
+    private func scrollToPendingPostIfNeeded(_ proxy: ScrollViewProxy, animated: Bool = true) -> Bool {
+        guard let target = runtime.pendingBoardPostScrollTarget, target.threadUUID == threadUUID else {
+            return false
+        }
+
+        let action = {
+            proxy.scrollTo(target.postUUID, anchor: .center)
+        }
+
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.2), action)
+            } else {
+                action()
+            }
+            runtime.pendingBoardPostScrollTarget = nil
+        }
+
+        return true
     }
 
     private func sortedPosts(_ posts: [BoardPost]) -> [BoardPost] {
@@ -2495,16 +2829,22 @@ private struct PostsDetailView: View {
             .background(Color.boardsTextBackground)
             .onAppear {
                 if thread.postsLoaded {
-                    scrollToBottom(proxy)
+                    if !scrollToPendingPostIfNeeded(proxy, animated: false) {
+                        scrollToBottom(proxy)
+                    }
                 }
             }
             .onChange(of: thread.postsLoaded) { _, loaded in
                 guard loaded else { return }
-                scrollToBottom(proxy)
+                if !scrollToPendingPostIfNeeded(proxy, animated: false) {
+                    scrollToBottom(proxy)
+                }
             }
             .onChange(of: thread.posts.count) { _, _ in
                 guard thread.postsLoaded else { return }
-                scrollToBottom(proxy, animated: true)
+                if !scrollToPendingPostIfNeeded(proxy) {
+                    scrollToBottom(proxy, animated: true)
+                }
             }
         }
     }
@@ -2528,6 +2868,7 @@ private struct PostsDetailView: View {
         VStack(spacing: 0) {
             PostRowView(
                 post: post,
+                highlightQuery: highlightQuery,
                 canReply: canReplyToThread,
                 canEdit: canEditPost(post),
                 canDelete: canDeletePost(post),
@@ -2537,6 +2878,7 @@ private struct PostsDetailView: View {
                 onDelete: { postToDelete = post }
             )
             .padding(.horizontal)
+            .id(post.uuid)
 
             Divider()
                 .padding(.horizontal)
@@ -2548,6 +2890,7 @@ private struct PostsDetailView: View {
 
 private struct PostRowView: View {
     let post: BoardPost
+    let highlightQuery: String?
     let canReply: Bool
     let canEdit: Bool
     let canDelete: Bool
@@ -2586,7 +2929,17 @@ private struct PostRowView: View {
     }
 
     private var renderedText: AttributedString {
-        post.text.attributedWithMarkdownAndDetectedLinks(linkColor: .blue)
+        post.text.attributedWithMarkdownAndDetectedLinks(
+            linkColor: .blue,
+            highlightQuery: highlightQuery
+        )
+    }
+
+    private func renderedText(for text: String) -> AttributedString {
+        text.attributedWithMarkdownAndDetectedLinks(
+            linkColor: .blue,
+            highlightQuery: highlightQuery
+        )
     }
 
     private var segments: [TextSegment] {
@@ -2705,7 +3058,7 @@ private struct PostRowView: View {
                 ForEach(segments) { segment in
                     switch segment.kind {
                     case .body:
-                        Text(segment.text.attributedWithMarkdownAndDetectedLinks(linkColor: .blue))
+                        Text(renderedText(for: segment.text))
                             .font(.body)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     case .quote:
@@ -2719,7 +3072,7 @@ private struct PostRowView: View {
                                                 .frame(width: 2, height: 15)
                                         }
                                     }
-                                    Text(line.text.attributedWithMarkdownAndDetectedLinks(linkColor: .blue))
+                                    Text(renderedText(for: line.text))
                                         .font(.body)
                                         .foregroundStyle(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)

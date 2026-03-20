@@ -56,7 +56,9 @@ extension String {
 
     func attributedWithMarkdownAndDetectedLinks(
         linkColor: Color? = nil,
-        underlineLinks: Bool = true
+        underlineLinks: Bool = true,
+        highlightQuery: String? = nil,
+        highlightColor: Color = .yellow.opacity(0.35)
     ) -> AttributedString {
         let markdownOptions = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace,
@@ -89,6 +91,11 @@ extension String {
                 attributed[linkRange].underlineStyle = .single
             }
         }
+
+        attributed.applyHighlights(
+            query: highlightQuery,
+            highlightColor: highlightColor
+        )
 
         return attributed
     }
@@ -131,6 +138,58 @@ extension String {
                 return false
             }
             return imageExtensions.contains(url.pathExtension.lowercased())
+        }
+    }
+}
+
+private extension AttributedString {
+    mutating func applyHighlights(query: String?, highlightColor: Color) {
+        let tokens = Self.searchHighlightTokens(from: query)
+        guard !tokens.isEmpty else { return }
+
+        let renderedString = String(characters)
+        for token in tokens {
+            var searchStart = renderedString.startIndex
+
+            while searchStart < renderedString.endIndex,
+                  let range = renderedString.range(
+                    of: token,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: searchStart..<renderedString.endIndex
+                  ) {
+                guard let lower = AttributedString.Index(range.lowerBound, within: self),
+                      let upper = AttributedString.Index(range.upperBound, within: self) else {
+                    searchStart = range.upperBound
+                    continue
+                }
+
+                self[lower..<upper].backgroundColor = highlightColor
+                searchStart = range.upperBound
+            }
+        }
+    }
+
+    private static func searchHighlightTokens(from query: String?) -> [String] {
+        guard let query else { return [] }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var seen: Set<String> = []
+        let candidates = ([trimmed] + trimmed.split(whereSeparator: \.isWhitespace).map(String.init))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 2 }
+
+        let unique = candidates.filter { token in
+            let key = token.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            return seen.insert(key).inserted
+        }
+
+        return unique.sorted { lhs, rhs in
+            if lhs.count != rhs.count {
+                return lhs.count > rhs.count
+            }
+            return lhs < rhs
         }
     }
 }
