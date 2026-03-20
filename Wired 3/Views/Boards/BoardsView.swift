@@ -1105,6 +1105,7 @@ struct BoardsView: View {
                         .opacity(runtime.isPerformingBoardNetworkActivity ? 1 : 0)
                         .animation(.easeInOut(duration: 0.15), value: runtime.isPerformingBoardNetworkActivity)
                         .help("Boards network activity")
+                        .padding(.trailing, 8)
                     
                     Button {
                         runtime.markAllBoardThreadsAsRead()

@@ -9,6 +9,7 @@ struct MessagesView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @State private var conversationIDPendingDeletion: UUID?
     @State private var searchText: String = ""
+    @State private var isShowingSearchProgress = false
     
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,6 +120,13 @@ struct MessagesView: View {
                     .buttonStyle(.plain)
                     
                     Spacer()
+
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 14, height: 14)
+                        .opacity(isShowingSearchProgress ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.15), value: isShowingSearchProgress)
+                        .help("Updating message search results")
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
@@ -158,6 +166,20 @@ struct MessagesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .searchable(text: $searchText)
+        .onChange(of: normalizedSearchText) { _, query in
+            guard !query.isEmpty else {
+                isShowingSearchProgress = false
+                return
+            }
+
+            isShowingSearchProgress = true
+
+            DispatchQueue.main.async {
+                if normalizedSearchText == query {
+                    isShowingSearchProgress = false
+                }
+            }
+        }
         .onAppear {
             _ = runtime.ensureBroadcastConversation()
             if runtime.selectedMessageConversationID == nil {
