@@ -867,6 +867,12 @@ struct FilesView: View {
 
             Spacer()
 
+            if filesViewModel.isPerformingFileNetworkActivity {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
+            }
+
 //            HStack(spacing: 4) {
 //                TextField("", text: $searchText, prompt: Text("Search Files…"))
 //                    .textFieldStyle(.roundedBorder)

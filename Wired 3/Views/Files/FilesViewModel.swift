@@ -50,6 +50,7 @@ final class FilesViewModel: ObservableObject {
     @Published var isSearchMode: Bool = false
     @Published var isSearching: Bool = false
     @Published var searchText: String = ""
+    @Published private(set) var fileNetworkActivityCount: Int = 0
     
     @Published var error: Error? = nil {
         didSet {
@@ -89,6 +90,10 @@ final class FilesViewModel: ObservableObject {
         self.runtime = runtime
     }
 
+    var isPerformingFileNetworkActivity: Bool {
+        fileNetworkActivityCount > 0
+    }
+
     @MainActor
     func search(query: String) async {
         guard let connection = runtime?.connection as? AsyncConnection,
@@ -109,8 +114,10 @@ final class FilesViewModel: ObservableObject {
         var results: [FileItem] = []
 
         do {
-            for try await file in fileService.searchFiles(query: query, connection: connection) {
-                results.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.searchFiles(query: query, connection: connection) {
+                    results.append(file)
+                }
             }
         } catch is CancellationError {
             isSearching = false
@@ -162,15 +169,17 @@ final class FilesViewModel: ObservableObject {
         let previous = subscribedDirectoryPaths
         subscribedDirectoryPaths.removeAll()
 
-        for path in previous {
-            do {
-                try await fileService.unsubscribeDirectory(path: path, connection: connection)
-            } catch {
-                if isFileNotFoundError(error) {
-                    continue
-                }
+        await withFileNetworkActivity {
+            for path in previous {
+                do {
+                    try await fileService.unsubscribeDirectory(path: path, connection: connection)
+                } catch {
+                    if isFileNotFoundError(error) {
+                        continue
+                    }
 
-                self.error = error
+                    self.error = error
+                }
             }
         }
     }
@@ -230,12 +239,14 @@ final class FilesViewModel: ObservableObject {
         var files: [FileItem] = []
 
         do {
-            for try await file in fileService.listDirectory(
-                path: item.path,
-                recursive: false,
-                connection: connection
-            ) {
-                files.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(
+                    path: item.path,
+                    recursive: false,
+                    connection: connection
+                ) {
+                    files.append(file)
+                }
             }
             deniedDirectoryPaths.remove(normalizedRemotePath(item.path))
 
@@ -274,12 +285,14 @@ final class FilesViewModel: ObservableObject {
         var files: [FileItem] = []
 
         do {
-            for try await file in fileService.listDirectory(
-                path: path,
-                recursive: false,
-                connection: connection
-            ) {
-                files.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(
+                    path: path,
+                    recursive: false,
+                    connection: connection
+                ) {
+                    files.append(file)
+                }
             }
             deniedDirectoryPaths.remove(normalizedRemotePath(path))
 
@@ -339,7 +352,9 @@ final class FilesViewModel: ObservableObject {
         }
         
         do {
-            try await fileService.deleteFile(path: path, connection: connection)
+            try await withFileNetworkActivity {
+                try await fileService.deleteFile(path: path, connection: connection)
+            }
             await remoteDirectoryDeleted(path)
         } catch {
             if isPermissionDeniedError(error) {
@@ -369,7 +384,9 @@ final class FilesViewModel: ObservableObject {
         let fullPath = (parentPath as NSString).appendingPathComponent(trimmedName)
 
         do {
-            try await fileService.createDirectory(path: fullPath, type: type, connection: connection)
+            try await withFileNetworkActivity {
+                try await fileService.createDirectory(path: fullPath, type: type, connection: connection)
+            }
             await reloadVisibleDirectory(parentPath)
             await syncDirectorySubscriptions()
             return true
@@ -389,7 +406,9 @@ final class FilesViewModel: ObservableObject {
             throw WiredError(withTitle: "File Info Error", message: "Not connected")
         }
 
-        return try await fileService.getFileInfo(path: path, connection: connection)
+        return try await withFileNetworkActivity {
+            try await fileService.getFileInfo(path: path, connection: connection)
+        }
     }
 
     @MainActor
@@ -402,8 +421,10 @@ final class FilesViewModel: ObservableObject {
 
         do {
             var items: [FileItem] = []
-            for try await file in fileService.listDirectory(path: rootPath, recursive: false, connection: connection) {
-                items.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(path: rootPath, recursive: false, connection: connection) {
+                    items.append(file)
+                }
             }
             treeChildrenByPath[rootPath] = items
             expandedTreePaths.insert("/")
@@ -428,8 +449,10 @@ final class FilesViewModel: ObservableObject {
 
         do {
             var items: [FileItem] = []
-            for try await file in fileService.listDirectory(path: directoryPath, recursive: false, connection: connection) {
-                items.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(path: directoryPath, recursive: false, connection: connection) {
+                    items.append(file)
+                }
             }
             deniedDirectoryPaths.remove(normalizedRemotePath(directoryPath))
             treeChildrenByPath[directoryPath] = items
@@ -530,8 +553,10 @@ final class FilesViewModel: ObservableObject {
 
         do {
             var items: [FileItem] = []
-            for try await file in fileService.listDirectory(path: normalized, recursive: false, connection: connection) {
-                items.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(path: normalized, recursive: false, connection: connection) {
+                    items.append(file)
+                }
             }
 
             deniedDirectoryPaths.remove(normalized)
@@ -581,7 +606,9 @@ final class FilesViewModel: ObservableObject {
             return
         }
 
-        try await fileService.moveFile(from: sourcePath, to: destinationPath, connection: connection)
+        try await withFileNetworkActivity {
+            try await fileService.moveFile(from: sourcePath, to: destinationPath, connection: connection)
+        }
         await reloadAll()
     }
 
@@ -591,7 +618,9 @@ final class FilesViewModel: ObservableObject {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }
 
-        try await fileService.setFileType(path: path, type: type, connection: connection)
+        try await withFileNetworkActivity {
+            try await fileService.setFileType(path: path, type: type, connection: connection)
+        }
         await reloadAll()
     }
 
@@ -600,7 +629,9 @@ final class FilesViewModel: ObservableObject {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }
 
-        try await fileService.setFilePermissions(path: path, permissions: permissions, connection: connection)
+        try await withFileNetworkActivity {
+            try await fileService.setFilePermissions(path: path, permissions: permissions, connection: connection)
+        }
         await reloadAll()
     }
 
@@ -609,7 +640,9 @@ final class FilesViewModel: ObservableObject {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return [] }
 
-        return try await fileService.listUserNames(connection: connection)
+        return try await withFileNetworkActivity {
+            try await fileService.listUserNames(connection: connection)
+        }
     }
 
     @MainActor
@@ -617,7 +650,9 @@ final class FilesViewModel: ObservableObject {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return [] }
 
-        return try await fileService.listGroupNames(connection: connection)
+        return try await withFileNetworkActivity {
+            try await fileService.listGroupNames(connection: connection)
+        }
     }
 
     @MainActor
@@ -761,34 +796,36 @@ private extension FilesViewModel {
         let toSubscribe = desired.subtracting(subscribedDirectoryPaths)
         let toUnsubscribe = subscribedDirectoryPaths.subtracting(desired)
 
-        for path in toSubscribe.sorted() {
-            do {
-                try await fileService.subscribeDirectory(path: path, connection: connection)
-                subscribedDirectoryPaths.insert(path)
-            } catch {
-                if isPermissionDeniedError(error) {
-                    continue
+        await withFileNetworkActivity {
+            for path in toSubscribe.sorted() {
+                do {
+                    try await fileService.subscribeDirectory(path: path, connection: connection)
+                    subscribedDirectoryPaths.insert(path)
+                } catch {
+                    if isPermissionDeniedError(error) {
+                        continue
+                    }
+                    self.error = error
                 }
-                self.error = error
             }
-        }
 
-        for path in toUnsubscribe.sorted() {
-            do {
-                try await fileService.unsubscribeDirectory(path: path, connection: connection)
-                subscribedDirectoryPaths.remove(path)
-            } catch {
-                if isIgnorableUnsubscribeError(error) {
-                    // Directory already removed (or no longer subscribed) server-side:
-                    // treat as successful unsubscribe.
+            for path in toUnsubscribe.sorted() {
+                do {
+                    try await fileService.unsubscribeDirectory(path: path, connection: connection)
                     subscribedDirectoryPaths.remove(path)
-                    continue
-                }
-                if isPermissionDeniedError(error) {
-                    continue
-                }
+                } catch {
+                    if isIgnorableUnsubscribeError(error) {
+                        // Directory already removed (or no longer subscribed) server-side:
+                        // treat as successful unsubscribe.
+                        subscribedDirectoryPaths.remove(path)
+                        continue
+                    }
+                    if isPermissionDeniedError(error) {
+                        continue
+                    }
 
-                self.error = error
+                    self.error = error
+                }
             }
         }
     }
@@ -813,8 +850,10 @@ private extension FilesViewModel {
 
         do {
             var items: [FileItem] = []
-            for try await file in fileService.listDirectory(path: path, recursive: false, connection: connection) {
-                items.append(file)
+            try await withFileNetworkActivity {
+                for try await file in fileService.listDirectory(path: path, recursive: false, connection: connection) {
+                    items.append(file)
+                }
             }
             treeChildrenByPath[path] = items
             treeViewRevision &+= 1
@@ -963,6 +1002,14 @@ private extension FilesViewModel {
         let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         if trimmed.isEmpty { return "/" }
         return "/" + trimmed
+    }
+
+    func withFileNetworkActivity<T>(_ operation: () async throws -> T) async rethrows -> T {
+        fileNetworkActivityCount += 1
+        defer {
+            fileNetworkActivityCount = max(0, fileNetworkActivityCount - 1)
+        }
+        return try await operation()
     }
 
     func isDeniedPath(_ path: String) -> Bool {
