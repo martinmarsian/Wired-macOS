@@ -21,6 +21,28 @@ struct PendingBoardPostScrollTarget: Equatable {
     let postUUID: String
 }
 
+struct BanListEntry: Identifiable, Hashable {
+    let ipPattern: String
+    let expirationDate: Date?
+
+    var id: String {
+        let timestamp = expirationDate?.timeIntervalSince1970 ?? -1
+        return "\(ipPattern)|\(timestamp)"
+    }
+}
+
+struct ModerationNotice: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let message: String
+
+    init(id: UUID = UUID(), title: String, message: String) {
+        self.id = id
+        self.title = title
+        self.message = message
+    }
+}
+
 enum MessageConversationKind {
     case direct
     case broadcast
@@ -153,6 +175,7 @@ final class ConnectionRuntime: Identifiable {
     var status: Status = .disconnected
     var joined = false
     var lastError: Error?
+    var moderationNotice: ModerationNotice?
     var hasConnectionIssue: Bool = false
     var isAutoReconnectScheduled: Bool = false
     var autoReconnectAttempt: Int = 0
@@ -256,6 +279,7 @@ final class ConnectionRuntime: Identifiable {
 
     func connect() {
         lastError = nil
+        moderationNotice = nil
         hasConnectionIssue = false
         privileges = [:]
         userID = 0
@@ -1212,10 +1236,14 @@ final class ConnectionRuntime: Identifiable {
         isIdle = false
         lastMessageSentAt = .now
 
+        guard connection != nil else {
+            throw AsyncConnectionError.notConnected
+        }
+
         do {
             return try await connectionController.socketClient.send(message, on: id)
         } catch {
-            throw error
+            throw normalizedRequestError(error)
         }
     }
     
@@ -1239,6 +1267,88 @@ final class ConnectionRuntime: Identifiable {
                 lastError = error
             }
         }
+    }
+
+    func disconnectUser(userID: UInt32, reason: String) async throws {
+        let message = P7Message(withName: "wired.user.disconnect_user", spec: spec!)
+        message.addParameter(field: "wired.user.id", value: userID)
+        message.addParameter(field: "wired.user.disconnect_message", value: reason)
+        _ = try await send(message)
+    }
+
+    func banUser(userID: UInt32, reason: String, expirationDate: Date?) async throws {
+        let message = P7Message(withName: "wired.user.ban_user", spec: spec!)
+        message.addParameter(field: "wired.user.id", value: userID)
+        message.addParameter(field: "wired.user.disconnect_message", value: reason)
+        if let expirationDate {
+            message.addParameter(field: "wired.banlist.expiration_date", value: expirationDate)
+        }
+        _ = try await send(message)
+    }
+
+    func kickUser(chatID: UInt32, userID: UInt32, reason: String) async throws {
+        let message = P7Message(withName: "wired.chat.kick_user", spec: spec!)
+        message.addParameter(field: "wired.chat.id", value: chatID)
+        message.addParameter(field: "wired.user.id", value: userID)
+        message.addParameter(field: "wired.user.disconnect_message", value: reason)
+        _ = try await send(message)
+    }
+
+    func fetchBans() async throws -> [BanListEntry] {
+        let message = P7Message(withName: "wired.banlist.get_bans", spec: spec!)
+        let connection = try requireAsyncConnection()
+
+        do {
+            let stream = try connection.sendAndWaitMany(message)
+            var bans: [BanListEntry] = []
+
+            for try await response in stream {
+                guard response.name == "wired.banlist.list" else { continue }
+                guard let ipPattern = response.string(forField: "wired.banlist.ip") else { continue }
+
+                bans.append(
+                    BanListEntry(
+                        ipPattern: ipPattern,
+                        expirationDate: response.date(forField: "wired.banlist.expiration_date")
+                    )
+                )
+            }
+
+            return bans.sorted {
+                switch ($0.expirationDate, $1.expirationDate) {
+                case let (lhs?, rhs?):
+                    if lhs != rhs { return lhs < rhs }
+                case (nil, .some):
+                    return true
+                case (.some, nil):
+                    return false
+                default:
+                    break
+                }
+
+                return $0.ipPattern.localizedStandardCompare($1.ipPattern) == .orderedAscending
+            }
+        } catch {
+            throw normalizedRequestError(error)
+        }
+    }
+
+    func addBan(ipPattern: String, expirationDate: Date?) async throws {
+        let message = P7Message(withName: "wired.banlist.add_ban", spec: spec!)
+        message.addParameter(field: "wired.banlist.ip", value: ipPattern)
+        if let expirationDate {
+            message.addParameter(field: "wired.banlist.expiration_date", value: expirationDate)
+        }
+        _ = try await send(message)
+    }
+
+    func deleteBan(ipPattern: String, expirationDate: Date?) async throws {
+        let message = P7Message(withName: "wired.banlist.delete_ban", spec: spec!)
+        message.addParameter(field: "wired.banlist.ip", value: ipPattern)
+        if let expirationDate {
+            message.addParameter(field: "wired.banlist.expiration_date", value: expirationDate)
+        }
+        _ = try await send(message)
     }
     
     
@@ -1905,5 +2015,22 @@ final class ConnectionRuntime: Identifiable {
             return p
         }
         return false
+    }
+
+    private func requireAsyncConnection() throws -> AsyncConnection {
+        guard let connection = connection as? AsyncConnection else {
+            throw AsyncConnectionError.notConnected
+        }
+
+        return connection
+    }
+
+    private func normalizedRequestError(_ error: Error) -> Error {
+        if let asyncError = error as? AsyncConnectionError,
+           case let .serverError(message) = asyncError {
+            return WiredError(message: message)
+        }
+
+        return error
     }
 }

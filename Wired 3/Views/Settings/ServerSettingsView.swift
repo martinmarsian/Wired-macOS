@@ -126,7 +126,11 @@ struct ServerSettingsView: View {
                 PlaceholderCategoryView(title: "Comptes")
             }
         case .bans:
-            PlaceholderCategoryView(title: "Banissements")
+            if let runtime {
+                BansSettingsView(runtime: runtime)
+            } else {
+                PlaceholderCategoryView(title: "Banissements")
+            }
         }
     }
 }
@@ -755,6 +759,281 @@ private struct TrackerRow: Identifiable, Equatable {
     var login: String
     var password: String
     var category: String
+}
+
+private struct BansSettingsView: View {
+    let runtime: ConnectionRuntime
+
+    @State private var bans: [BanListEntry] = []
+    @State private var selectedBanIDs: Set<BanListEntry.ID> = []
+    @State private var isLoading = false
+    @State private var isMutating = false
+    @State private var lastError: Error?
+    @State private var showAddSheet = false
+
+    private var canListBans: Bool {
+        runtime.hasPrivilege("wired.account.banlist.get_bans")
+    }
+
+    private var canAddBans: Bool {
+        runtime.hasPrivilege("wired.account.banlist.add_bans")
+    }
+
+    private var canDeleteBans: Bool {
+        runtime.hasPrivilege("wired.account.banlist.delete_bans")
+    }
+
+    private var selectedEntries: [BanListEntry] {
+        bans.filter { selectedBanIDs.contains($0.id) }
+    }
+
+    var body: some View {
+        Group {
+            if !canListBans {
+                ContentUnavailableView(
+                    "Accès refusé",
+                    systemImage: "lock",
+                    description: Text("Permission requise: wired.account.banlist.get_bans")
+                )
+            } else {
+                content
+            }
+        }
+        .task(id: "\(runtime.userID)-\(canListBans)") {
+            guard runtime.userID > 0 else { return }
+            await reloadBans()
+        }
+        .errorAlert(
+            error: $lastError,
+            source: "Ban List",
+            serverName: nil,
+            connectionID: runtime.id
+        )
+        .sheet(isPresented: $showAddSheet) {
+            BanListEditorSheet(runtime: runtime) {
+                showAddSheet = false
+                Task {
+                    await reloadBans()
+                }
+            } onDismiss: {
+                showAddSheet = false
+            } onError: { error in
+                lastError = error
+            }
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Button {
+                    showAddSheet = true
+                } label: {
+                    Label("Ajouter", systemImage: "plus")
+                }
+                .disabled(!canAddBans || isMutating)
+
+                Button {
+                    deleteSelectedBans()
+                } label: {
+                    Label("Supprimer", systemImage: "minus")
+                }
+                .disabled(!canDeleteBans || selectedEntries.isEmpty || isMutating)
+
+                Spacer()
+
+                Button {
+                    Task { await reloadBans() }
+                } label: {
+                    Label("Rafraîchir", systemImage: "arrow.clockwise")
+                }
+                .disabled(isLoading || isMutating)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+
+            if bans.isEmpty, !isLoading {
+                ContentUnavailableView("Aucun bannissement", systemImage: "minus.circle")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                bansTable
+            }
+        }
+        .overlay {
+            if isLoading || isMutating {
+                ProgressView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bansTable: some View {
+#if os(macOS)
+        Table(bans, selection: $selectedBanIDs) {
+            TableColumn("IP", value: \.ipPattern)
+                .width(min: 220, ideal: 280, max: .infinity)
+
+            TableColumn("Date d'expiration") { entry in
+                Text(Self.expirationText(for: entry.expirationDate))
+                    .foregroundStyle(entry.expirationDate == nil ? .secondary : .primary)
+            }
+            .width(min: 160, ideal: 220)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+#else
+        List(bans, selection: $selectedBanIDs) { entry in
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.ipPattern)
+                Text(Self.expirationText(for: entry.expirationDate))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+#endif
+    }
+
+    private func reloadBans() async {
+        guard canListBans else { return }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            bans = try await runtime.fetchBans()
+            let currentIDs = Set(bans.map(\.id))
+            selectedBanIDs = selectedBanIDs.intersection(currentIDs)
+        } catch {
+            lastError = error
+        }
+    }
+
+    private func deleteSelectedBans() {
+        guard !selectedEntries.isEmpty else { return }
+
+        isMutating = true
+
+        Task {
+            do {
+                for entry in selectedEntries {
+                    try await runtime.deleteBan(ipPattern: entry.ipPattern, expirationDate: entry.expirationDate)
+                }
+
+                await MainActor.run {
+                    selectedBanIDs.removeAll()
+                }
+
+                await reloadBans()
+            } catch {
+                await MainActor.run {
+                    lastError = error
+                }
+            }
+
+            await MainActor.run {
+                isMutating = false
+            }
+        }
+    }
+
+    private static func expirationText(for date: Date?) -> String {
+        guard let date else { return "Jamais" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct BanListEditorSheet: View {
+    let runtime: ConnectionRuntime
+    let onSaved: () -> Void
+    let onDismiss: () -> Void
+    let onError: (Error) -> Void
+
+    @State private var ipPattern = ""
+    @State private var hasExpirationDate = false
+    @State private var expirationDate = Date().addingTimeInterval(3600)
+    @State private var isSaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Ajouter un bannissement")
+                .font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("IP")
+                    .font(.headline)
+
+                TextField("192.168.* ou 192.168.0.0/16", text: $ipPattern)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("Les IP exactes, wildcards, CIDR et masques réseau sont acceptés.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Expire")
+                    .font(.headline)
+
+                Picker("Expire", selection: $hasExpirationDate) {
+                    Text("Jamais").tag(false)
+                    Text("Date").tag(true)
+                }
+                .pickerStyle(.segmented)
+
+                if hasExpirationDate {
+                    DatePicker(
+                        "Date d'expiration",
+                        selection: $expirationDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.graphical)
+                }
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Annuler") {
+                    onDismiss()
+                }
+                .disabled(isSaving)
+
+                Button("OK") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isSaving || ipPattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 360, idealWidth: 420)
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+
+        isSaving = true
+
+        Task {
+            do {
+                try await runtime.addBan(
+                    ipPattern: ipPattern,
+                    expirationDate: hasExpirationDate ? expirationDate : nil
+                )
+
+                await MainActor.run {
+                    isSaving = false
+                    onSaved()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    onError(error)
+                }
+            }
+        }
+    }
 }
 
 private struct PlaceholderCategoryView: View {

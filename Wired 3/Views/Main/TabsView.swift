@@ -133,6 +133,13 @@ struct TabsView: View {
                     serverName: connectionName,
                     connectionID: runtime.id
                 )
+                .alert(item: $runtime.moderationNotice) { notice in
+                    Alert(
+                        title: Text(notice.title),
+                        message: Text(notice.message),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
                 .task(id: "\(runtime.status)-\(runtime.joined)-\(connectionID.uuidString)") {
                     guard runtime.status == .connected, runtime.joined else { return }
                     filesViewModel.configure(
@@ -423,6 +430,13 @@ struct TabsView: View {
                     serverName: connectionName,
                     connectionID: runtime.id
                 )
+                .alert(item: $runtime.moderationNotice) { notice in
+                    Alert(
+                        title: Text(notice.title),
+                        message: Text(notice.message),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
             } else {
                 ContentUnavailableView("Connection unavailable", systemImage: "exclamationmark.triangle")
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)

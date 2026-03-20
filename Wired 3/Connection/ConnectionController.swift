@@ -1268,26 +1268,35 @@ final class ConnectionController {
 
         case "wired.chat.user_kick":
             let runtimeUserID = await MainActor.run { runtime.userID }
-            if let targetUserID = message.uint32(forField: "wired.user.id"), targetUserID == runtimeUserID {
+            if let targetUserID = message.uint32(forField: "wired.user.disconnected_id"), targetUserID == runtimeUserID {
                 withStateLock {
                     autoReconnectBlockedReasons[id] = .kicked
                 }
             }
+            await MainActor.run {
+                self.handleModerationBroadcast(message, kind: "kicked", in: runtime)
+            }
 
         case "wired.chat.user_ban":
             let runtimeUserID = await MainActor.run { runtime.userID }
-            if let targetUserID = message.uint32(forField: "wired.user.id"), targetUserID == runtimeUserID {
+            if let targetUserID = message.uint32(forField: "wired.user.disconnected_id"), targetUserID == runtimeUserID {
                 withStateLock {
                     autoReconnectBlockedReasons[id] = .banned
                 }
             }
+            await MainActor.run {
+                self.handleModerationBroadcast(message, kind: "banned", in: runtime)
+            }
 
         case "wired.chat.user_disconnect":
             let runtimeUserID = await MainActor.run { runtime.userID }
-            if let targetUserID = message.uint32(forField: "wired.user.id"), targetUserID == runtimeUserID {
+            if let targetUserID = message.uint32(forField: "wired.user.disconnected_id"), targetUserID == runtimeUserID {
                 withStateLock {
                     autoReconnectBlockedReasons[id] = .serverForcedDisconnect
                 }
+            }
+            await MainActor.run {
+                self.handleModerationBroadcast(message, kind: "disconnected", in: runtime)
             }
 
 //        case "wired.error":
@@ -2376,6 +2385,77 @@ final class ConnectionController {
     @MainActor
     private func appendChatMessage(_ message: ChatEvent, to chat: Chat) {
         chat.messages.append(message)
+    }
+
+    @MainActor
+    private func handleModerationBroadcast(_ message: P7Message, kind: String, in runtime: ConnectionRuntime) {
+        guard let chatID = message.uint32(forField: "wired.chat.id"),
+              let targetUserID = message.uint32(forField: "wired.user.disconnected_id"),
+              let chat = runtime.chat(withID: chatID) else {
+            return
+        }
+
+        let currentNick = runtime.currentNick
+        let removedUser = removeUser(withID: targetUserID, from: chat)
+        let displayName: String
+        let eventUser: User
+
+        if let removedUser {
+            displayName = removedUser.nick
+            eventUser = User(
+                id: removedUser.id,
+                nick: removedUser.nick,
+                status: removedUser.status,
+                icon: removedUser.icon,
+                idle: removedUser.idle
+            )
+            eventUser.color = removedUser.color
+        } else {
+            displayName = targetUserID == runtime.userID ? (currentNick ?? "You") : "User \(targetUserID)"
+            eventUser = User(id: targetUserID, nick: displayName, icon: Data(), idle: false)
+        }
+
+        let reason = (message.string(forField: "wired.user.disconnect_message") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = targetUserID == runtime.userID ? "You were \(kind)" : "\(displayName) was \(kind)"
+        let text = reason.isEmpty ? "\(prefix)." : "\(prefix): \(reason)"
+
+        appendChatMessage(
+            ChatEvent(chat: chat, user: eventUser, type: .event, text: text),
+            to: chat
+        )
+
+        runtime.refreshPrivateChatName(chat)
+
+        if targetUserID == runtime.userID {
+            let title: String
+            switch kind {
+            case "kicked":
+                title = "Kicked"
+            case "banned":
+                title = "Banned"
+            default:
+                title = "Disconnected"
+            }
+
+            runtime.moderationNotice = ModerationNotice(title: title, message: text)
+            chat.joined = false
+            chat.users.removeAll()
+
+            if !chat.isPrivate, runtime.selectedChatID == chat.id {
+                runtime.selectedChatID = 1
+            }
+        }
+    }
+
+    @MainActor
+    private func removeUser(withID userID: UInt32, from chat: Chat) -> User? {
+        guard let index = chat.users.firstIndex(where: { $0.id == userID }) else {
+            return nil
+        }
+
+        let user = chat.users.remove(at: index)
+        return user
     }
 
     private func playConfiguredSound(name: String?, volume: Float) {
