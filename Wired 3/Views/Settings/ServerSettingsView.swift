@@ -1169,14 +1169,16 @@ private final class ServerEventsSettingsViewModel: ObservableObject {
 
     func loadIfNeeded() async {
         if !hasLoadedInitialData {
-            await refresh(forceScopeReload: true)
-            hasLoadedInitialData = true
+            let didAttemptLoad = await refresh(forceScopeReload: true)
+            hasLoadedInitialData = didAttemptLoad
         }
+
         await subscribeToEventsIfNeeded()
     }
 
-    func refresh(forceScopeReload: Bool) async {
-        guard let runtime, canViewEvents else { return }
+    @discardableResult
+    func refresh(forceScopeReload: Bool) async -> Bool {
+        guard let runtime, canViewEvents else { return false }
 
         isLoading = true
         defer { isLoading = false }
@@ -1191,6 +1193,8 @@ private final class ServerEventsSettingsViewModel: ObservableObject {
         } catch {
             self.error = error
         }
+
+        return true
     }
 
     func loadSelectedScopeIfNeeded() async {
@@ -1287,9 +1291,20 @@ private struct ServerEventsSettingsView: View {
 
     @StateObject private var viewModel = ServerEventsSettingsViewModel()
 
+    private var hasResolvedPrivileges: Bool {
+        !runtime.privileges.isEmpty
+    }
+
+    private var canViewEvents: Bool {
+        runtime.hasPrivilege("wired.account.events.view_events")
+    }
+
     var body: some View {
         Group {
-            if !viewModel.canViewEvents {
+            if !hasResolvedPrivileges {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !canViewEvents {
                 ContentUnavailableView(
                     "Accès refusé",
                     systemImage: "lock",
@@ -1299,7 +1314,7 @@ private struct ServerEventsSettingsView: View {
                 content
             }
         }
-        .task(id: "\(runtime.userID)-\(runtime.status)") {
+        .task(id: "\(runtime.userID)-\(runtime.status)-\(canViewEvents)") {
             viewModel.configure(runtime: runtime)
             await viewModel.loadIfNeeded()
             await viewModel.loadSelectedScopeIfNeeded()
