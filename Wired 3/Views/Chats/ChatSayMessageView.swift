@@ -19,6 +19,8 @@ struct ChatSayMessageView: View {
     var showNickname: Bool = true
     var showAvatar: Bool = true
     var isGroupedWithNext: Bool = false
+    var typingHandoffText: String? = nil
+    var typingHandoffProgress: CGFloat = 1
     
     @State var isHovered: Bool = false
     
@@ -62,27 +64,48 @@ struct ChatSayMessageView: View {
                 } else {
                     avatarView
                     
-                    VStack(alignment: .leading) {
-                        if showNickname {
-                            Text(message.user.nick)
-                                .font(.caption)
-                                .foregroundStyle(.gray)
-                                .padding(.leading, 10)
+                    ZStack(alignment: .topLeading) {
+                        VStack(alignment: .leading) {
+                            if showNickname {
+                                Text(message.user.nick)
+                                    .font(.caption)
+                                    .foregroundStyle(.gray)
+                                    .padding(.leading, 10)
+                            }
+                            Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
+                                .messageBubbleStyle(
+                                    isFromYou: isFromYou,
+                                    customFillColor: bubbleFillColor,
+                                    customForegroundColor: bubbleTextColor,
+                                    showsTail: !isGroupedWithNext
+                                )
+                                .containerRelativeFrame(
+                                    .horizontal,
+                                    count: 4,
+                                    span: 3,
+                                    spacing: 0,
+                                    alignment: .leading
+                                )
                         }
-                        Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
-                            .messageBubbleStyle(
-                                isFromYou: isFromYou,
-                                customFillColor: bubbleFillColor,
-                                customForegroundColor: bubbleTextColor,
-                                showsTail: !isGroupedWithNext
-                            )
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: 4,
-                                span: 3,
-                                spacing: 0,
-                                alignment: .leading
-                            )
+                        .opacity(typingHandoffText == nil ? 1 : typingHandoffProgress)
+                        .offset(y: typingHandoffText == nil ? 0 : (1 - typingHandoffProgress) * 6)
+
+                        if let typingHandoffText {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(typingHandoffText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.leading, 10)
+
+                                MessagesStyleTypingBubble()
+                            }
+                            .opacity(1 - typingHandoffProgress)
+                            .scaleEffect(1 - (typingHandoffProgress * 0.03), anchor: .bottomLeading)
+                            .offset(y: typingHandoffProgress * -4)
+                            .allowsHitTesting(false)
+                        }
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
                     Spacer()
@@ -101,6 +124,9 @@ struct ChatSayMessageView: View {
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .id(message.id)
+        .animation(nil, value: showNickname)
+        .animation(nil, value: showAvatar)
+        .animation(nil, value: isGroupedWithNext)
         .onHover { isHover in
             isHovered = isHover
         }

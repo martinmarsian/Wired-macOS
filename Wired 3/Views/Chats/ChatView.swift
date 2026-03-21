@@ -42,22 +42,10 @@ struct ChatView: View {
 
     private var composerOverlayInset: CGFloat {
 #if os(macOS)
-        58 + typingIndicatorInset
+        58
 #else
-        76 + typingIndicatorInset
+        76
 #endif
-    }
-
-    private var typingIndicatorInset: CGFloat {
-        typingIndicatorText == nil ? 0 : 52
-    }
-
-    private var typingIndicatorText: String? {
-        chat.typingIndicatorText
-    }
-
-    private var isTypingIndicatorVisible: Bool {
-        typingIndicatorText != nil
     }
 
     var body: some View {
@@ -88,61 +76,41 @@ struct ChatView: View {
                     .environment(runtime)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if let typingIndicatorText {
-                        ChatTypingIndicatorView(text: typingIndicatorText)
-                            .transition(
-                                .asymmetric(
-                                    insertion: .offset(y: 10)
-                                        .combined(with: .opacity)
-                                        .combined(with: .scale(scale: 0.96, anchor: .bottomLeading)),
-                                    removal: .offset(y: 8)
-                                        .combined(with: .opacity)
-                                )
-                            )
-                    }
-
-                    HStack(alignment: .top, spacing: 0) {
-                        ConversationComposer(
-                            text: $chatInput,
-                            placeholder: "Chat here…",
-                            isEnabled: true,
-                            onSend: { text in
-                                await runtime.setChatTyping(chatID: chat.id, isTyping: false)
-                                do {
-                                    _ = try await runtime.sendChatMessage(chat.id, text)
-                                } catch {
-                                    runtime.lastError = error
-                                }
-                            },
-                            onTextChanged: { newValue in
-                                handleComposerTextChanged(newValue)
-                            },
-                            onDisappear: {
-                                stopTypingUpdates(sendStopSignal: true)
+                HStack(alignment: .top, spacing: 0) {
+                    ConversationComposer(
+                        text: $chatInput,
+                        placeholder: "Chat here…",
+                        isEnabled: true,
+                        onSend: { text in
+                            await runtime.setChatTyping(chatID: chat.id, isTyping: false)
+                            do {
+                                _ = try await runtime.sendChatMessage(chat.id, text)
+                            } catch {
+                                runtime.lastError = error
                             }
-                        )
+                        },
+                        onTextChanged: { newValue in
+                            handleComposerTextChanged(newValue)
+                        },
+                        onDisappear: {
+                            stopTypingUpdates(sendStopSignal: true)
+                        }
+                    )
 
 #if os(macOS)
-                        Button {
-                            NSApp.orderFrontCharacterPalette(nil)
-                        } label: {
-                            Image(systemName: "face.smiling")
-                                .font(.title3)
-                        }
-                        .foregroundColor(.gray)
-                        .buttonStyle(.plain)
-                        .padding(.top, 8)
-                        .padding(.trailing, 8)
-#endif
+                    Button {
+                        NSApp.orderFrontCharacterPalette(nil)
+                    } label: {
+                        Image(systemName: "face.smiling")
+                            .font(.title3)
                     }
+                    .foregroundColor(.gray)
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+#endif
                 }
-                .animation(
-                    .spring(response: 0.26, dampingFraction: 0.9),
-                    value: isTypingIndicatorVisible
-                )
                 .backgroundEdgeFade(top: 0, bottom: 60)
-                //.background(.red)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
 #if os(macOS)
@@ -441,88 +409,6 @@ struct ConversationComposer: View {
             lastProgrammaticHistoryValue = historyDraft
             text = historyDraft
         }
-    }
-}
-
-private struct ChatTypingIndicatorView: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(text)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
-
-            MessagesStyleTypingBubble()
-        }
-        .padding(.leading, 10)
-        .padding(.bottom, 10)
-    }
-}
-
-private struct MessagesStyleTypingBubble: View {
-    private let bubbleFill = Color.primary.opacity(0.10)
-    private let dotColor = Color.primary.opacity(0.38)
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(bubbleFill)
-                .frame(width: 54, height: 30)
-                .shadow(color: .black.opacity(0.035), radius: 4, y: 1)
-                .offset(x: 3)
-
-            TypingDotsView(dotColor: dotColor)
-                .frame(width: 54, height: 30)
-                .offset(x: 3)
-
-            Circle()
-                .fill(bubbleFill)
-                .frame(width: 7, height: 7)
-                .offset(x: 6, y: 6)
-
-            Circle()
-                .fill(bubbleFill.opacity(0.96))
-                .frame(width: 4, height: 4)
-                .offset(x: 1, y: 11)
-        }
-        .frame(width: 58, height: 36, alignment: .topLeading)
-    }
-}
-
-private struct TypingDotsView: View {
-    let dotColor: Color
-
-    private let cycleDuration: Double = 0.9
-    private let phases: [Double] = [0.0, 0.18, 0.36]
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-
-            HStack(spacing: 5) {
-                ForEach(Array(phases.enumerated()), id: \.offset) { _, phase in
-                    let motion = centeredMotion(at: time + phase)
-                    let highlight = (motion + 1) / 2
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 6, height: 6)
-                        .scaleEffect(0.95 + (highlight * 0.08))
-                        .offset(y: -motion * 1.8)
-                        .opacity(0.55 + (highlight * 0.45))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func centeredMotion(at time: Double) -> CGFloat {
-        let progress = (time.truncatingRemainder(dividingBy: cycleDuration)) / cycleDuration
-        return CGFloat(sin(progress * (.pi * 2)))
     }
 }
 
