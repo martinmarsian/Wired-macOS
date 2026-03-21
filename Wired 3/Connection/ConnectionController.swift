@@ -1500,6 +1500,7 @@ final class ConnectionController {
                 if let chat = await runtime.chat(withID: chatID) {
                     if let user = await parseUser(from: message) {
                         await MainActor.run {
+                            runtime.clearIncomingChatTyping(chatID: chatID, userID: user.id)
                             let wasInserted = self.upsertUser(user, in: chat)
                             if wasInserted {
                                 //chat.messages.append(ChatEvent(chat: chat, user: user, type: .join, text: ""))
@@ -1524,6 +1525,7 @@ final class ConnectionController {
             {
                 if let chat = await runtime.chat(withID: chatID) {
                     await MainActor.run {
+                        runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                         if let user = chat.users.first(where: { $0.id == userID }) {
                             let nick = user.nick
                             //chat.messages.append(ChatEvent(chat: chat, user: user, type: .leave, text: ""))
@@ -1633,6 +1635,7 @@ final class ConnectionController {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.say") {
                                 await MainActor.run {
+                                    runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
                                         ChatEvent(chat: chat, user: user, type: .say, text: say),
                                         to: chat
@@ -1682,6 +1685,7 @@ final class ConnectionController {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.me") {
                                 await MainActor.run {
+                                    runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
                                         ChatEvent(chat: chat, user: user, type: .me, text: say),
                                         to: chat
@@ -1722,6 +1726,14 @@ final class ConnectionController {
                             }
                         }
                     }
+                }
+            }
+        case "wired.chat.typing":
+            if let chatID = message.uint32(forField: "wired.chat.id"),
+               let userID = message.uint32(forField: "wired.user.id"),
+               let isTyping = message.bool(forField: "wired.chat.typing") {
+                await MainActor.run {
+                    runtime.applyIncomingChatTyping(chatID: chatID, userID: userID, isTyping: isTyping)
                 }
             }
         case "wired.message.message":
@@ -2410,6 +2422,7 @@ final class ConnectionController {
             return
         }
 
+        runtime.clearIncomingChatTyping(chatID: chatID, userID: targetUserID)
         let currentNick = runtime.currentNick
         let removedUser = removeUser(withID: targetUserID, from: chat)
         let displayName: String

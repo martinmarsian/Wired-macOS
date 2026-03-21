@@ -17,6 +17,8 @@ struct ChatView: View {
     var chat: Chat
     var searchText: String = ""
     @State private var chatInput: String = ""
+    @State private var typingDebounceTask: Task<Void, Never>?
+    @State private var typingRefreshTask: Task<Void, Never>?
 #if os(iOS)
     @State private var chatScrollTrigger: Int = 0
 #endif
@@ -39,12 +41,21 @@ struct ChatView: View {
     }
 
     private var composerOverlayInset: CGFloat {
-        #if os(macOS)
-        58
-        #else
-        76
-        #endif
+#if os(macOS)
+        58 + typingIndicatorInset
+#else
+        76 + typingIndicatorInset
+#endif
     }
+
+    private var typingIndicatorInset: CGFloat {
+        typingIndicatorText == nil ? 0 : 30
+    }
+
+    private var typingIndicatorText: String? {
+        chat.typingIndicatorText
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
@@ -74,18 +85,31 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 HStack(alignment: .top, spacing: 0) {
-                    ConversationComposer(
-                        text: $chatInput,
-                        placeholder: "Chat here…",
-                        isEnabled: true,
-                        onSend: { text in
-                            do {
-                                _ = try await runtime.sendChatMessage(chat.id, text)
-                            } catch {
-                                runtime.lastError = error
-                            }
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let typingIndicatorText {
+                            ChatTypingIndicatorView(text: typingIndicatorText)
                         }
-                    )
+
+                        ConversationComposer(
+                            text: $chatInput,
+                            placeholder: "Chat here…",
+                            isEnabled: true,
+                            onSend: { text in
+                                await runtime.setChatTyping(chatID: chat.id, isTyping: false)
+                                do {
+                                    _ = try await runtime.sendChatMessage(chat.id, text)
+                                } catch {
+                                    runtime.lastError = error
+                                }
+                            },
+                            onTextChanged: { newValue in
+                                handleComposerTextChanged(newValue)
+                            },
+                            onDisappear: {
+                                stopTypingUpdates(sendStopSignal: true)
+                            }
+                        )
+                    }
                     
                     
 #if os(macOS)
@@ -135,6 +159,14 @@ struct ChatView: View {
             guard !newValue.isEmpty else { return }
             markCurrentChatAsReadIfNeeded()
         }
+        .onChange(of: runtime.selectedChatID) { _, newValue in
+            if newValue != chat.id {
+                stopTypingUpdates(sendStopSignal: true)
+            }
+        }
+        .onDisappear {
+            stopTypingUpdates(sendStopSignal: true)
+        }
 #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             chatScrollTrigger += 1
@@ -164,11 +196,92 @@ struct ChatView: View {
         }
     }
 
+    @MainActor
     private func markCurrentChatAsReadIfNeeded() {
         guard runtime.selectedTab == .chats else { return }
         guard runtime.selectedChatID == chat.id else { return }
         guard chat.unreadMessagesCount > 0 else { return }
         runtime.resetUnreads(chat)
+    }
+
+    @MainActor
+    private func handleComposerTextChanged(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            stopTypingUpdates(sendStopSignal: true)
+            return
+        }
+
+        guard typingDebounceTask == nil, typingRefreshTask == nil else { return }
+        scheduleTypingStart()
+    }
+
+    @MainActor
+    private func scheduleTypingStart() {
+        typingDebounceTask?.cancel()
+
+        let chatID = chat.id
+        typingDebounceTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+
+            let trimmed = await MainActor.run {
+                chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !trimmed.isEmpty else {
+                await MainActor.run {
+                    typingDebounceTask = nil
+                }
+                return
+            }
+
+            await runtime.setChatTyping(chatID: chatID, isTyping: true)
+
+            await MainActor.run {
+                typingDebounceTask = nil
+                startTypingRefreshLoop(for: chatID)
+            }
+        }
+    }
+
+    @MainActor
+    private func startTypingRefreshLoop(for chatID: UInt32) {
+        typingRefreshTask?.cancel()
+
+        typingRefreshTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+
+                let trimmed = await MainActor.run {
+                    chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+
+                guard !trimmed.isEmpty else {
+                    await MainActor.run {
+                        stopTypingUpdates(sendStopSignal: true)
+                    }
+                    return
+                }
+
+                await runtime.setChatTyping(chatID: chatID, isTyping: true)
+            }
+        }
+    }
+
+    @MainActor
+    private func stopTypingUpdates(sendStopSignal: Bool) {
+        typingDebounceTask?.cancel()
+        typingDebounceTask = nil
+        typingRefreshTask?.cancel()
+        typingRefreshTask = nil
+
+        guard sendStopSignal else { return }
+
+        let chatID = chat.id
+        Task {
+            await runtime.setChatTyping(chatID: chatID, isTyping: false)
+        }
     }
 }
 
@@ -178,6 +291,8 @@ struct ConversationComposer: View {
     let placeholder: String
     let isEnabled: Bool
     let onSend: (String) async -> Void
+    var onTextChanged: ((String) -> Void)? = nil
+    var onDisappear: (() -> Void)? = nil
 
     @State private var messageHistory: [String] = []
     @State private var historyIndex: Int? = nil
@@ -228,7 +343,7 @@ struct ConversationComposer: View {
             .opacity(isEnabled ? 1.0 : 0.65)
             .allowsHitTesting(isEnabled)
 #else
-            TextField("", text: $text, prompt: Text("Chat here…"), axis: .vertical)
+            TextField("", text: $text, prompt: Text(placeholder), axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .padding(.horizontal, 12)
@@ -251,6 +366,10 @@ struct ConversationComposer: View {
                 return
             }
             historyIndex = nil
+            onTextChanged?(newValue)
+        }
+        .onDisappear {
+            onDisappear?()
         }
     }
 
@@ -306,6 +425,27 @@ struct ConversationComposer: View {
             lastProgrammaticHistoryValue = historyDraft
             text = historyDraft
         }
+    }
+}
+
+private struct ChatTypingIndicatorView: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(.primary.opacity(0.06))
+        )
+        .padding(.leading, 10)
     }
 }
 

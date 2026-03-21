@@ -19,6 +19,7 @@ final class Chat: Identifiable {
     
     var users : [User] = []
     var messages : [ChatEvent] = []
+    var typingUsersByID: [UInt32: Date] = [:]
     
     var unreadMessagesCount : Int = 0
     
@@ -49,6 +50,44 @@ extension ChatEvent {
 }
 
 extension Chat {
+    func setTyping(userID: UInt32, expiresAt: Date) {
+        typingUsersByID[userID] = expiresAt
+    }
+
+    func clearTyping(userID: UInt32) {
+        typingUsersByID.removeValue(forKey: userID)
+    }
+
+    func clearAllTyping() {
+        typingUsersByID.removeAll()
+    }
+
+    func removeExpiredTypingUsers(referenceDate: Date = .now) {
+        typingUsersByID = typingUsersByID.filter { $0.value > referenceDate }
+    }
+
+    var typingIndicatorText: String? {
+        let activeUserIDs = typingUsersByID
+            .filter { $0.value > .now }
+            .keys
+            .sorted()
+
+        guard !activeUserIDs.isEmpty else { return nil }
+
+        let names = activeUserIDs.map { userID in
+            users.first(where: { $0.id == userID })?.nick ?? "User"
+        }
+
+        switch names.count {
+        case 1:
+            return "\(names[0]) is typing..."
+        case 2:
+            return "\(names[0]) and \(names[1]) are typing..."
+        default:
+            return "Several users are typing..."
+        }
+    }
+
     func matchesSearch(_ rawQuery: String) -> Bool {
         let query = rawQuery.trimmedChatSearchQuery
         guard !query.isEmpty else { return true }

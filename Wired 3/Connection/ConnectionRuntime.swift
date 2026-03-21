@@ -186,6 +186,11 @@ final class ConnectionRuntime: Identifiable {
     var lastMessageSentAt: Date = .now
     private(set) var isIdle: Bool = false
     private var timerTask: Task<Void, Never>?
+    private let incomingTypingTimeout: TimeInterval = 6.5
+    @ObservationIgnored
+    private var typingCleanupTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var activeOutgoingTypingChatIDs: Set<UInt32> = []
     private var didLoadPersistedMessages: Bool = false
     private var modelContext: ModelContext?
     
@@ -297,10 +302,14 @@ final class ConnectionRuntime: Identifiable {
         hasConnectionIssue = false
         status = .connected
         resetAutoReconnectState()
+        startTypingCleanupTimer()
     }
 
     func disconnect(error: Error? = nil) {
         let previousStatus = status
+        sendOutgoingTypingStopSignals()
+        stopTypingCleanupTimer()
+        clearAllTypingState()
         joined = false
         privileges = [:]
         userID = 0
@@ -373,12 +382,104 @@ final class ConnectionRuntime: Identifiable {
         timerTask = nil
     }
 
+    // MARK: - Typing Indicator
+
+    private func startTypingCleanupTimer() {
+        stopTypingCleanupTimer()
+
+        typingCleanupTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                self.pruneExpiredTypingIndicators()
+            }
+        }
+    }
+
+    private func stopTypingCleanupTimer() {
+        typingCleanupTask?.cancel()
+        typingCleanupTask = nil
+    }
+
+    private func pruneExpiredTypingIndicators(referenceDate: Date = .now) {
+        for chat in chats + private_chats {
+            chat.removeExpiredTypingUsers(referenceDate: referenceDate)
+        }
+    }
+
+    private func clearAllTypingState() {
+        activeOutgoingTypingChatIDs.removeAll()
+
+        for chat in chats + private_chats {
+            chat.clearAllTyping()
+        }
+    }
+
+    private func sendOutgoingTypingStopSignals() {
+        guard !activeOutgoingTypingChatIDs.isEmpty else { return }
+
+        let chatIDs = activeOutgoingTypingChatIDs
+        activeOutgoingTypingChatIDs.removeAll()
+
+        guard connection != nil else { return }
+
+        for chatID in chatIDs {
+            let message = P7Message(withName: "wired.chat.send_typing", spec: spec!)
+            message.addParameter(field: "wired.chat.id", value: chatID)
+            message.addParameter(field: "wired.chat.typing", value: false)
+
+            Task {
+                _ = try? await connectionController.socketClient.send(message, on: id)
+            }
+        }
+    }
+
+    func setChatTyping(chatID: UInt32, isTyping: Bool) async {
+        guard chat(withID: chatID) != nil else {
+            activeOutgoingTypingChatIDs.remove(chatID)
+            return
+        }
+
+        if !isTyping && !activeOutgoingTypingChatIDs.contains(chatID) {
+            return
+        }
+
+        if isTyping {
+            activeOutgoingTypingChatIDs.insert(chatID)
+        } else {
+            activeOutgoingTypingChatIDs.remove(chatID)
+        }
+
+        guard connection != nil else { return }
+
+        let message = P7Message(withName: "wired.chat.send_typing", spec: spec!)
+        message.addParameter(field: "wired.chat.id", value: chatID)
+        message.addParameter(field: "wired.chat.typing", value: isTyping)
+
+        _ = try? await send(message)
+    }
+
+    func applyIncomingChatTyping(chatID: UInt32, userID: UInt32, isTyping: Bool) {
+        guard let chat = chat(withID: chatID), userID != self.userID else { return }
+
+        if isTyping {
+            chat.setTyping(userID: userID, expiresAt: Date().addingTimeInterval(incomingTypingTimeout))
+        } else {
+            chat.clearTyping(userID: userID)
+        }
+    }
+
+    func clearIncomingChatTyping(chatID: UInt32, userID: UInt32) {
+        guard let chat = chat(withID: chatID) else { return }
+        chat.clearTyping(userID: userID)
+    }
+
 
     
 
     // MARK: - Chat Models
     
     func resetChats() {
+        clearAllTypingState()
         chats = []
         private_chats = []
     }
@@ -729,6 +830,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func removePrivateChat(_ chatID: UInt32) {
+        chat(withID: chatID)?.clearAllTyping()
         private_chats.removeAll { $0.id == chatID }
 
         if selectedChatID == chatID {

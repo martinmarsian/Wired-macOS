@@ -195,6 +195,11 @@ struct ChatMessagesView: View {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
+            .onChange(of: bottomOverlayInset) {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
         }
     }
 
