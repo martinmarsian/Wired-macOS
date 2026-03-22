@@ -168,7 +168,7 @@ struct ChatMessagesView: View {
 
                     if bridgeTyping {
                         morphLiveSlotIntoMessage(lastMessage)
-                        scheduleScrollToBottom(with: proxy, animated: false)
+                        scheduleScrollToBottom(with: proxy, animated: false, delays: [0.0, 0.38])
                         animatedNewMessageID = nil
                         revealNewMessage = true
                     } else {
@@ -489,11 +489,13 @@ private struct ChatIncomingLiveSlotView: View {
     let isGroupedWithPrevious: Bool
 
     private let nicknameReservedHeight: CGFloat = 16
-    private let typingBubbleContentSize = CGSize(width: 37, height: 20)
+    private let typingBubbleContentSize = CGSize(width: 31, height: 16)
     private let bubbleVerticalPadding: CGFloat = 8
-    private let bubbleHorizontalPadding: CGFloat = 20
+    private let bubbleHorizontalPadding: CGFloat = 16
     private let bubbleLeadingInset: CGFloat = 8
     @State private var availableBubbleWidth: CGFloat = .zero
+    @State private var isMessageTextVisible = false
+    @State private var textRevealTask: Task<Void, Never>?
 
     private var handoffProgress: CGFloat {
         switch presentation {
@@ -519,6 +521,10 @@ private struct ChatIncomingLiveSlotView: View {
 
     private var nicknameText: String {
         user?.nick ?? " "
+    }
+
+    private var typingStatusText: String {
+        "\(user?.nick ?? "User") is typing..."
     }
 
     private var messageText: AttributedString {
@@ -560,6 +566,13 @@ private struct ChatIncomingLiveSlotView: View {
         return progress * progress * (3 - (2 * progress))
     }
 
+    private var isShowingMessageState: Bool {
+        if case .message = presentation {
+            return true
+        }
+        return false
+    }
+
     private var interpolatedBubbleContentSize: CGSize {
         let start = resolvedTypingContentSize
         let end = resolvedMessageContentSize
@@ -598,6 +611,15 @@ private struct ChatIncomingLiveSlotView: View {
                     }
                     .animation(.easeInOut(duration: 0.28), value: messageRevealProgress)
                     .animation(.easeInOut(duration: 0.28), value: typingFadeProgress)
+
+                if case .typing = presentation {
+                    Text(typingStatusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                        .padding(.leading, 10)
+                        .opacity(typingLayerOpacity)
+                }
             }
             .padding(.bottom, 8)
 
@@ -616,8 +638,7 @@ private struct ChatIncomingLiveSlotView: View {
                 .foregroundStyle(Color.primary)
                 .frame(maxWidth: maximumBubbleContentWidth, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .opacity(messageRevealProgress)
-                .offset(x: (1 - messageRevealProgress) * -6)
+                .opacity(isMessageTextVisible ? 1 : 0)
         }
         .frame(
             width: interpolatedBubbleContentSize.width,
@@ -634,16 +655,26 @@ private struct ChatIncomingLiveSlotView: View {
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
         )
         .animation(.easeInOut(duration: 0.28), value: interpolatedBubbleContentSize)
+        .animation(.easeOut(duration: 0.12), value: isMessageTextVisible)
+        .onAppear {
+            syncMessageTextVisibility()
+        }
+        .onChange(of: isShowingMessageState) {
+            syncMessageTextVisibility()
+        }
+        .onDisappear {
+            textRevealTask?.cancel()
+        }
     }
 
     private var typingContent: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(0..<3, id: \.self) { index in
                 TypingMorphDotView(index: index)
             }
         }
-        .padding(.vertical, 5)
-        .padding(.trailing, 6)
+        .padding(.vertical, 4)
+        .padding(.trailing, 2)
     }
 
     private var typingLayerOpacity: CGFloat {
@@ -661,6 +692,25 @@ private struct ChatIncomingLiveSlotView: View {
             return isVisible ? 0 : -10
         case .message:
             return typingFadeProgress * -8
+        }
+    }
+
+    @MainActor
+    private func syncMessageTextVisibility() {
+        textRevealTask?.cancel()
+
+        switch presentation {
+        case .typing:
+            isMessageTextVisible = false
+        case .message:
+            isMessageTextVisible = false
+            textRevealTask = Task {
+                try? await Task.sleep(for: .milliseconds(320))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isMessageTextVisible = true
+                }
+            }
         }
     }
 
