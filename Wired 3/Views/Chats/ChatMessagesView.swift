@@ -23,6 +23,7 @@ struct ChatMessagesView: View {
     @State private var liveSlotMorphProgress: CGFloat = 0
     @State private var liveSlotClearTask: Task<Void, Never>?
     @State private var scrollToBottomTask: Task<Void, Never>?
+    @State private var pendingLiveSlotTimestampDate: Date?
     
     var chat: Chat
     var searchText: String = ""
@@ -65,14 +66,37 @@ struct ChatMessagesView: View {
 
         var items: [ChatDisplayItem] = []
         var lastInsertedTimestampDate: Date?
+        var didInsertPendingLiveSlotTimestamp = false
 
         for message in transcriptMessages {
+            if let pendingLiveSlotTimestampDate,
+               !didInsertPendingLiveSlotTimestamp,
+               pendingLiveSlotTimestampDate <= message.date,
+               shouldInsertTimestamp(
+                    at: pendingLiveSlotTimestampDate,
+                    lastTimestampDate: lastInsertedTimestampDate
+               ) {
+                items.append(.timestamp(id: "live-slot-timestamp", date: pendingLiveSlotTimestampDate))
+                lastInsertedTimestampDate = pendingLiveSlotTimestampDate
+                didInsertPendingLiveSlotTimestamp = true
+            }
+
             if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
-                items.append(.timestamp(anchorMessageID: message.id, date: message.date))
+                items.append(.timestamp(id: "timestamp-\(message.id.uuidString)", date: message.date))
                 lastInsertedTimestampDate = message.date
             }
 
             items.append(.message(message))
+        }
+
+        if let pendingLiveSlotTimestampDate,
+           !didInsertPendingLiveSlotTimestamp,
+           shouldInsertTimestamp(
+                at: pendingLiveSlotTimestampDate,
+                lastTimestampDate: lastInsertedTimestampDate
+           ) {
+            items.append(.timestamp(id: "live-slot-timestamp", date: pendingLiveSlotTimestampDate))
+            lastInsertedTimestampDate = pendingLiveSlotTimestampDate
         }
 
         if let liveSlotPresentation {
@@ -164,7 +188,9 @@ struct ChatMessagesView: View {
                 if let lastMessage = chat.messages.last,
                    visibleMessageIDs.contains(lastMessage.id) {
                     let lastID = lastMessage.id
-                    let bridgeTyping = liveSlotTypingUserID == lastMessage.user.id
+                    let bridgeTyping =
+                        liveSlotTypingUserID == lastMessage.user.id
+                        && lastMessage.type == .say
 
                     if bridgeTyping {
                         morphLiveSlotIntoMessage(lastMessage)
@@ -172,6 +198,9 @@ struct ChatMessagesView: View {
                         animatedNewMessageID = nil
                         revealNewMessage = true
                     } else {
+                        if liveSlotTypingUserID == lastMessage.user.id {
+                            clearLiveSlotTyping()
+                        }
                         liveSlotMessageID = nil
                         liveSlotMorphProgress = 0
                         scheduleScrollToBottom(with: proxy)
@@ -199,6 +228,11 @@ struct ChatMessagesView: View {
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: timestampInChat) {
+                if !timestampInChat {
+                    pendingLiveSlotTimestampDate = nil
+                } else if currentTypingUserID != nil {
+                    syncPendingLiveSlotTimestamp(referenceDate: .now)
+                }
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: timestampEveryMin) {
@@ -280,8 +314,24 @@ struct ChatMessagesView: View {
     }
 
     private func shouldInsertTimestamp(before message: ChatEvent, lastTimestampDate: Date?) -> Bool {
+        shouldInsertTimestamp(at: message.date, lastTimestampDate: lastTimestampDate)
+    }
+
+    private func shouldInsertTimestamp(at date: Date, lastTimestampDate: Date?) -> Bool {
         guard let lastTimestampDate else { return true }
-        return message.date.timeIntervalSince(lastTimestampDate) >= effectiveTimestampInterval
+        return date.timeIntervalSince(lastTimestampDate) >= effectiveTimestampInterval
+    }
+
+    private var lastTranscriptTimestampDate: Date? {
+        var lastTimestampDate: Date?
+
+        for message in transcriptMessages {
+            if shouldInsertTimestamp(before: message, lastTimestampDate: lastTimestampDate) {
+                lastTimestampDate = message.date
+            }
+        }
+
+        return lastTimestampDate
     }
 
     private func scheduleScrollToBottom(
@@ -314,6 +364,7 @@ struct ChatMessagesView: View {
         if let nextTypingUserID, liveSlotMessageID == nil {
             liveSlotClearTask?.cancel()
             liveSlotTypingUserID = nextTypingUserID
+            syncPendingLiveSlotTimestamp(referenceDate: .now)
 
             guard !isLiveSlotTypingVisible else { return }
 
@@ -351,6 +402,30 @@ struct ChatMessagesView: View {
         } else {
             isLiveSlotTypingVisible = false
             liveSlotTypingUserID = nil
+        }
+    }
+
+    @MainActor
+    private func clearLiveSlotTyping() {
+        liveSlotClearTask?.cancel()
+        isLiveSlotTypingVisible = false
+        liveSlotTypingUserID = nil
+    }
+
+    @MainActor
+    private func syncPendingLiveSlotTimestamp(referenceDate: Date) {
+        guard timestampInChat else {
+            pendingLiveSlotTimestampDate = nil
+            return
+        }
+
+        let lastTimestampDate = pendingLiveSlotTimestampDate ?? lastTranscriptTimestampDate
+        guard shouldInsertTimestamp(at: referenceDate, lastTimestampDate: lastTimestampDate) else {
+            return
+        }
+
+        if pendingLiveSlotTimestampDate == nil {
+            pendingLiveSlotTimestampDate = referenceDate
         }
     }
 
@@ -400,14 +475,14 @@ struct ChatMessagesView: View {
 }
 
 private enum ChatDisplayItem: Identifiable {
-    case timestamp(anchorMessageID: UUID, date: Date)
+    case timestamp(id: String, date: Date)
     case message(ChatEvent)
     case liveSlot(LiveSlotPresentation)
 
     var id: String {
         switch self {
-        case .timestamp(let anchorMessageID, _):
-            return "timestamp-\(anchorMessageID.uuidString)"
+        case .timestamp(let id, _):
+            return id
         case .message(let message):
             return "message-\(message.id.uuidString)"
         case .liveSlot:
