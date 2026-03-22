@@ -161,33 +161,31 @@ struct ChatMessagesView: View {
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
             .onChange(of: chat.messages.last?.id) {
-                DispatchQueue.main.async {
-                    if let lastMessage = chat.messages.last,
-                       visibleMessageIDs.contains(lastMessage.id) {
-                        let lastID = lastMessage.id
-                        let bridgeTyping = liveSlotTypingUserID == lastMessage.user.id
+                if let lastMessage = chat.messages.last,
+                   visibleMessageIDs.contains(lastMessage.id) {
+                    let lastID = lastMessage.id
+                    let bridgeTyping = liveSlotTypingUserID == lastMessage.user.id
 
-                        if bridgeTyping {
-                            morphLiveSlotIntoMessage(lastMessage)
-                            scheduleScrollToBottom(with: proxy, animated: false)
-                            animatedNewMessageID = nil
-                            revealNewMessage = true
-                        } else {
-                            liveSlotMessageID = nil
-                            liveSlotMorphProgress = 0
-                            scheduleScrollToBottom(with: proxy)
-                            animatedNewMessageID = lastID
-                            revealNewMessage = false
+                    if bridgeTyping {
+                        morphLiveSlotIntoMessage(lastMessage)
+                        scheduleScrollToBottom(with: proxy, animated: false)
+                        animatedNewMessageID = nil
+                        revealNewMessage = true
+                    } else {
+                        liveSlotMessageID = nil
+                        liveSlotMorphProgress = 0
+                        scheduleScrollToBottom(with: proxy)
+                        animatedNewMessageID = lastID
+                        revealNewMessage = false
 
-                            DispatchQueue.main.asyncAfter(deadline: .now()) {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    revealNewMessage = true
-                                }
+                        DispatchQueue.main.asyncAfter(deadline: .now()) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                revealNewMessage = true
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                if animatedNewMessageID == lastID {
-                                    animatedNewMessageID = nil
-                                }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            if animatedNewMessageID == lastID {
+                                animatedNewMessageID = nil
                             }
                         }
                     }
@@ -211,10 +209,30 @@ struct ChatMessagesView: View {
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: chat.typingIndicatorText) {
+                let nextTypingUserID = currentTypingUserID
+                let shouldScrollToTyping =
+                    nextTypingUserID != nil &&
+                    liveSlotMessageID == nil &&
+                    (!isLiveSlotTypingVisible || liveSlotTypingUserID != nextTypingUserID)
+
                 syncLiveSlotTyping(animated: true)
+
+                if shouldScrollToTyping {
+                    scheduleScrollToBottom(with: proxy, animated: true)
+                }
             }
             .onChange(of: chat.activeTypingUserIDs) {
+                let nextTypingUserID = currentTypingUserID
+                let shouldScrollToTyping =
+                    nextTypingUserID != nil &&
+                    liveSlotMessageID == nil &&
+                    (!isLiveSlotTypingVisible || liveSlotTypingUserID != nextTypingUserID)
+
                 syncLiveSlotTyping(animated: true)
+
+                if shouldScrollToTyping {
+                    scheduleScrollToBottom(with: proxy, animated: true)
+                }
             }
             .onChange(of: bottomOverlayInset) {
                 scheduleScrollToBottom(with: proxy, animated: true)
@@ -599,14 +617,14 @@ private struct ChatIncomingLiveSlotView: View {
                 .frame(maxWidth: maximumBubbleContentWidth, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .opacity(messageRevealProgress)
-                .offset(y: (1 - messageRevealProgress) * 2)
-                .scaleEffect(0.992 + (messageRevealProgress * 0.008), anchor: .bottomLeading)
+                .offset(x: (1 - messageRevealProgress) * -6)
         }
         .frame(
             width: interpolatedBubbleContentSize.width,
             height: interpolatedBubbleContentSize.height,
             alignment: .topLeading
         )
+        .clipped()
         .padding(.vertical, bubbleVerticalPadding)
         .padding(.horizontal, bubbleHorizontalPadding)
         .padding(.leading, bubbleLeadingInset)
