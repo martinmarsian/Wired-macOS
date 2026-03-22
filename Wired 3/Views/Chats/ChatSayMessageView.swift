@@ -19,8 +19,6 @@ struct ChatSayMessageView: View {
     var showNickname: Bool = true
     var showAvatar: Bool = true
     var isGroupedWithNext: Bool = false
-    var typingHandoffText: String? = nil
-    var typingHandoffProgress: CGFloat = 1
     
     @State var isHovered: Bool = false
     
@@ -63,49 +61,28 @@ struct ChatSayMessageView: View {
                     
                 } else {
                     avatarView
-                    
-                    ZStack(alignment: .topLeading) {
-                        VStack(alignment: .leading) {
-                            if showNickname {
-                                Text(message.user.nick)
-                                    .font(.caption)
-                                    .foregroundStyle(.gray)
-                                    .padding(.leading, 10)
-                            }
-                            Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
-                                .messageBubbleStyle(
-                                    isFromYou: isFromYou,
-                                    customFillColor: bubbleFillColor,
-                                    customForegroundColor: bubbleTextColor,
-                                    showsTail: !isGroupedWithNext
-                                )
-                                .containerRelativeFrame(
-                                    .horizontal,
-                                    count: 4,
-                                    span: 3,
-                                    spacing: 0,
-                                    alignment: .leading
-                                )
-                        }
-                        .opacity(typingHandoffText == nil ? 1 : typingHandoffProgress)
-                        .offset(y: typingHandoffText == nil ? 0 : (1 - typingHandoffProgress) * 6)
 
-                        if let typingHandoffText {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(typingHandoffText)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.leading, 10)
-
-                                MessagesStyleTypingBubble()
-                            }
-                            .opacity(1 - typingHandoffProgress)
-                            .scaleEffect(1 - (typingHandoffProgress * 0.03), anchor: .bottomLeading)
-                            .offset(y: typingHandoffProgress * -4)
-                            .allowsHitTesting(false)
+                    VStack(alignment: .leading) {
+                        if showNickname {
+                            Text(message.user.nick)
+                                .font(.caption)
+                                .foregroundStyle(.gray)
+                                .padding(.leading, 10)
                         }
+                        Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
+                            .messageBubbleStyle(
+                                isFromYou: isFromYou,
+                                customFillColor: bubbleFillColor,
+                                customForegroundColor: bubbleTextColor,
+                                showsTail: !isGroupedWithNext
+                            )
+                            .containerRelativeFrame(
+                                .horizontal,
+                                count: 4,
+                                span: 3,
+                                spacing: 0,
+                                alignment: .leading
+                            )
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
                     Spacer()

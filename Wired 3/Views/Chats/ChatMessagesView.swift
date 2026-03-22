@@ -17,15 +17,12 @@ struct ChatMessagesView: View {
     @AppStorage("TimestampEveryMin") private var timestampEveryMin: Int = 5
     @State private var animatedNewMessageID: UUID?
     @State private var revealNewMessage = true
-    @State private var displayedTypingIndicator: TypingIndicatorPresentation?
-    @State private var isTypingIndicatorVisible = false
-    @State private var typingHideTask: Task<Void, Never>?
+    @State private var liveSlotTypingUserID: UInt32?
+    @State private var isLiveSlotTypingVisible = false
+    @State private var liveSlotMessageID: UUID?
+    @State private var liveSlotMorphProgress: CGFloat = 0
+    @State private var liveSlotClearTask: Task<Void, Never>?
     @State private var scrollToBottomTask: Task<Void, Never>?
-    @State private var typingHandoffTask: Task<Void, Never>?
-    @State private var isPerformingTypingHandoff = false
-    @State private var typingHandoffMessageID: UUID?
-    @State private var typingHandoffText: String?
-    @State private var typingHandoffProgress: CGFloat = 1
     
     var chat: Chat
     var searchText: String = ""
@@ -90,24 +87,9 @@ struct ChatMessagesView: View {
         return filteredMessages.filter { $0.id != liveSlotMessageID }
     }
 
-    private var currentTypingIndicator: TypingIndicatorPresentation? {
-        guard !isSearching, let text = chat.typingIndicatorText else { return nil }
-
-        return TypingIndicatorPresentation(
-            text: text,
-            userID: chat.primaryTypingUser?.id
-        )
-    }
-
-    private var liveSlotMessageID: UUID? {
-        guard let typingHandoffMessageID,
-              chat.messages.last?.id == typingHandoffMessageID,
-              visibleMessageIDs.contains(typingHandoffMessageID)
-        else {
-            return nil
-        }
-
-        return typingHandoffMessageID
+    private var currentTypingUserID: UInt32? {
+        guard !isSearching else { return nil }
+        return chat.primaryTypingUser?.id
     }
 
     private var liveSlotPresentation: LiveSlotPresentation? {
@@ -115,16 +97,14 @@ struct ChatMessagesView: View {
            let liveMessage = filteredMessages.first(where: { $0.id == liveSlotMessageID }) {
             return .message(
                 liveMessage,
-                typingText: typingHandoffText,
-                handoffProgress: typingHandoffProgress
+                morphProgress: liveSlotMorphProgress
             )
         }
 
-        if let displayedTypingIndicator {
+        if let liveSlotTypingUserID {
             return .typing(
-                text: displayedTypingIndicator.text,
-                userID: displayedTypingIndicator.userID,
-                isVisible: isTypingIndicatorVisible
+                userID: liveSlotTypingUserID,
+                isVisible: isLiveSlotTypingVisible
             )
         }
 
@@ -185,14 +165,16 @@ struct ChatMessagesView: View {
                     if let lastMessage = chat.messages.last,
                        visibleMessageIDs.contains(lastMessage.id) {
                         let lastID = lastMessage.id
-                        let bridgeTyping = displayedTypingIndicator?.userID == lastMessage.user.id && isTypingIndicatorVisible
+                        let bridgeTyping = liveSlotTypingUserID == lastMessage.user.id
 
                         if bridgeTyping {
-                            beginTypingHandoff(for: lastMessage)
-                            scheduleScrollToBottom(with: proxy, animated: false, delays: [0.0, 0.12])
+                            morphLiveSlotIntoMessage(lastMessage)
+                            scheduleScrollToBottom(with: proxy, animated: false)
                             animatedNewMessageID = nil
                             revealNewMessage = true
                         } else {
+                            liveSlotMessageID = nil
+                            liveSlotMorphProgress = 0
                             scheduleScrollToBottom(with: proxy)
                             animatedNewMessageID = lastID
                             revealNewMessage = false
@@ -212,7 +194,7 @@ struct ChatMessagesView: View {
                 }
             }
             .onAppear {
-                syncTypingIndicator(animated: false)
+                syncLiveSlotTyping(animated: false)
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: keyboardShowTrigger) {
@@ -225,26 +207,21 @@ struct ChatMessagesView: View {
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: normalizedSearchText) {
-                syncTypingIndicator(animated: true)
+                syncLiveSlotTyping(animated: true)
                 scheduleScrollToBottom(with: proxy)
             }
             .onChange(of: chat.typingIndicatorText) {
-                syncTypingIndicator(animated: true)
-                guard !isPerformingTypingHandoff else { return }
-                scheduleScrollToBottom(with: proxy, animated: true)
+                syncLiveSlotTyping(animated: true)
             }
             .onChange(of: chat.activeTypingUserIDs) {
-                syncTypingIndicator(animated: true)
-                guard !isPerformingTypingHandoff else { return }
-                scheduleScrollToBottom(with: proxy, animated: true)
+                syncLiveSlotTyping(animated: true)
             }
             .onChange(of: bottomOverlayInset) {
                 scheduleScrollToBottom(with: proxy, animated: true)
             }
             .onDisappear {
-                typingHideTask?.cancel()
+                liveSlotClearTask?.cancel()
                 scrollToBottomTask?.cancel()
-                typingHandoffTask?.cancel()
             }
         }
     }
@@ -264,9 +241,7 @@ struct ChatMessagesView: View {
                 message: message,
                 showNickname: !sameAsPrevious,
                 showAvatar: !sameAsNext,
-                isGroupedWithNext: sameAsNext,
-                typingHandoffText: message.id == typingHandoffMessageID ? typingHandoffText : nil,
-                typingHandoffProgress: message.id == typingHandoffMessageID ? typingHandoffProgress : 1
+                isGroupedWithNext: sameAsNext
             )
             .environment(runtime)
             .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
@@ -315,76 +290,79 @@ struct ChatMessagesView: View {
     }
 
     @MainActor
-    private func syncTypingIndicator(animated: Bool) {
-        let next = currentTypingIndicator
+    private func syncLiveSlotTyping(animated: Bool) {
+        let nextTypingUserID = currentTypingUserID
 
-        if let next {
-            typingHideTask?.cancel()
-            displayedTypingIndicator = next
+        if let nextTypingUserID, liveSlotMessageID == nil {
+            liveSlotClearTask?.cancel()
+            liveSlotTypingUserID = nextTypingUserID
 
-            guard !isTypingIndicatorVisible else { return }
+            guard !isLiveSlotTypingVisible else { return }
 
             if animated {
-                isTypingIndicatorVisible = false
+                isLiveSlotTypingVisible = false
                 DispatchQueue.main.async {
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
-                        isTypingIndicatorVisible = true
+                        isLiveSlotTypingVisible = true
                     }
                 }
             } else {
-                isTypingIndicatorVisible = true
+                isLiveSlotTypingVisible = true
+            }
+            return
+        }
+
+        guard liveSlotMessageID == nil, liveSlotTypingUserID != nil else { return }
+
+        liveSlotClearTask?.cancel()
+
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) {
+                isLiveSlotTypingVisible = false
+            }
+
+            liveSlotClearTask = Task {
+                try? await Task.sleep(for: .milliseconds(220))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    if currentTypingUserID == nil && liveSlotMessageID == nil {
+                        liveSlotTypingUserID = nil
+                    }
+                }
             }
         } else {
-            guard displayedTypingIndicator != nil else { return }
-
-            typingHideTask?.cancel()
-
-            if animated {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    isTypingIndicatorVisible = false
-                }
-
-                typingHideTask = Task {
-                    try? await Task.sleep(for: .milliseconds(230))
-                    guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        if currentTypingIndicator == nil {
-                            displayedTypingIndicator = nil
-                        }
-                    }
-                }
-            } else {
-                isTypingIndicatorVisible = false
-                displayedTypingIndicator = nil
-            }
+            isLiveSlotTypingVisible = false
+            liveSlotTypingUserID = nil
         }
     }
 
     @MainActor
-    private func beginTypingHandoff(for message: ChatEvent) {
-        typingHandoffTask?.cancel()
-        typingHideTask?.cancel()
-
-        isPerformingTypingHandoff = true
-        typingHandoffMessageID = message.id
-        typingHandoffText = displayedTypingIndicator?.text
-        typingHandoffProgress = 0
-        displayedTypingIndicator = nil
-        isTypingIndicatorVisible = false
+    private func morphLiveSlotIntoMessage(_ message: ChatEvent) {
+        liveSlotClearTask?.cancel()
+        liveSlotTypingUserID = message.user.id
+        liveSlotMessageID = message.id
+        liveSlotMorphProgress = 0
+        isLiveSlotTypingVisible = true
 
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.18)) {
-                typingHandoffProgress = 1
+            withAnimation(.easeInOut(duration: 0.32)) {
+                liveSlotMorphProgress = 1
             }
         }
 
-        typingHandoffTask = Task {
-            try? await Task.sleep(for: .milliseconds(260))
+        liveSlotClearTask = Task {
+            try? await Task.sleep(for: .milliseconds(380))
             guard !Task.isCancelled else { return }
+
             await MainActor.run {
-                typingHandoffText = nil
-                typingHandoffProgress = 1
-                isPerformingTypingHandoff = false
+                guard liveSlotMessageID == message.id else { return }
+
+                liveSlotMessageID = nil
+                liveSlotMorphProgress = 0
+                liveSlotTypingUserID = nil
+                isLiveSlotTypingVisible = false
+
+                syncLiveSlotTyping(animated: false)
             }
         }
     }
@@ -396,9 +374,7 @@ struct ChatMessagesView: View {
 
         ChatIncomingLiveSlotView(
             presentation: presentation,
-            user: presentation.userID.flatMap { id in
-                chat.users.first(where: { $0.id == id })
-            },
+            user: chat.users.first(where: { $0.id == presentation.userID }),
             isGroupedWithPrevious: isGroupedWithPrevious
         )
     }
@@ -437,9 +413,9 @@ private enum ChatDisplayItem: Identifiable {
         switch self {
         case .liveSlot(let presentation):
             switch presentation {
-            case .typing(_, let typingUserID, _):
+            case .typing(let typingUserID, _):
                 return typingUserID == userID
-            case .message(let message, _, _):
+            case .message(let message, _):
                 return message.user.id == userID
             }
         case .message, .timestamp:
@@ -449,23 +425,18 @@ private enum ChatDisplayItem: Identifiable {
 }
 
 private enum LiveSlotPresentation {
-    case typing(text: String, userID: UInt32?, isVisible: Bool)
-    case message(ChatEvent, typingText: String?, handoffProgress: CGFloat)
+    case typing(userID: UInt32, isVisible: Bool)
+    case message(ChatEvent, morphProgress: CGFloat)
 
     @MainActor
-    var userID: UInt32? {
+    var userID: UInt32 {
         switch self {
-        case .typing(_, let userID, _):
+        case .typing(let userID, _):
             return userID
-        case .message(let message, _, _):
+        case .message(let message, _):
             return message.user.id
         }
     }
-}
-
-private struct TypingIndicatorPresentation {
-    let text: String
-    let userID: UInt32?
 }
 
 private struct ChatInlineTimestampView: View {
@@ -499,70 +470,201 @@ private struct ChatIncomingLiveSlotView: View {
     let user: User?
     let isGroupedWithPrevious: Bool
 
+    private let nicknameReservedHeight: CGFloat = 16
+    private let typingBubbleContentSize = CGSize(width: 37, height: 20)
+    private let bubbleVerticalPadding: CGFloat = 8
+    private let bubbleHorizontalPadding: CGFloat = 20
+    private let bubbleLeadingInset: CGFloat = 8
+    @State private var availableBubbleWidth: CGFloat = .zero
+
+    private var handoffProgress: CGFloat {
+        switch presentation {
+        case .typing:
+            return 0
+        case .message(_, let morphProgress):
+            return morphProgress
+        }
+    }
+
+    private var typingFadeProgress: CGFloat {
+        min(max(handoffProgress / 0.62, 0), 1)
+    }
+
+    private var messageRevealProgress: CGFloat {
+        min(max((handoffProgress - 0.18) / 0.82, 0), 1)
+    }
+
+    private var nicknameOpacity: CGFloat {
+        guard !isGroupedWithPrevious else { return 0 }
+        return messageRevealProgress
+    }
+
+    private var nicknameText: String {
+        user?.nick ?? " "
+    }
+
+    private var messageText: AttributedString {
+        switch presentation {
+        case .typing:
+            return "".attributedWithDetectedLinks(linkColor: .blue)
+        case .message(let message, _):
+            return message.text.attributedWithDetectedLinks(linkColor: .blue)
+        }
+    }
+
+    private var messageString: String {
+        switch presentation {
+        case .typing:
+            return ""
+        case .message(let message, _):
+            return message.text
+        }
+    }
+
+    private var resolvedTypingContentSize: CGSize {
+        typingBubbleContentSize
+    }
+
+    private var resolvedMessageContentSize: CGSize {
+        if case .message = presentation {
+            return measuredMessageContentSize(for: messageString, maxWidth: maximumBubbleContentWidth)
+        }
+        return resolvedTypingContentSize
+    }
+
+    private var maximumBubbleContentWidth: CGFloat {
+        let resolvedWidth = availableBubbleWidth - (bubbleHorizontalPadding * 2) - bubbleLeadingInset
+        return max(resolvedWidth, resolvedTypingContentSize.width)
+    }
+
+    private var bubbleMorphProgress: CGFloat {
+        let progress = handoffProgress
+        return progress * progress * (3 - (2 * progress))
+    }
+
+    private var interpolatedBubbleContentSize: CGSize {
+        let start = resolvedTypingContentSize
+        let end = resolvedMessageContentSize
+        let progress = bubbleMorphProgress
+
+        return CGSize(
+            width: start.width + ((end.width - start.width) * progress),
+            height: start.height + ((end.height - start.height) * progress)
+        )
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             avatarView
 
-            ZStack(alignment: .topLeading) {
-                if case .message(let message, _, let handoffProgress) = presentation {
-                    VStack(alignment: .leading) {
-                        if !isGroupedWithPrevious {
-                            Text(message.user.nick)
-                                .font(.caption)
-                                .foregroundStyle(.gray)
-                                .padding(.leading, 10)
-                        }
-
-                        Text(message.text.attributedWithDetectedLinks(linkColor: .blue))
-                            .messageBubbleStyle(
-                                isFromYou: false,
-                                customFillColor: nil,
-                                customForegroundColor: nil,
-                                showsTail: true
-                            )
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: 4,
-                                span: 3,
-                                spacing: 0,
-                                alignment: .leading
-                            )
-                    }
-                    .opacity(handoffProgress)
-                    .offset(y: (1 - handoffProgress) * 6)
+            VStack(alignment: .leading, spacing: 2) {
+                if !isGroupedWithPrevious {
+                    Text(nicknameText)
+                        .font(.caption)
+                        .foregroundStyle(.gray)
+                        .padding(.leading, 10)
+                        .frame(height: nicknameReservedHeight, alignment: .leading)
+                        .opacity(nicknameOpacity)
                 }
 
-                switch presentation {
-                case .typing(let text, _, let isVisible):
-                    typingBody(text: text)
-                        .opacity(isVisible ? 1 : 0)
-                        .offset(y: isVisible ? 0 : -14)
-                case .message(_, let typingText, let handoffProgress):
-                    if let typingText {
-                        typingBody(text: typingText)
-                            .opacity(1 - handoffProgress)
-                            .offset(y: handoffProgress * -14)
+                bubbleBody
+                    .containerRelativeFrame(
+                        .horizontal,
+                        count: 4,
+                        span: 3,
+                        spacing: 0,
+                        alignment: .leading
+                    )
+                    .measureWidth { width in
+                        availableBubbleWidth = width
                     }
-                }
+                    .animation(.easeInOut(duration: 0.28), value: messageRevealProgress)
+                    .animation(.easeInOut(duration: 0.28), value: typingFadeProgress)
             }
             .padding(.bottom, 8)
 
             Spacer(minLength: 0)
         }
-        .padding(.top, 10)
+        .padding(.top, isGroupedWithPrevious ? 2 : 10)
     }
 
-    private func typingBody(text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(text)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 10)
+    private var bubbleBody: some View {
+        ZStack(alignment: .topLeading) {
+            typingContent
+                .opacity(typingLayerOpacity)
+                .offset(y: typingLayerOffset)
 
-            MessagesStyleTypingBubble()
+            Text(messageText)
+                .foregroundStyle(Color.primary)
+                .frame(maxWidth: maximumBubbleContentWidth, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(messageRevealProgress)
+                .offset(y: (1 - messageRevealProgress) * 2)
+                .scaleEffect(0.992 + (messageRevealProgress * 0.008), anchor: .bottomLeading)
         }
+        .frame(
+            width: interpolatedBubbleContentSize.width,
+            height: interpolatedBubbleContentSize.height,
+            alignment: .topLeading
+        )
+        .padding(.vertical, bubbleVerticalPadding)
+        .padding(.horizontal, bubbleHorizontalPadding)
+        .padding(.leading, bubbleLeadingInset)
+        .background(
+            MessageBubble(showsTail: true)
+                .fill(Color.secondary.opacity(0.2))
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+        )
+        .animation(.easeInOut(duration: 0.28), value: interpolatedBubbleContentSize)
+    }
+
+    private var typingContent: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { index in
+                TypingMorphDotView(index: index)
+            }
+        }
+        .padding(.vertical, 5)
+        .padding(.trailing, 6)
+    }
+
+    private var typingLayerOpacity: CGFloat {
+        switch presentation {
+        case .typing(_, let isVisible):
+            return isVisible ? 1 : 0
+        case .message:
+            return 1 - typingFadeProgress
+        }
+    }
+
+    private var typingLayerOffset: CGFloat {
+        switch presentation {
+        case .typing(_, let isVisible):
+            return isVisible ? 0 : -10
+        case .message:
+            return typingFadeProgress * -8
+        }
+    }
+
+    private func measuredMessageContentSize(for text: String, maxWidth: CGFloat) -> CGSize {
+        guard !text.isEmpty, maxWidth > 0 else { return resolvedTypingContentSize }
+
+        let attributedString = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ]
+        )
+
+        let bounds = attributedString.boundingRect(
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+
+        return CGSize(
+            width: ceil(min(bounds.width, maxWidth)),
+            height: ceil(bounds.height)
+        )
     }
 
     @ViewBuilder
@@ -588,41 +690,8 @@ private struct ChatIncomingLiveSlotView: View {
     }
 }
 
-struct MessagesStyleTypingBubble: View {
-    private let bubbleFill = Color.primary.opacity(0.10)
-    private let dotColor = Color.primary.opacity(0.38)
-    private let bubbleWidth: CGFloat = 54
-    private let bubbleHeight: CGFloat = 30
-    private let bubbleOffsetX: CGFloat = 6
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(bubbleFill)
-                .frame(width: bubbleWidth, height: bubbleHeight)
-                .shadow(color: .black.opacity(0.035), radius: 4, y: 1)
-                .offset(x: bubbleOffsetX)
-
-            TypingDotsView(dotColor: dotColor)
-                .frame(width: bubbleWidth, height: bubbleHeight)
-                .offset(x: bubbleOffsetX)
-
-            Circle()
-                .fill(bubbleFill)
-                .frame(width: 8, height: 8)
-                .offset(x: bubbleOffsetX - 3, y: bubbleHeight - 3)
-
-            Circle()
-                .fill(bubbleFill.opacity(0.96))
-                .frame(width: 5, height: 5)
-                .offset(x: bubbleOffsetX - 7, y: bubbleHeight + 4.5)
-        }
-        .frame(width: bubbleWidth + bubbleOffsetX, height: bubbleHeight + 8, alignment: .topLeading)
-    }
-}
-
-struct TypingDotsView: View {
-    let dotColor: Color
+private struct TypingMorphDotView: View {
+    let index: Int
 
     private let cycleDuration: Double = 0.9
     private let phases: [Double] = [0.0, 0.18, 0.36]
@@ -630,27 +699,46 @@ struct TypingDotsView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
+            let motion = centeredMotion(at: time + phases[index])
+            let highlight = (motion + 1) / 2
 
-            HStack(spacing: 5) {
-                ForEach(Array(phases.enumerated()), id: \.offset) { _, phase in
-                    let motion = centeredMotion(at: time + phase)
-                    let highlight = (motion + 1) / 2
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(0.95 + (highlight * 0.07))
-                        .offset(y: -motion * 1.8)
-                        .opacity(0.55 + (highlight * 0.45))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Circle()
+                .fill(Color.primary.opacity(0.38))
+                .frame(width: 7, height: 7)
+                .scaleEffect(0.95 + (highlight * 0.07))
+                .offset(y: -motion * 1.8)
+                .opacity(0.55 + (highlight * 0.45))
         }
+        .frame(width: 7, height: 10)
         .allowsHitTesting(false)
     }
 
     private func centeredMotion(at time: Double) -> CGFloat {
         let progress = (time.truncatingRemainder(dividingBy: cycleDuration)) / cycleDuration
         return CGFloat(sin(progress * (.pi * 2)))
+    }
+}
+
+private struct WidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .zero
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
+        }
+    }
+}
+
+private extension View {
+    func measureWidth(onChange: @escaping (CGFloat) -> Void) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: WidthPreferenceKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(WidthPreferenceKey.self, perform: onChange)
     }
 }
 
