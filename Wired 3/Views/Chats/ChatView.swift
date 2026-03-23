@@ -283,6 +283,7 @@ struct ConversationComposer: View {
     @State private var historyDraft: String = ""
     @State private var lastProgrammaticHistoryValue: String? = nil
     @State private var inputHeight: CGFloat = 22
+    @State private var commandSuggestions: [ChatCommand] = []
 
     @AppStorage("SubstituteEmoji") private var substituteEmoji: Bool = true
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
@@ -326,6 +327,16 @@ struct ConversationComposer: View {
             .padding(5)
             .opacity(isEnabled ? 1.0 : 0.65)
             .allowsHitTesting(isEnabled)
+            .overlay(alignment: .top) {
+                if !commandSuggestions.isEmpty {
+                    ChatCommandSuggestionsView(suggestions: commandSuggestions) { command in
+                        text = command.rawValue + " "
+                        commandSuggestions = []
+                    }
+                    .alignmentGuide(.top) { d in d[.bottom] }
+                    .padding(.horizontal, 5)
+                }
+            }
 #else
             TextField("", text: $text, prompt: Text(placeholder), axis: .vertical)
                 .textFieldStyle(.plain)
@@ -351,6 +362,7 @@ struct ConversationComposer: View {
             }
             historyIndex = nil
             onTextChanged?(newValue)
+            updateCommandSuggestions(for: newValue)
         }
         .onDisappear {
             onDisappear?()
@@ -410,7 +422,73 @@ struct ConversationComposer: View {
             text = historyDraft
         }
     }
+
+    private func updateCommandSuggestions(for input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/"), !trimmed.contains(" ") else {
+            commandSuggestions = []
+            return
+        }
+        commandSuggestions = ChatCommand.allCases.filter {
+            $0.rawValue.hasPrefix(trimmed)
+        }
+    }
 }
+
+#if os(macOS)
+private struct ChatCommandSuggestionsView: View {
+    let suggestions: [ChatCommand]
+    let onSelect: (ChatCommand) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(suggestions, id: \.rawValue) { command in
+                ChatCommandSuggestionRow(command: command) {
+                    onSelect(command)
+                }
+                if command != suggestions.last {
+                    Divider()
+                        .padding(.leading, 10)
+                }
+            }
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 12, y: -4)
+    }
+}
+
+private struct ChatCommandSuggestionRow: View {
+    let command: ChatCommand
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(command.rawValue)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+            if !command.hint.isEmpty {
+                Text(" \(command.hint)")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Text(command.usage)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.system(size: 12))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture { onSelect() }
+    }
+}
+#endif
 
 #if os(macOS)
 private struct ChatWindowInteractionObserver: NSViewRepresentable {
