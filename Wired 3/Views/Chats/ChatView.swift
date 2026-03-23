@@ -284,6 +284,7 @@ struct ConversationComposer: View {
     @State private var lastProgrammaticHistoryValue: String? = nil
     @State private var inputHeight: CGFloat = 22
     @State private var commandSuggestions: [ChatCommand] = []
+    @State private var selectedSuggestionIndex: Int = 0
 
     @AppStorage("SubstituteEmoji") private var substituteEmoji: Bool = true
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
@@ -313,7 +314,20 @@ struct ConversationComposer: View {
                     },
                     onHistoryDown: {
                         browseHistoryDown()
-                    }
+                    },
+                    onSuggestionUp: {
+                        navigateSuggestion(by: -1)
+                    },
+                    onSuggestionDown: {
+                        navigateSuggestion(by: 1)
+                    },
+                    onSuggestionSelect: {
+                        applySelectedSuggestion()
+                    },
+                    onSuggestionDismiss: {
+                        commandSuggestions = []
+                    },
+                    hasSuggestions: !commandSuggestions.isEmpty
                 )
 
                 if text.isEmpty {
@@ -329,7 +343,10 @@ struct ConversationComposer: View {
             .allowsHitTesting(isEnabled)
             .overlay(alignment: .top) {
                 if !commandSuggestions.isEmpty {
-                    ChatCommandSuggestionsView(suggestions: commandSuggestions) { command in
+                    ChatCommandSuggestionsView(
+                        suggestions: commandSuggestions,
+                        selectedIndex: selectedSuggestionIndex
+                    ) { command in
                         text = command.rawValue + " "
                         commandSuggestions = []
                     }
@@ -429,24 +446,40 @@ struct ConversationComposer: View {
             commandSuggestions = []
             return
         }
-        commandSuggestions = ChatCommand.allCases.filter {
-            $0.rawValue.hasPrefix(trimmed)
-        }
+        let filtered = ChatCommand.allCases.filter { $0.rawValue.hasPrefix(trimmed) }
+        commandSuggestions = filtered
+        selectedSuggestionIndex = 0
+    }
+
+    private func navigateSuggestion(by delta: Int) {
+        guard !commandSuggestions.isEmpty else { return }
+        let count = commandSuggestions.count
+        selectedSuggestionIndex = (selectedSuggestionIndex + delta + count) % count
+    }
+
+    private func applySelectedSuggestion() {
+        guard !commandSuggestions.isEmpty else { return }
+        let command = commandSuggestions[selectedSuggestionIndex]
+        text = command.rawValue + " "
+        commandSuggestions = []
     }
 }
 
 #if os(macOS)
 private struct ChatCommandSuggestionsView: View {
     let suggestions: [ChatCommand]
+    let selectedIndex: Int
     let onSelect: (ChatCommand) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(suggestions, id: \.rawValue) { command in
-                ChatCommandSuggestionRow(command: command) {
-                    onSelect(command)
-                }
-                if command != suggestions.last {
+            ForEach(Array(suggestions.enumerated()), id: \.element.rawValue) { index, command in
+                ChatCommandSuggestionRow(
+                    command: command,
+                    isKeyboardSelected: index == selectedIndex,
+                    onSelect: { onSelect(command) }
+                )
+                if index < suggestions.count - 1 {
                     Divider()
                         .padding(.leading, 10)
                 }
@@ -460,6 +493,7 @@ private struct ChatCommandSuggestionsView: View {
 
 private struct ChatCommandSuggestionRow: View {
     let command: ChatCommand
+    let isKeyboardSelected: Bool
     let onSelect: () -> Void
 
     @State private var isHovered = false
@@ -482,7 +516,11 @@ private struct ChatCommandSuggestionRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(
+            (isHovered || isKeyboardSelected)
+                ? Color.accentColor.opacity(isKeyboardSelected ? 0.18 : 0.10)
+                : Color.clear
+        )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture { onSelect() }
@@ -578,6 +616,11 @@ private struct ChatInputField: NSViewRepresentable {
     let onSubmit: () -> Void
     let onHistoryUp: () -> Void
     let onHistoryDown: () -> Void
+    var onSuggestionUp: (() -> Void)? = nil
+    var onSuggestionDown: (() -> Void)? = nil
+    var onSuggestionSelect: (() -> Void)? = nil
+    var onSuggestionDismiss: (() -> Void)? = nil
+    var hasSuggestions: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, dynamicHeight: $dynamicHeight, onSubmit: onSubmit)
@@ -660,6 +703,11 @@ private struct ChatInputField: NSViewRepresentable {
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onHistoryUp = onHistoryUp
         context.coordinator.onHistoryDown = onHistoryDown
+        context.coordinator.onSuggestionUp = onSuggestionUp
+        context.coordinator.onSuggestionDown = onSuggestionDown
+        context.coordinator.onSuggestionSelect = onSuggestionSelect
+        context.coordinator.onSuggestionDismiss = onSuggestionDismiss
+        context.coordinator.hasSuggestions = hasSuggestions
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -668,6 +716,11 @@ private struct ChatInputField: NSViewRepresentable {
         var onSubmit: () -> Void
         var onHistoryUp: (() -> Void)?
         var onHistoryDown: (() -> Void)?
+        var onSuggestionUp: (() -> Void)?
+        var onSuggestionDown: (() -> Void)?
+        var onSuggestionSelect: (() -> Void)?
+        var onSuggestionDismiss: (() -> Void)?
+        var hasSuggestions: Bool = false
         weak var textView: NSTextView?
         private let minimumLineCount: CGFloat = 1
         private let maximumLineCount: CGFloat = 5
@@ -736,6 +789,29 @@ private struct ChatInputField: NSViewRepresentable {
                     return true
                 case 125: // down arrow
                     onHistoryDown?()
+                    return true
+                default:
+                    break
+                }
+            }
+
+            if hasSuggestions {
+                switch commandSelector {
+                case #selector(NSResponder.moveUp(_:)):
+                    if !flags.contains(.command) {
+                        onSuggestionUp?()
+                        return true
+                    }
+                case #selector(NSResponder.moveDown(_:)):
+                    if !flags.contains(.command) {
+                        onSuggestionDown?()
+                        return true
+                    }
+                case #selector(NSResponder.insertTab(_:)):
+                    onSuggestionSelect?()
+                    return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    onSuggestionDismiss?()
                     return true
                 default:
                     break
