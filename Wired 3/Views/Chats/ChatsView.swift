@@ -19,7 +19,9 @@ struct ChatsView: View {
     @State var showCreatePublicChatSheet = false
     @State private var searchText: String = ""
     @State private var isShowingSearchProgress = false
-
+    @State var showEditPublicChatSheet = false
+    @State var showDeletePublicChatConfirm = false
+    
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -87,6 +89,51 @@ struct ChatsView: View {
                             .listRowSeparator(.hidden)
                         }
                     }
+                    .contextMenu(forSelectionType: UInt32.self, menu: { selectedIDs in
+                        if let first = selectedIDs.first {
+                            if let chat = runtime.chat(withID: UInt32(Int(first))) {
+                                if chat.joined {
+                                    Button("Leave") {
+                                        Task {
+                                            do {
+                                                try await runtime.leaveChat(chat.id)
+                                            } catch {
+                                                runtime.lastError = error
+                                            }
+                                        }
+                                    }
+                                    .disabled(!chat.joined || chat.id == 1)
+                                } else {
+                                    Button("Join") {
+                                        Task {
+                                            do {
+                                                try await runtime.joinChat(chat.id)
+                                                
+                                            } catch {
+                                                runtime.lastError = error
+                                            }
+                                        }
+                                    }
+                                    .disabled(chat.joined || chat.id == 1)
+                                }
+                                
+                                if !chat.isPrivate {
+                                    Divider()
+                                    
+                                    // TODO: add `wired.account.chat.edit_public_chats` message ?
+
+                                    Button("Delete") {
+                                        showDeletePublicChatConfirm.toggle()
+                                        
+                                    }
+                                    .disabled(chat.id == 1 || !runtime.hasPrivilege("wired.account.chat.delete_public_chats"))
+                                }
+                            }
+                        }
+                    
+                    }, primaryAction: { selectedIDs in
+                        
+                    })
                     .onChange(of: runtime.selectedChatID) { old, new in
                         if new == nil {
                             runtime.selectedChatID = old
@@ -101,6 +148,30 @@ struct ChatsView: View {
                     }
                     .onChange(of: runtime.chats.count) { _, _ in
                         ensureDefaultSelectedChat()
+                    }
+                    .sheet(isPresented: $showEditPublicChatSheet) {
+                        if  let selectedChatID = runtime.selectedChatID,
+                            let chat = runtime.chat(withID: selectedChatID)
+                        {
+                            PublicChatFormView(chat: chat)
+                                .environment(runtime)
+                        }
+                    }
+                    .alert("Delete Public Chat", isPresented: $showDeletePublicChatConfirm) {
+                        Button("OK", role: .destructive) {
+                            Task {
+                                if  let selectedChatID = runtime.selectedChatID,
+                                    let chat = runtime.chat(withID: selectedChatID)
+                                {
+                                    try await runtime.deletePublicChat(chat.id)
+                                    runtime.selectedChatID = 1
+                                }
+                            }
+                        }
+                        
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("Are you sure you want to delete this public chat? This action cannot be undone.")
                     }
                     .listStyle(.plain)
                     
