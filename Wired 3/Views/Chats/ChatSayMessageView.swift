@@ -179,7 +179,7 @@ struct ChatSayMessageView: View {
     }
 }
 
-private actor ChatRemoteImageCache {
+actor ChatRemoteImageCache {
     static let shared = ChatRemoteImageCache()
 
     private let memoryCache = NSCache<NSURL, NSData>()
@@ -224,7 +224,7 @@ private actor ChatRemoteImageCache {
 }
 
 @MainActor
-private final class ChatRemoteImageLoader: NSObject, ObservableObject, @preconcurrency URLSessionDataDelegate {
+final class ChatRemoteImageLoader: NSObject, ObservableObject, @preconcurrency URLSessionDataDelegate {
     enum Phase {
         case idle
         case loading(progress: Double?)
@@ -343,7 +343,7 @@ private final class ChatRemoteImageLoader: NSObject, ObservableObject, @preconcu
     }
 }
 
-private struct ChatRemoteImageBubbleView: View {
+struct ChatRemoteImageBubbleView: View {
     let url: URL
     let isFromYou: Bool
     let showsTail: Bool
