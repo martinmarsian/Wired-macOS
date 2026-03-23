@@ -182,8 +182,27 @@ private struct MessageBubbleRow: View {
     let showAvatar: Bool
     let isGroupedWithNext: Bool
 
+    private var primaryImageURL: URL? {
+        message.text.detectedHTTPImageURLs().first
+    }
+
+    private var trimmedMessageText: String {
+        message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isImageOnlyMessage: Bool {
+        guard let primaryImageURL else { return false }
+        return trimmedMessageText == primaryImageURL.absoluteString
+    }
+
+    private var shouldShowTextBubble: Bool {
+        !isImageOnlyMessage
+    }
+
     var body: some View {
         let isFromYou = message.isFromCurrentUser || message.senderUserID == currentUserID
+        let linkColor: Color = isFromYou ? .white : .blue
+
         VStack(alignment: isFromYou ? .trailing : .leading) {
             HStack(alignment: .bottom) {
                 if isFromYou {
@@ -195,15 +214,7 @@ private struct MessageBubbleRow: View {
                                 .foregroundStyle(.gray)
                                 .padding(.trailing, 10)
                         }
-                        Text(message.text.attributedWithDetectedLinks(linkColor: .white))
-                            .messageBubbleStyle(isFromYou: true, showsTail: !isGroupedWithNext)
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: 4,
-                                span: 3,
-                                spacing: 0,
-                                alignment: .trailing
-                            )
+                        messageContentStack(isFromYou: isFromYou, linkColor: linkColor)
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
                     avatarView
@@ -216,15 +227,7 @@ private struct MessageBubbleRow: View {
                                 .foregroundStyle(.gray)
                                 .padding(.leading, 10)
                         }
-                        Text(message.text.attributedWithDetectedLinks(linkColor: .blue))
-                            .messageBubbleStyle(isFromYou: false, showsTail: !isGroupedWithNext)
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: 4,
-                                span: 3,
-                                spacing: 0,
-                                alignment: .leading
-                            )
+                        messageContentStack(isFromYou: isFromYou, linkColor: linkColor)
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
                     Spacer()
@@ -245,21 +248,52 @@ private struct MessageBubbleRow: View {
     }
 
     @ViewBuilder
+    private func messageContentStack(isFromYou: Bool, linkColor: Color) -> some View {
+        VStack(alignment: isFromYou ? .trailing : .leading, spacing: 6) {
+            if shouldShowTextBubble {
+                Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
+                    .messageBubbleStyle(
+                        isFromYou: isFromYou,
+                        showsTail: primaryImageURL == nil && !isGroupedWithNext
+                    )
+                    .containerRelativeFrame(
+                        .horizontal,
+                        count: 4,
+                        span: 3,
+                        spacing: 0,
+                        alignment: isFromYou ? .trailing : .leading
+                    )
+            }
+
+            if let primaryImageURL {
+                ChatRemoteImageBubbleView(
+                    url: primaryImageURL,
+                    isFromYou: isFromYou,
+                    showsTail: !isGroupedWithNext
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
     private var avatarView: some View {
         if showAvatar {
             if let icon = message.senderIcon, let image = Image(data: icon) {
                 image
                     .resizable()
                     .frame(width: 32, height: 32)
+                    .padding(.bottom, 6)
             } else {
                 Image(systemName: "person.crop.circle.fill")
                     .resizable()
                     .frame(width: 32, height: 32)
                     .foregroundStyle(.secondary)
+                    .padding(.bottom, 6)
             }
         } else {
             Color.clear
                 .frame(width: 32, height: 32)
+                .padding(.bottom, 6)
         }
     }
 }

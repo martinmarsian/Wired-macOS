@@ -18,6 +18,8 @@ struct ChatTopicView: View {
     @State private var showTopicSheet = false
     @State private var isTopicExpanded = false
     
+    @State private var hoverTimer: Timer? = nil
+    
     var chat: Chat
 
     private var canSetTopic: Bool {
@@ -54,7 +56,7 @@ struct ChatTopicView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 12)
-                    .help(chat.topic?.topic ?? "")
+                    //.help(chat.topic?.topic ?? "")
                 } else {
                     Text("*No topic set*")
                         .multilineTextAlignment(.leading)
@@ -180,8 +182,19 @@ struct ChatTopicView: View {
             
 #if os(macOS)
             .onHover { isHover in
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isTopicExpanded = isHover
+                if isHover && hoverTimer == nil {
+                    hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            self.isTopicExpanded = true
+                            self.hoverTimer = nil
+                        }
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isTopicExpanded = false
+                        hoverTimer?.invalidate()
+                        hoverTimer = nil
+                    }
                 }
             }
 #elseif os(iOS)

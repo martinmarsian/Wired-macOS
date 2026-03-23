@@ -42,22 +42,10 @@ struct ChatView: View {
 
     private var composerOverlayInset: CGFloat {
 #if os(macOS)
-        58 + typingIndicatorInset
+        58
 #else
-        76 + typingIndicatorInset
+        76
 #endif
-    }
-
-    private var typingIndicatorInset: CGFloat {
-        typingIndicatorText == nil ? 0 : 52
-    }
-
-    private var typingIndicatorText: String? {
-        chat.typingIndicatorText
-    }
-
-    private var isTypingIndicatorVisible: Bool {
-        typingIndicatorText != nil
     }
 
     var body: some View {
@@ -88,61 +76,41 @@ struct ChatView: View {
                     .environment(runtime)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if let typingIndicatorText {
-                        ChatTypingIndicatorView(text: typingIndicatorText)
-                            .transition(
-                                .asymmetric(
-                                    insertion: .offset(y: 10)
-                                        .combined(with: .opacity)
-                                        .combined(with: .scale(scale: 0.96, anchor: .bottomLeading)),
-                                    removal: .offset(y: 8)
-                                        .combined(with: .opacity)
-                                )
-                            )
-                    }
-
-                    HStack(alignment: .top, spacing: 0) {
-                        ConversationComposer(
-                            text: $chatInput,
-                            placeholder: "Chat here…",
-                            isEnabled: true,
-                            onSend: { text in
-                                await runtime.setChatTyping(chatID: chat.id, isTyping: false)
-                                do {
-                                    _ = try await runtime.sendChatMessage(chat.id, text)
-                                } catch {
-                                    runtime.lastError = error
-                                }
-                            },
-                            onTextChanged: { newValue in
-                                handleComposerTextChanged(newValue)
-                            },
-                            onDisappear: {
-                                stopTypingUpdates(sendStopSignal: true)
+                HStack(alignment: .top, spacing: 0) {
+                    ConversationComposer(
+                        text: $chatInput,
+                        placeholder: "Chat here…",
+                        isEnabled: true,
+                        onSend: { text in
+                            await runtime.setChatTyping(chatID: chat.id, isTyping: false)
+                            do {
+                                _ = try await runtime.sendChatMessage(chat.id, text)
+                            } catch {
+                                runtime.lastError = error
                             }
-                        )
+                        },
+                        onTextChanged: { newValue in
+                            handleComposerTextChanged(newValue)
+                        },
+                        onDisappear: {
+                            stopTypingUpdates(sendStopSignal: true)
+                        }
+                    )
 
 #if os(macOS)
-                        Button {
-                            NSApp.orderFrontCharacterPalette(nil)
-                        } label: {
-                            Image(systemName: "face.smiling")
-                                .font(.title3)
-                        }
-                        .foregroundColor(.gray)
-                        .buttonStyle(.plain)
-                        .padding(.top, 8)
-                        .padding(.trailing, 8)
-#endif
+                    Button {
+                        NSApp.orderFrontCharacterPalette(nil)
+                    } label: {
+                        Image(systemName: "face.smiling")
+                            .font(.title3)
                     }
+                    .foregroundColor(.gray)
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+#endif
                 }
-                .animation(
-                    .spring(response: 0.26, dampingFraction: 0.9),
-                    value: isTypingIndicatorVisible
-                )
                 .backgroundEdgeFade(top: 0, bottom: 60)
-                //.background(.red)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
 #if os(macOS)
@@ -315,6 +283,8 @@ struct ConversationComposer: View {
     @State private var historyDraft: String = ""
     @State private var lastProgrammaticHistoryValue: String? = nil
     @State private var inputHeight: CGFloat = 22
+    @State private var commandSuggestions: [ChatCommand] = []
+    @State private var selectedSuggestionIndex: Int = 0
 
     @AppStorage("SubstituteEmoji") private var substituteEmoji: Bool = true
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
@@ -332,32 +302,60 @@ struct ConversationComposer: View {
     var body: some View {
         Group {
 #if os(macOS)
-            ZStack(alignment: .leading) {
-                ChatInputField(
-                    text: $text,
-                    dynamicHeight: $inputHeight,
-                    onSubmit: {
-                        submit()
-                    },
-                    onHistoryUp: {
-                        browseHistoryUp()
-                    },
-                    onHistoryDown: {
-                        browseHistoryDown()
+            VStack(spacing: 0) {
+                if !commandSuggestions.isEmpty {
+                    ChatCommandSuggestionsView(
+                        suggestions: commandSuggestions,
+                        selectedIndex: selectedSuggestionIndex
+                    ) { command in
+                        text = command.rawValue + " "
+                        commandSuggestions = []
                     }
-                )
-
-                if text.isEmpty {
-                    Text(placeholder)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 12)
-                        .allowsHitTesting(false)
+                    .padding(.horizontal, 5)
+                    .padding(.bottom, 2)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+
+                ZStack(alignment: .leading) {
+                    ChatInputField(
+                        text: $text,
+                        dynamicHeight: $inputHeight,
+                        onSubmit: {
+                            submit()
+                        },
+                        onHistoryUp: {
+                            browseHistoryUp()
+                        },
+                        onHistoryDown: {
+                            browseHistoryDown()
+                        },
+                        onSuggestionUp: {
+                            navigateSuggestion(by: -1)
+                        },
+                        onSuggestionDown: {
+                            navigateSuggestion(by: 1)
+                        },
+                        onSuggestionSelect: {
+                            applySelectedSuggestion()
+                        },
+                        onSuggestionDismiss: {
+                            commandSuggestions = []
+                        },
+                        hasSuggestions: !commandSuggestions.isEmpty
+                    )
+
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 12)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(height: inputHeight)
+                .padding(5)
+                .opacity(isEnabled ? 1.0 : 0.65)
+                .allowsHitTesting(isEnabled)
             }
-            .frame(height: inputHeight)
-            .padding(5)
-            .opacity(isEnabled ? 1.0 : 0.65)
-            .allowsHitTesting(isEnabled)
 #else
             TextField("", text: $text, prompt: Text(placeholder), axis: .vertical)
                 .textFieldStyle(.plain)
@@ -383,6 +381,7 @@ struct ConversationComposer: View {
             }
             historyIndex = nil
             onTextChanged?(newValue)
+            updateCommandSuggestions(for: newValue)
         }
         .onDisappear {
             onDisappear?()
@@ -442,89 +441,94 @@ struct ConversationComposer: View {
             text = historyDraft
         }
     }
-}
 
-private struct ChatTypingIndicatorView: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(text)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
-
-            MessagesStyleTypingBubble()
+    private func updateCommandSuggestions(for input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/"), !trimmed.contains(" ") else {
+            commandSuggestions = []
+            return
         }
-        .padding(.leading, 10)
-        .padding(.bottom, 10)
+        let filtered = ChatCommand.allCases.filter { $0.rawValue.hasPrefix(trimmed) }
+        commandSuggestions = filtered
+        selectedSuggestionIndex = 0
+    }
+
+    private func navigateSuggestion(by delta: Int) {
+        guard !commandSuggestions.isEmpty else { return }
+        let count = commandSuggestions.count
+        selectedSuggestionIndex = (selectedSuggestionIndex + delta + count) % count
+    }
+
+    private func applySelectedSuggestion() {
+        guard !commandSuggestions.isEmpty else { return }
+        let command = commandSuggestions[selectedSuggestionIndex]
+        text = command.rawValue + " "
+        commandSuggestions = []
     }
 }
 
-private struct MessagesStyleTypingBubble: View {
-    private let bubbleFill = Color.primary.opacity(0.10)
-    private let dotColor = Color.primary.opacity(0.38)
+#if os(macOS)
+private struct ChatCommandSuggestionsView: View {
+    let suggestions: [ChatCommand]
+    let selectedIndex: Int
+    let onSelect: (ChatCommand) -> Void
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(bubbleFill)
-                .frame(width: 54, height: 30)
-                .shadow(color: .black.opacity(0.035), radius: 4, y: 1)
-                .offset(x: 3)
-
-            TypingDotsView(dotColor: dotColor)
-                .frame(width: 54, height: 30)
-                .offset(x: 3)
-
-            Circle()
-                .fill(bubbleFill)
-                .frame(width: 7, height: 7)
-                .offset(x: 6, y: 6)
-
-            Circle()
-                .fill(bubbleFill.opacity(0.96))
-                .frame(width: 4, height: 4)
-                .offset(x: 1, y: 11)
-        }
-        .frame(width: 58, height: 36, alignment: .topLeading)
-    }
-}
-
-private struct TypingDotsView: View {
-    let dotColor: Color
-
-    private let cycleDuration: Double = 0.9
-    private let phases: [Double] = [0.0, 0.18, 0.36]
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-
-            HStack(spacing: 5) {
-                ForEach(Array(phases.enumerated()), id: \.offset) { _, phase in
-                    let motion = centeredMotion(at: time + phase)
-                    let highlight = (motion + 1) / 2
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 6, height: 6)
-                        .scaleEffect(0.95 + (highlight * 0.08))
-                        .offset(y: -motion * 1.8)
-                        .opacity(0.55 + (highlight * 0.45))
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(suggestions.enumerated()), id: \.element.rawValue) { index, command in
+                ChatCommandSuggestionRow(
+                    command: command,
+                    isKeyboardSelected: index == selectedIndex,
+                    onSelect: { onSelect(command) }
+                )
+                if index < suggestions.count - 1 {
+                    Divider()
+                        .padding(.leading, 10)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .allowsHitTesting(false)
-    }
-
-    private func centeredMotion(at time: Double) -> CGFloat {
-        let progress = (time.truncatingRemainder(dividingBy: cycleDuration)) / cycleDuration
-        return CGFloat(sin(progress * (.pi * 2)))
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 12, y: -4)
     }
 }
+
+private struct ChatCommandSuggestionRow: View {
+    let command: ChatCommand
+    let isKeyboardSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(command.rawValue)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+            if !command.hint.isEmpty {
+                Text(" \(command.hint)")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Text(command.usage)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.system(size: 12))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            (isHovered || isKeyboardSelected)
+                ? Color.accentColor.opacity(isKeyboardSelected ? 0.18 : 0.10)
+                : Color.clear
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture { onSelect() }
+    }
+}
+#endif
 
 #if os(macOS)
 private struct ChatWindowInteractionObserver: NSViewRepresentable {
@@ -614,6 +618,11 @@ private struct ChatInputField: NSViewRepresentable {
     let onSubmit: () -> Void
     let onHistoryUp: () -> Void
     let onHistoryDown: () -> Void
+    var onSuggestionUp: (() -> Void)? = nil
+    var onSuggestionDown: (() -> Void)? = nil
+    var onSuggestionSelect: (() -> Void)? = nil
+    var onSuggestionDismiss: (() -> Void)? = nil
+    var hasSuggestions: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, dynamicHeight: $dynamicHeight, onSubmit: onSubmit)
@@ -696,6 +705,11 @@ private struct ChatInputField: NSViewRepresentable {
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onHistoryUp = onHistoryUp
         context.coordinator.onHistoryDown = onHistoryDown
+        context.coordinator.onSuggestionUp = onSuggestionUp
+        context.coordinator.onSuggestionDown = onSuggestionDown
+        context.coordinator.onSuggestionSelect = onSuggestionSelect
+        context.coordinator.onSuggestionDismiss = onSuggestionDismiss
+        context.coordinator.hasSuggestions = hasSuggestions
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -704,6 +718,11 @@ private struct ChatInputField: NSViewRepresentable {
         var onSubmit: () -> Void
         var onHistoryUp: (() -> Void)?
         var onHistoryDown: (() -> Void)?
+        var onSuggestionUp: (() -> Void)?
+        var onSuggestionDown: (() -> Void)?
+        var onSuggestionSelect: (() -> Void)?
+        var onSuggestionDismiss: (() -> Void)?
+        var hasSuggestions: Bool = false
         weak var textView: NSTextView?
         private let minimumLineCount: CGFloat = 1
         private let maximumLineCount: CGFloat = 5
@@ -772,6 +791,30 @@ private struct ChatInputField: NSViewRepresentable {
                     return true
                 case 125: // down arrow
                     onHistoryDown?()
+                    return true
+                default:
+                    break
+                }
+            }
+
+            if hasSuggestions {
+                switch commandSelector {
+                case #selector(NSResponder.moveUp(_:)):
+                    if !flags.contains(.command) {
+                        onSuggestionUp?()
+                        return true
+                    }
+                case #selector(NSResponder.moveDown(_:)):
+                    if !flags.contains(.command) {
+                        onSuggestionDown?()
+                        return true
+                    }
+                case #selector(NSResponder.insertTab(_:)),
+                     #selector(NSResponder.insertNewline(_:)):
+                    onSuggestionSelect?()
+                    return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    onSuggestionDismiss?()
                     return true
                 default:
                     break

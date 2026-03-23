@@ -50,6 +50,23 @@ extension ChatEvent {
 }
 
 extension Chat {
+    var activeTypingUserIDs: [UInt32] {
+        typingUsersByID
+            .filter { $0.value > .now }
+            .keys
+            .sorted()
+    }
+
+    var activeTypingUsers: [User] {
+        activeTypingUserIDs.compactMap { userID in
+            users.first(where: { $0.id == userID })
+        }
+    }
+
+    var primaryTypingUser: User? {
+        activeTypingUsers.first
+    }
+
     func setTyping(userID: UInt32, expiresAt: Date) {
         typingUsersByID[userID] = expiresAt
     }
@@ -67,16 +84,11 @@ extension Chat {
     }
 
     var typingIndicatorText: String? {
-        let activeUserIDs = typingUsersByID
-            .filter { $0.value > .now }
-            .keys
-            .sorted()
-
-        guard !activeUserIDs.isEmpty else { return nil }
-
-        let names = activeUserIDs.map { userID in
+        let names = activeTypingUserIDs.map { userID in
             users.first(where: { $0.id == userID })?.nick ?? "User"
         }
+
+        guard !names.isEmpty else { return nil }
 
         switch names.count {
         case 1:

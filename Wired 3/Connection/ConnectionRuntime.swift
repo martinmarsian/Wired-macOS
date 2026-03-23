@@ -48,6 +48,50 @@ enum MessageConversationKind {
     case broadcast
 }
 
+// MARK: - Chat Commands
+
+enum ChatCommand: String, CaseIterable {
+    case me        = "/me"
+    case nick      = "/nick"
+    case status    = "/status"
+    case topic     = "/topic"
+    case broadcast = "/broadcast"
+    case stats     = "/stats"
+    case clear     = "/clear"
+    case afk       = "/afk"
+    case help      = "/help"
+
+    /// Short argument placeholder shown in autocomplete (empty if no argument)
+    var hint: String {
+        switch self {
+        case .me:        return "<action>"
+        case .nick:      return "<new_nick>"
+        case .status:    return "<new_status>"
+        case .topic:     return "<new_topic>"
+        case .broadcast: return "<message>"
+        case .afk:       return ""
+        case .stats:     return ""
+        case .clear:     return ""
+        case .help:      return ""
+        }
+    }
+
+    /// One-line description used in /help and autocomplete
+    var usage: String {
+        switch self {
+        case .me:        return "Send a third-person action message"
+        case .nick:      return "Change your display name"
+        case .status:    return "Update your status message"
+        case .topic:     return "Set the chat topic"
+        case .broadcast: return "Send a broadcast message to all users"
+        case .afk:       return "Set away-from-keyboard status"
+        case .stats:     return "Show server statistics"
+        case .clear:     return "Clear the chat view"
+        case .help:      return "Show available commands"
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class MessageEvent: Identifiable {
@@ -1724,75 +1768,49 @@ final class ConnectionRuntime: Identifiable {
     // MARK: -
     
     private func chatCommand(_ chatID: UInt32, _ command: String) -> P7Message? {
-        let comps = command.split(separator: " ")
-                
-        if comps[0] == "/me" {
-            let value = command.deletingPrefix(comps[0]+" ")
-                        
-            if value.count == 0 || value == comps[0] {
-                return nil
-            }
+        let comps = command.split(separator: " ", maxSplits: 1)
+        guard let cmd = ChatCommand(rawValue: String(comps[0])) else { return nil }
 
+        switch cmd {
+        case .me:
+            let value = command.deletingPrefix(String(comps[0]) + " ")
+            guard !value.isEmpty, value != String(comps[0]) else { return nil }
             let message = P7Message(withName: "wired.chat.send_me", spec: spec!)
-
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.me", value: value)
-            
             return message
-        }
-        
-        else if comps[0] == "/nick" {
-            let value = command.deletingPrefix(comps[0]+" ")
-            
-            if value.count == 0 || value == comps[0] {
-                return nil
-            }
-                        
+
+        case .nick:
+            let value = command.deletingPrefix(String(comps[0]) + " ")
+            guard !value.isEmpty, value != String(comps[0]) else { return nil }
             return self.setNickMessage(value)
-        }
-            
-        else if comps[0] == "/status" {
-            let value = command.deletingPrefix(comps[0]+" ")
-            
-            if value.count == 0 || value == comps[0] {
-                return nil
-            }
-                        
+
+        case .status:
+            let value = command.deletingPrefix(String(comps[0]) + " ")
+            guard !value.isEmpty, value != String(comps[0]) else { return nil }
             return self.setStatusMessage(value)
-        }
-        
-        else if comps[0] == "/topic" {
-            let value = command.deletingPrefix(comps[0]+" ")
-            
-            if value.count == 0 || value == comps[0] {
-                return nil
-            }
 
+        case .topic:
+            let value = command.deletingPrefix(String(comps[0]) + " ")
+            guard !value.isEmpty, value != String(comps[0]) else { return nil }
             let message = P7Message(withName: "wired.chat.set_topic", spec: spec!)
-
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.topic.topic", value: value)
-            
             return message
-        }
-            
-        else if comps[0] == "/help" {
-            var string = "Chat commands:\n\n"
-            string += "/me\t\tSend a third-person message\n"
-            string += "/nick\tUpdate your user nick\n"
-            string += "/status\tUpdate your user status\n"
-            string += "/topic\tSet the chat topic\n"
-            string += "/help\tShow this help message\n"
-            
-            let message = P7Message(withName: "wired.chat.send_say", spec: spec!)
 
+        case .help:
+            let lines = ChatCommand.allCases.map { c -> String in
+                let h = c.hint.isEmpty ? "" : " \(c.hint)"
+                return "\(c.rawValue)\(h)\t\(c.usage)"
+            }.joined(separator: "\n")
+            let message = P7Message(withName: "wired.chat.send_say", spec: spec!)
             message.addParameter(field: "wired.chat.id", value: chatID)
-            message.addParameter(field: "wired.chat.say", value: string)
-            
+            message.addParameter(field: "wired.chat.say", value: "Chat commands:\n\n" + lines)
             return message
+
+        case .clear, .broadcast, .stats, .afk:
+            return nil
         }
-        
-        return nil
     }
     
     // MARK: - Board Messages
