@@ -302,46 +302,7 @@ struct ConversationComposer: View {
     var body: some View {
         Group {
 #if os(macOS)
-            ZStack(alignment: .leading) {
-                ChatInputField(
-                    text: $text,
-                    dynamicHeight: $inputHeight,
-                    onSubmit: {
-                        submit()
-                    },
-                    onHistoryUp: {
-                        browseHistoryUp()
-                    },
-                    onHistoryDown: {
-                        browseHistoryDown()
-                    },
-                    onSuggestionUp: {
-                        navigateSuggestion(by: -1)
-                    },
-                    onSuggestionDown: {
-                        navigateSuggestion(by: 1)
-                    },
-                    onSuggestionSelect: {
-                        applySelectedSuggestion()
-                    },
-                    onSuggestionDismiss: {
-                        commandSuggestions = []
-                    },
-                    hasSuggestions: !commandSuggestions.isEmpty
-                )
-
-                if text.isEmpty {
-                    Text(placeholder)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 12)
-                        .allowsHitTesting(false)
-                }
-            }
-            .frame(height: inputHeight)
-            .padding(5)
-            .opacity(isEnabled ? 1.0 : 0.65)
-            .allowsHitTesting(isEnabled)
-            .overlay(alignment: .top) {
+            VStack(spacing: 0) {
                 if !commandSuggestions.isEmpty {
                     ChatCommandSuggestionsView(
                         suggestions: commandSuggestions,
@@ -350,9 +311,50 @@ struct ConversationComposer: View {
                         text = command.rawValue + " "
                         commandSuggestions = []
                     }
-                    .alignmentGuide(.top) { d in d[.bottom] }
                     .padding(.horizontal, 5)
+                    .padding(.bottom, 2)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+
+                ZStack(alignment: .leading) {
+                    ChatInputField(
+                        text: $text,
+                        dynamicHeight: $inputHeight,
+                        onSubmit: {
+                            submit()
+                        },
+                        onHistoryUp: {
+                            browseHistoryUp()
+                        },
+                        onHistoryDown: {
+                            browseHistoryDown()
+                        },
+                        onSuggestionUp: {
+                            navigateSuggestion(by: -1)
+                        },
+                        onSuggestionDown: {
+                            navigateSuggestion(by: 1)
+                        },
+                        onSuggestionSelect: {
+                            applySelectedSuggestion()
+                        },
+                        onSuggestionDismiss: {
+                            commandSuggestions = []
+                        },
+                        hasSuggestions: !commandSuggestions.isEmpty
+                    )
+
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 12)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(height: inputHeight)
+                .padding(5)
+                .opacity(isEnabled ? 1.0 : 0.65)
+                .allowsHitTesting(isEnabled)
             }
 #else
             TextField("", text: $text, prompt: Text(placeholder), axis: .vertical)
