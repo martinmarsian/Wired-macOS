@@ -66,7 +66,7 @@ enum ChatCommand: String, CaseIterable {
         switch self {
         case .me:        return "<action>"
         case .nick:      return "<new_nick>"
-        case .status:    return "<message>"
+        case .status:    return "<new_status>"
         case .topic:     return "<new_topic>"
         case .broadcast: return "<message>"
         case .afk:       return ""

@@ -132,7 +132,20 @@ struct ChatsView: View {
                         }
                     
                     }, primaryAction: { selectedIDs in
-                        
+                        if let first = selectedIDs.first {
+                            if let chat = runtime.chat(withID: UInt32(Int(first))) {
+                                if !chat.joined {
+                                    Task {
+                                        do {
+                                            try await runtime.joinChat(chat.id)
+                                            
+                                        } catch {
+                                            runtime.lastError = error
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     })
                     .onChange(of: runtime.selectedChatID) { old, new in
                         if new == nil {
