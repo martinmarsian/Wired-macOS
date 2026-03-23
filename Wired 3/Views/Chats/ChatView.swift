@@ -809,7 +809,8 @@ private struct ChatInputField: NSViewRepresentable {
                         onSuggestionDown?()
                         return true
                     }
-                case #selector(NSResponder.insertTab(_:)):
+                case #selector(NSResponder.insertTab(_:)),
+                     #selector(NSResponder.insertNewline(_:)):
                     onSuggestionSelect?()
                     return true
                 case #selector(NSResponder.cancelOperation(_:)):
