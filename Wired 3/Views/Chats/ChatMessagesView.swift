@@ -624,8 +624,22 @@ private struct ChatIncomingLiveSlotView: View {
         typingBubbleContentSize
     }
 
+    private var isImageOnlyMessage: Bool {
+        guard case .message(let message, _) = presentation else { return false }
+        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = message.text.detectedHTTPImageURLs().first else { return false }
+        return trimmed == url.absoluteString
+    }
+
     private var resolvedMessageContentSize: CGSize {
         if case .message = presentation {
+            if isImageOnlyMessage {
+                // Target the image placeholder size (280×190) minus bubble padding
+                return CGSize(
+                    width: 280 - (bubbleHorizontalPadding * 2) - bubbleLeadingInset,
+                    height: 190 - (bubbleVerticalPadding * 2)
+                )
+            }
             return measuredMessageContentSize(for: messageString, maxWidth: maximumBubbleContentWidth)
         }
         return resolvedTypingContentSize
@@ -660,45 +674,47 @@ private struct ChatIncomingLiveSlotView: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            avatarView
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .bottom, spacing: 8) {
+                avatarView
 
-            VStack(alignment: .leading, spacing: 2) {
-                if !isGroupedWithPrevious {
-                    Text(nicknameText)
-                        .font(.caption)
-                        .foregroundStyle(.gray)
-                        .padding(.leading, 10)
-                        .frame(height: nicknameReservedHeight, alignment: .leading)
-                        .opacity(nicknameOpacity)
-                }
-
-                bubbleBody
-                    .containerRelativeFrame(
-                        .horizontal,
-                        count: 4,
-                        span: 3,
-                        spacing: 0,
-                        alignment: .leading
-                    )
-                    .measureWidth { width in
-                        availableBubbleWidth = width
+                VStack(alignment: .leading, spacing: 2) {
+                    if !isGroupedWithPrevious {
+                        Text(nicknameText)
+                            .font(.caption)
+                            .foregroundStyle(.gray)
+                            .padding(.leading, 10)
+                            .frame(height: nicknameReservedHeight, alignment: .leading)
+                            .opacity(nicknameOpacity)
                     }
-                    .animation(.easeInOut(duration: 0.28), value: messageRevealProgress)
-                    .animation(.easeInOut(duration: 0.28), value: typingFadeProgress)
 
-                if case .typing = presentation {
-                    Text(typingStatusText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
-                        .padding(.leading, 10)
-                        .opacity(typingLayerOpacity)
+                    bubbleBody
+                        .containerRelativeFrame(
+                            .horizontal,
+                            count: 4,
+                            span: 3,
+                            spacing: 0,
+                            alignment: .leading
+                        )
+                        .measureWidth { width in
+                            availableBubbleWidth = width
+                        }
+                        .animation(.easeInOut(duration: 0.28), value: messageRevealProgress)
+                        .animation(.easeInOut(duration: 0.28), value: typingFadeProgress)
                 }
-            }
-            .padding(.bottom, 8)
+                .padding(.bottom, 8)
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+
+            if case .typing = presentation {
+                Text(typingStatusText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                    .padding(.leading, 50) // 32 (avatar) + 8 (HStack spacing) + 10 (bubble inset)
+                    .opacity(typingLayerOpacity)
+            }
         }
         .padding(.top, isGroupedWithPrevious ? 2 : 10)
     }
@@ -779,6 +795,7 @@ private struct ChatIncomingLiveSlotView: View {
             isMessageTextVisible = false
         case .message:
             isMessageTextVisible = false
+            guard !isImageOnlyMessage else { return }
             textRevealTask = Task {
                 try? await Task.sleep(for: .milliseconds(320))
                 guard !Task.isCancelled else { return }
