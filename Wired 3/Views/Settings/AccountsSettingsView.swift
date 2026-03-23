@@ -42,9 +42,18 @@ enum AccountDetailTab: String, CaseIterable, Identifiable {
     }
 }
 
-enum AccountType: String {
+enum AccountType: String, CaseIterable, Identifiable {
     case user
     case group
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .user: return "Utilisateur"
+        case .group: return "Groupe"
+        }
+    }
 }
 
 struct AccountSummary: Identifiable, Hashable {
@@ -99,6 +108,41 @@ struct AccountEditor {
     }
 }
 
+struct AccountCreationDraft: Identifiable {
+    let id = UUID()
+
+    var type: AccountType
+    var name: String = ""
+    var fullName: String = ""
+    var comment: String = ""
+    var password: String = ""
+    var primaryGroup: String = ""
+    var secondaryGroupsText: String = ""
+
+    var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var trimmedFullName: String {
+        fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var trimmedComment: String {
+        comment.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var trimmedPrimaryGroup: String {
+        primaryGroup.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var secondaryGroups: [String] {
+        secondaryGroupsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
 @MainActor
 final class AccountsSettingsViewModel: ObservableObject {
     @Published var users: [AccountSummary] = []
@@ -110,6 +154,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     @Published var editor: AccountEditor?
     @Published var isLoading = false
     @Published var isSaving = false
+    @Published var isMutating = false
     @Published var error: Error?
 
     private weak var runtime: ConnectionRuntime?
@@ -187,6 +232,22 @@ final class AccountsSettingsViewModel: ObservableObject {
 
     var canEditGroups: Bool {
         runtime?.hasPrivilege("wired.account.account.edit_groups") ?? false
+    }
+
+    var canCreateUsers: Bool {
+        runtime?.hasPrivilege("wired.account.account.create_users") ?? false
+    }
+
+    var canDeleteUsers: Bool {
+        runtime?.hasPrivilege("wired.account.account.delete_users") ?? false
+    }
+
+    var canCreateGroups: Bool {
+        runtime?.hasPrivilege("wired.account.account.create_groups") ?? false
+    }
+
+    var canDeleteGroups: Bool {
+        runtime?.hasPrivilege("wired.account.account.delete_groups") ?? false
     }
 
     var filteredAccounts: [AccountSummary] {
@@ -297,6 +358,59 @@ final class AccountsSettingsViewModel: ObservableObject {
             await reloadAccounts()
             selectedID = "\(editor.type.rawValue):\(editor.name)"
             await readSelectedAccountIfNeeded()
+        } catch {
+            self.error = error
+        }
+    }
+
+    func createAccount(from draft: AccountCreationDraft) async -> Bool {
+        guard let connection = runtime?.connection as? AsyncConnection else { return false }
+
+        isMutating = true
+        defer { isMutating = false }
+
+        do {
+            switch draft.type {
+            case .user:
+                guard canCreateUsers else { return false }
+                try await createUser(draft, connection: connection)
+            case .group:
+                guard canCreateGroups else { return false }
+                try await createGroup(draft, connection: connection)
+            }
+
+            if selectedFilter != .all {
+                selectedFilter = filter(for: draft.type)
+            }
+
+            selectedDetailTab = .account
+            await reloadAccounts()
+            selectedID = "\(draft.type.rawValue):\(draft.trimmedName)"
+            await readSelectedAccountIfNeeded()
+            return true
+        } catch {
+            self.error = error
+            return false
+        }
+    }
+
+    func deleteAccount(_ account: AccountSummary) async {
+        guard let connection = runtime?.connection as? AsyncConnection else { return }
+
+        isMutating = true
+        defer { isMutating = false }
+
+        do {
+            switch account.type {
+            case .user:
+                guard canDeleteUsers else { return }
+                try await deleteUser(named: account.name, disconnectUsers: true, connection: connection)
+            case .group:
+                guard canDeleteGroups else { return }
+                try await deleteGroup(named: account.name, connection: connection)
+            }
+
+            await reloadAccounts()
         } catch {
             self.error = error
         }
@@ -423,6 +537,22 @@ final class AccountsSettingsViewModel: ObservableObject {
         }
     }
 
+    private func createUser(_ draft: AccountCreationDraft, connection: AsyncConnection) async throws {
+        let message = P7Message(withName: "wired.account.create_user", spec: spec!)
+        message.addParameter(field: "wired.account.name", value: draft.trimmedName)
+        message.addParameter(field: "wired.account.full_name", value: draft.trimmedFullName)
+        message.addParameter(field: "wired.account.comment", value: draft.trimmedComment)
+        message.addParameter(field: "wired.account.group", value: draft.trimmedPrimaryGroup)
+        message.addParameter(field: "wired.account.groups", value: draft.secondaryGroups)
+        message.addParameter(field: "wired.account.password", value: draft.password.sha256())
+
+        let response = try await connection.sendAsync(message)
+
+        if let response, response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+    }
+
     private func passwordForAccountEdit(_ editor: AccountEditor) -> String {
         if editor.password.isEmpty {
             return "".sha256()
@@ -456,6 +586,41 @@ final class AccountsSettingsViewModel: ObservableObject {
                 break
             }
         }
+
+        let response = try await connection.sendAsync(message)
+
+        if let response, response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+    }
+
+    private func createGroup(_ draft: AccountCreationDraft, connection: AsyncConnection) async throws {
+        let message = P7Message(withName: "wired.account.create_group", spec: spec!)
+        message.addParameter(field: "wired.account.name", value: draft.trimmedName)
+        message.addParameter(field: "wired.account.comment", value: draft.trimmedComment)
+
+        let response = try await connection.sendAsync(message)
+
+        if let response, response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+    }
+
+    private func deleteUser(named name: String, disconnectUsers: Bool, connection: AsyncConnection) async throws {
+        let message = P7Message(withName: "wired.account.delete_user", spec: spec!)
+        message.addParameter(field: "wired.account.name", value: name)
+        message.addParameter(field: "wired.account.disconnect_users", value: disconnectUsers)
+
+        let response = try await connection.sendAsync(message)
+
+        if let response, response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+    }
+
+    private func deleteGroup(named name: String, connection: AsyncConnection) async throws {
+        let message = P7Message(withName: "wired.account.delete_group", spec: spec!)
+        message.addParameter(field: "wired.account.name", value: name)
 
         let response = try await connection.sendAsync(message)
 
@@ -603,18 +768,29 @@ final class AccountsSettingsViewModel: ObservableObject {
 
         return false
     }
+
+    private func filter(for type: AccountType) -> AccountFilter {
+        switch type {
+        case .user:
+            return .users
+        case .group:
+            return .groups
+        }
+    }
 }
 
 struct AccountsSettingsView: View {
     @StateObject private var viewModel = AccountsSettingsViewModel()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var creationDraft: AccountCreationDraft?
+    @State private var accountPendingDeletion: AccountSummary?
 
     let runtime: ConnectionRuntime
 
     var body: some View {
         content
             .overlay {
-                if viewModel.isLoading {
+                if isBusy {
                     ProgressView()
                 }
             }
@@ -646,6 +822,33 @@ struct AccountsSettingsView: View {
             source: "Accounts Settings",
             serverName: nil,
             connectionID: runtime.id)
+            .sheet(item: $creationDraft) { draft in
+                AccountCreationSheet(initialType: draft.type) { createdDraft in
+                    await viewModel.createAccount(from: createdDraft)
+                } onDismiss: {
+                    creationDraft = nil
+                }
+            }
+            .alert(
+                deletionAlertTitle,
+                isPresented: Binding(
+                    get: { accountPendingDeletion != nil },
+                    set: { if !$0 { accountPendingDeletion = nil } }
+                ),
+                presenting: accountPendingDeletion
+            ) { account in
+                Button("Annuler", role: .cancel) {
+                    accountPendingDeletion = nil
+                }
+                Button("Supprimer", role: .destructive) {
+                    accountPendingDeletion = nil
+                    Task {
+                        await viewModel.deleteAccount(account)
+                    }
+                }
+            } message: { account in
+                Text(deletionAlertMessage(for: account))
+            }
     }
 
     @ViewBuilder
@@ -696,12 +899,41 @@ struct AccountsSettingsView: View {
             .listStyle(.inset)
 
             HStack {
+                Menu {
+                    Button {
+                        creationDraft = AccountCreationDraft(type: .user)
+                    } label: {
+                        Label("Utilisateur", systemImage: "person.badge.plus")
+                    }
+                    .disabled(!viewModel.canCreateUsers || isBusy)
+
+                    Button {
+                        creationDraft = AccountCreationDraft(type: .group)
+                    } label: {
+                        Label("Groupe", systemImage: "person.3.sequence")
+                    }
+                    .disabled(!viewModel.canCreateGroups || isBusy)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("Ajouter")
+                .disabled(!canCreateAccounts || isBusy)
+
+                Button {
+                    accountPendingDeletion = selectedAccount
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .help("Supprimer")
+                .disabled(!canDeleteSelectedAccount || isBusy)
+
                 Button {
                     Task { await viewModel.reloadAccounts() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .help("Recharger")
+                .disabled(isBusy)
 
                 Spacer()
             }
@@ -741,11 +973,38 @@ struct AccountsSettingsView: View {
             }
 
             HStack {
+                Menu {
+                    Button {
+                        creationDraft = AccountCreationDraft(type: .user)
+                    } label: {
+                        Label("Utilisateur", systemImage: "person.badge.plus")
+                    }
+                    .disabled(!viewModel.canCreateUsers || isBusy)
+
+                    Button {
+                        creationDraft = AccountCreationDraft(type: .group)
+                    } label: {
+                        Label("Groupe", systemImage: "person.3.sequence")
+                    }
+                    .disabled(!viewModel.canCreateGroups || isBusy)
+                } label: {
+                    Label("Ajouter", systemImage: "plus")
+                }
+                .disabled(!canCreateAccounts || isBusy)
+
+                Button {
+                    accountPendingDeletion = selectedAccount
+                } label: {
+                    Label("Supprimer", systemImage: "minus")
+                }
+                .disabled(!canDeleteSelectedAccount || isBusy)
+
                 Button {
                     Task { await viewModel.reloadAccounts() }
                 } label: {
                     Label("Recharger", systemImage: "arrow.clockwise")
                 }
+                .disabled(isBusy)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -770,6 +1029,43 @@ struct AccountsSettingsView: View {
 
     private func accountName(for id: String) -> String {
         viewModel.filteredAccounts.first(where: { $0.id == id })?.name ?? "Compte"
+    }
+
+    private var selectedAccount: AccountSummary? {
+        viewModel.filteredAccounts.first(where: { $0.id == viewModel.selectedID })
+    }
+
+    private var canCreateAccounts: Bool {
+        viewModel.canCreateUsers || viewModel.canCreateGroups
+    }
+
+    private var canDeleteSelectedAccount: Bool {
+        guard let selectedAccount else { return false }
+
+        switch selectedAccount.type {
+        case .user:
+            return viewModel.canDeleteUsers
+        case .group:
+            return viewModel.canDeleteGroups
+        }
+    }
+
+    private var isBusy: Bool {
+        viewModel.isLoading || viewModel.isSaving || viewModel.isMutating
+    }
+
+    private var deletionAlertTitle: String {
+        guard let accountPendingDeletion else { return "Supprimer le compte" }
+        return accountPendingDeletion.type == .user ? "Supprimer l'utilisateur" : "Supprimer le groupe"
+    }
+
+    private func deletionAlertMessage(for account: AccountSummary) -> String {
+        switch account.type {
+        case .user:
+            return "L'utilisateur \"\(account.name)\" sera supprimé. Les sessions actives seront déconnectées si nécessaire."
+        case .group:
+            return "Le groupe \"\(account.name)\" sera supprimé."
+        }
     }
 
     @ViewBuilder
@@ -1253,4 +1549,138 @@ private enum WiredAccountColor: UInt32, CaseIterable, Identifiable {
 
 private func accountSummaryColor(_ value: UInt32) -> Color {
     WiredAccountColor(rawValue: value)?.color ?? .primary
+}
+
+private struct AccountCreationSheet: View {
+    let onCreate: @MainActor (AccountCreationDraft) async -> Bool
+    let onDismiss: () -> Void
+
+    @State private var draft: AccountCreationDraft
+    @State private var isSaving = false
+
+    init(
+        initialType: AccountType,
+        onCreate: @escaping @MainActor (AccountCreationDraft) async -> Bool,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.onCreate = onCreate
+        self.onDismiss = onDismiss
+        _draft = State(initialValue: AccountCreationDraft(type: initialType))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(draft.type == .user ? "Ajouter un utilisateur" : "Ajouter un groupe")
+                .font(.title3.weight(.semibold))
+
+            Picker("Type", selection: $draft.type) {
+                ForEach(AccountType.allCases) { type in
+                    Text(type.title).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Nom")
+                    .font(.headline)
+
+                TextField("Nom du compte", text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            if draft.type == .user {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Nom complet")
+                        .font(.headline)
+
+                    TextField("Nom complet", text: $draft.fullName)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Mot de passe")
+                        .font(.headline)
+
+                    SecureField("Mot de passe initial", text: $draft.password)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Groupe primaire")
+                        .font(.headline)
+
+                    TextField("Optionnel", text: $draft.primaryGroup)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Groupes secondaires")
+                        .font(.headline)
+
+                    TextField("Séparés par des virgules", text: $draft.secondaryGroupsText)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Exemple: staff, moderators")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Commentaire")
+                    .font(.headline)
+
+                TextEditor(text: $draft.comment)
+                    .frame(minHeight: 90)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.quaternary)
+                    )
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Annuler") {
+                    onDismiss()
+                }
+                .disabled(isSaving)
+
+                Button("Créer") {
+                    create()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canCreate || isSaving)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 420)
+    }
+
+    private var canCreate: Bool {
+        guard !draft.trimmedName.isEmpty else { return false }
+
+        if draft.type == .user {
+            return !draft.password.isEmpty
+        }
+
+        return true
+    }
+
+    private func create() {
+        guard canCreate else { return }
+
+        isSaving = true
+
+        Task {
+            let didCreate = await onCreate(draft)
+
+            await MainActor.run {
+                isSaving = false
+                if didCreate {
+                    onDismiss()
+                }
+            }
+        }
+    }
 }
