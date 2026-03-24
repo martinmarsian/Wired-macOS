@@ -1506,6 +1506,7 @@ final class ConnectionController {
                                     self.triggerEvent(
                                         .userJoined,
                                         runtime: runtime,
+                                        chat: chat,
                                         subtitle: user.nick,
                                         body: "\(user.nick) joined \(chat.name).",
                                         chatText: "\(user.nick) joined \(chat.name)."
@@ -1532,6 +1533,7 @@ final class ConnectionController {
                                 self.triggerEvent(
                                     .userLeft,
                                     runtime: runtime,
+                                    chat: chat,
                                     subtitle: nick,
                                     body: "\(nick) left \(chat.name).",
                                     chatText: "\(nick) left \(chat.name)."
@@ -1600,6 +1602,7 @@ final class ConnectionController {
                             self.triggerEvent(
                                 .userChangedNick,
                                 runtime: runtime,
+                                chat: chat,
                                 subtitle: previousNick,
                                 body: "\(previousNick) is now \(incomingNick).",
                                 chatText: "\(previousNick) is now \(incomingNick)."
@@ -1618,6 +1621,7 @@ final class ConnectionController {
                             self.triggerEvent(
                                 .userChangedStatus,
                                 runtime: runtime,
+                                chat: chat,
                                 subtitle: user.nick,
                                 body: "\(user.nick) changed status.",
                                 chatText: "\(user.nick) changed status."
@@ -2359,6 +2363,7 @@ final class ConnectionController {
     private func triggerEvent(
         _ tag: WiredEventTag,
         runtime: ConnectionRuntime?,
+        chat: Chat? = nil,
         subtitle: String? = nil,
         body: String? = nil,
         chatText: String? = nil
@@ -2383,7 +2388,7 @@ final class ConnectionController {
         }
 
         if config.postInChat, let runtime, let chatText {
-            postEventInChat(text: chatText, runtime: runtime)
+            postEventInChat(text: chatText, chat: chat, runtime: runtime)
         }
 
         if config.showAlert {
@@ -2398,8 +2403,8 @@ final class ConnectionController {
     }
 
     @MainActor
-    private func postEventInChat(text: String, runtime: ConnectionRuntime) {
-        guard let chat = runtime.chat(withID: 1) else { return }
+    private func postEventInChat(text: String, chat: Chat?, runtime: ConnectionRuntime) {
+        guard let chat = chat ?? runtime.chat(withID: 1) else { return }
         let user = User(id: 0, nick: "Events", icon: Data(), idle: false)
         appendChatMessage(
             ChatEvent(chat: chat, user: user, type: .event, text: text),
