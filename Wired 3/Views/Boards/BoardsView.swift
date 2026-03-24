@@ -214,6 +214,24 @@ struct BoardsView: View {
         }
     }
 
+    private func restoreSelectionFromRuntime() {
+        let boardPath  = runtime.selectedBoardPath
+        let threadUUID = runtime.selectedThreadUUID
+        guard boardPath != nil || threadUUID != nil else { return }
+
+        selectedBoardPath = boardPath
+
+        // onChange(of: selectedBoardPath) clears selectedThreadUUID and
+        // runtime.selectedThreadUUID, so we restore the thread in the next
+        // run-loop turn, after those handlers have fired.
+        if let threadUUID {
+            Task { @MainActor in
+                self.selectedThreadUUID = threadUUID
+                runtime.selectedThreadUUID = threadUUID
+            }
+        }
+    }
+
     private func restoreBoardExpansionState() {
         let defaults = UserDefaults.standard
         let expandablePaths = Set(allBoardsFlat().filter(boardHasChildren).map(\.path))
@@ -653,6 +671,9 @@ struct BoardsView: View {
         .onChange(of: runtime.allBoardThreadsLoaded) { _, loaded in
             guard loaded, let smartBoard = selectedSmartBoard else { return }
             Task { await preloadSmartBoardData(for: smartBoard) }
+        }
+        .onAppear {
+            restoreSelectionFromRuntime()
         }
     }
 
