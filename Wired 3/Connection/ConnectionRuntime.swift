@@ -214,6 +214,7 @@ final class ConnectionRuntime: Identifiable {
     var selectedTab: MainTab = .chats
     var selectedChatID: UInt32? = 1
     var chatDrafts: [UInt32: String] = [:]
+    var messageDrafts: [UUID: String] = [:]
     var userID: UInt32 = 0
     var privileges: [String: Any] = [:]
     

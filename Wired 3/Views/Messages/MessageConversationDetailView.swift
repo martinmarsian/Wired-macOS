@@ -10,7 +10,17 @@ struct MessageConversationDetailView: View {
 
     let conversation: MessageConversation
     var searchText: String = ""
-    @State private var inputText: String = ""
+
+    private var inputText: String {
+        runtime.messageDrafts[conversation.id] ?? ""
+    }
+
+    private var inputTextBinding: Binding<String> {
+        Binding(
+            get: { runtime.messageDrafts[conversation.id] ?? "" },
+            set: { runtime.messageDrafts[conversation.id] = $0.isEmpty ? nil : $0 }
+        )
+    }
 
     private var composerOverlayInset: CGFloat {
         #if os(macOS)
@@ -42,7 +52,7 @@ struct MessageConversationDetailView: View {
 
             HStack(alignment: .top, spacing: 0) {
                 ConversationComposer(
-                    text: $inputText,
+                    text: inputTextBinding,
                     placeholder: placeholder,
                     isEnabled: canSend,
                     onSend: { text in
