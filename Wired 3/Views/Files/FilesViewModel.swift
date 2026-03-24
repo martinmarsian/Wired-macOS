@@ -42,7 +42,11 @@ final class FilesViewModel: ObservableObject {
     @Published var expandedTreePaths: Set<String> = ["/"]
     @Published var treeSelectionPath: String? = nil
     @Published var treeViewRevision: Int = 0
-    
+
+    // Scroll-position persistence across tab switches (not published — no UI depends on them)
+    var treeScrollOffset: CGPoint = .zero
+    var columnScrollOffsets: [UUID: CGFloat] = [:]
+
     @Published var showFilesBrowser: Bool = false
     @Published var showCreateFolderSheet: Bool = false
     @Published var showDeleteConfirmation: Bool = false

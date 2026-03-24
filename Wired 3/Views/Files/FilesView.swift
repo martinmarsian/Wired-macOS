@@ -1264,7 +1264,9 @@ struct FilesTreeView: View {
             canDownloadForItem: canDownloadForItem,
             canDeleteForItem: canDeleteForItem,
             canUploadToDirectory: canUploadToDirectory,
-            canCreateFolderInDirectory: canCreateFolderInDirectory
+            canCreateFolderInDirectory: canCreateFolderInDirectory,
+            savedScrollOffset: filesViewModel.treeScrollOffset,
+            onScrollOffsetChange: { filesViewModel.treeScrollOffset = $0 }
         )
         .background(colorScheme == .light ? Color.white : Color(nsColor: .windowBackgroundColor))
         .onAppear {
@@ -1365,6 +1367,8 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let savedScrollOffset: CGPoint
+    let onScrollOffsetChange: (CGPoint) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -1414,12 +1418,26 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
 
         scrollView.documentView = outlineView
         context.coordinator.outlineView = outlineView
+        context.coordinator.scrollView = scrollView
         context.coordinator.syncFromModel(
             rootPath: rootPath,
             childrenByPath: treeChildrenByPath,
             expandedPaths: expandedPaths,
             selectedPaths: selectedPaths
         )
+
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleScrollChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
+        let offsetToRestore = savedScrollOffset
+        DispatchQueue.main.async {
+            scrollView.contentView.scroll(to: offsetToRestore)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
 
         return scrollView
     }
@@ -1446,6 +1464,7 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
 
         var parent: AppKitFilesTreeView
         weak var outlineView: NSOutlineView?
+        weak var scrollView: NSScrollView?
         private let rootNode = OutlineNode(item: FileItem("/", path: "/", type: .directory))
         private var nodesByPath: [String: OutlineNode] = [:]
         private var currentRootPath: String = "/"
@@ -1466,6 +1485,11 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             }()
             let rootName = normalizedRoot == "/" ? "/" : (normalizedRoot as NSString).lastPathComponent
             self.contextDirectoryTarget = FileItem(rootName, path: normalizedRoot, type: .directory)
+        }
+
+        @objc func handleScrollChange(_ notification: Notification) {
+            guard let sv = scrollView else { return }
+            parent.onScrollOffsetChange(sv.contentView.bounds.origin)
         }
 
         private func isDirectory(_ item: FileItem) -> Bool {
@@ -2246,7 +2270,9 @@ struct FilesColumnsView: View {
             canDownloadForItem: canDownloadForItem,
             canDeleteForItem: canDeleteForItem,
             canUploadToDirectory: canUploadToDirectory,
-            canCreateFolderInDirectory: canCreateFolderInDirectory
+            canCreateFolderInDirectory: canCreateFolderInDirectory,
+            savedScrollOffset: filesViewModel.columnScrollOffsets[column.id] ?? 0,
+            onScrollOffsetChange: { filesViewModel.columnScrollOffsets[column.id] = $0 }
         )
         .frame(width: width(for: column))
         .background(Color.clear)
@@ -2358,6 +2384,8 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let savedScrollOffset: CGFloat
+    let onScrollOffsetChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -2398,7 +2426,22 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        context.coordinator.scrollView = scrollView
         context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths)
+
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleScrollChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
+        let offsetToRestore = CGPoint(x: 0, y: savedScrollOffset)
+        DispatchQueue.main.async {
+            scrollView.contentView.scroll(to: offsetToRestore)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
         return scrollView
     }
 
@@ -2410,6 +2453,7 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
         var parent: AppKitFileColumnTableView
         weak var tableView: NSTableView?
+        weak var scrollView: NSScrollView?
         private var items: [FileItem] = []
         private var byPath: [String: Int] = [:]
         private var isApplyingSelectionFromSwiftUI = false
@@ -2418,6 +2462,11 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
         init(parent: AppKitFileColumnTableView) {
             self.parent = parent
             self.contextDirectoryTarget = FileItem((parent.column.path as NSString).lastPathComponent, path: parent.column.path, type: .directory)
+        }
+
+        @objc func handleScrollChange(_ notification: Notification) {
+            guard let sv = scrollView else { return }
+            parent.onScrollOffsetChange(sv.contentView.bounds.origin.y)
         }
 
         private func isDirectory(_ item: FileItem) -> Bool {
