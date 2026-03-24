@@ -3167,7 +3167,7 @@ private struct PostRowView: View {
                 .padding(.top, 4)
             }
 
-            if post.reactionsLoaded || !post.reactions.isEmpty {
+            if canReact || !post.reactions.isEmpty {
                 ReactionBarView(
                     reactions: post.reactions,
                     canReact: canReact,
