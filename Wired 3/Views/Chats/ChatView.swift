@@ -683,6 +683,7 @@ private struct ChatInputField: NSViewRepresentable {
         textView.string = text
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
+        context.coordinator.isEnabled = isEnabled
         scrollView.focusTarget = textView
 
         scrollView.documentView = textView
@@ -718,10 +719,17 @@ private struct ChatInputField: NSViewRepresentable {
         DispatchQueue.main.async {
             context.coordinator.recomputeHeight()
         }
-        if textView.isEditable != isEnabled {
+        if isEnabled != context.coordinator.isEnabled {
+            context.coordinator.isEnabled = isEnabled
             textView.isEditable = isEnabled
-            if !isEnabled, textView.window?.firstResponder === textView {
-                textView.window?.makeFirstResponder(nil)
+            if !isEnabled {
+                if textView.window?.firstResponder === textView {
+                    textView.window?.makeFirstResponder(nil)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    textView.window?.makeFirstResponder(textView)
+                }
             }
         }
         context.coordinator.onSubmit = onSubmit
@@ -745,6 +753,7 @@ private struct ChatInputField: NSViewRepresentable {
         var onSuggestionSelect: (() -> Void)?
         var onSuggestionDismiss: (() -> Void)?
         var hasSuggestions: Bool = false
+        var isEnabled: Bool = true
         weak var textView: NSTextView?
         private let minimumLineCount: CGFloat = 1
         private let maximumLineCount: CGFloat = 5
