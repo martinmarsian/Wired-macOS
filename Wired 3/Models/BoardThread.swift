@@ -70,6 +70,9 @@ final class BoardThread: Identifiable, Equatable, Hashable {
     var posts: [BoardPost] = []
     var postsLoaded: Bool = false
 
+    /// Emoji list of the thread-body's reactions — populated lazily after first open.
+    var topReactionEmojis: [String] = []
+
     init(uuid: String,
          boardPath: String,
          subject: String,

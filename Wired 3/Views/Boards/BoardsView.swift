@@ -2677,6 +2677,12 @@ private struct ThreadRowView: View {
 
                     Spacer()
 
+                    if !thread.topReactionEmojis.isEmpty {
+                        Text(thread.topReactionEmojis.prefix(5).joined())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     if thread.replies > 0 {
                         Label("\(thread.replies)", systemImage: "bubble.right")
                             .font(.caption)
@@ -3167,15 +3173,14 @@ private struct PostRowView: View {
                 .padding(.top, 4)
             }
 
-            if canReact || !post.reactions.isEmpty {
-                ReactionBarView(
-                    reactions: post.reactions,
-                    canReact: canReact,
-                    onToggle: onToggleReaction
-                )
-            }
-
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                if canReact || !post.reactions.isEmpty {
+                    ReactionBarView(
+                        reactions: post.reactions,
+                        canReact: canReact,
+                        onToggle: onToggleReaction
+                    )
+                }
                 Spacer()
                 if canReply {
                     Button("Reply") { onReply() }
@@ -3231,14 +3236,12 @@ private struct ReactionBarView: View {
     let canReact: Bool
     let onToggle: (String) -> Void
 
-    @State private var showPicker = false
-
-    private static let quickEmojis = ["👍", "👎", "❤️", "😂", "😮"]
+    @State private var showEmojiPicker = false
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(reactions) { reaction in
-                reactionChip(reaction)
+                ReactionChipView(reaction: reaction, canReact: canReact, onToggle: onToggle)
             }
             if canReact {
                 addButton
@@ -3248,7 +3251,39 @@ private struct ReactionBarView: View {
     }
 
     @ViewBuilder
-    private func reactionChip(_ reaction: BoardReactionSummary) -> some View {
+    private var addButton: some View {
+        Button {
+            showEmojiPicker = true
+        } label: {
+            Image(systemName: "face.smiling")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.08)))
+                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Add a reaction")
+        .popover(isPresented: $showEmojiPicker, arrowEdge: .bottom) {
+            EmojiPickerPopover { emoji in
+                onToggle(emoji)
+                showEmojiPicker = false
+            }
+        }
+    }
+}
+
+// MARK: - ReactionChipView
+
+private struct ReactionChipView: View {
+    let reaction: BoardReactionSummary
+    let canReact: Bool
+    let onToggle: (String) -> Void
+
+    @State private var showSummary = false
+
+    var body: some View {
         Button {
             onToggle(reaction.emoji)
         } label: {
@@ -3267,41 +3302,132 @@ private struct ReactionBarView: View {
             )
             .overlay(
                 Capsule()
-                    .strokeBorder(reaction.isOwn ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: 1)
+                    .strokeBorder(
+                        reaction.isOwn ? Color.accentColor : Color.secondary.opacity(0.25),
+                        lineWidth: 1
+                    )
             )
         }
         .buttonStyle(.plain)
         .disabled(!canReact)
+        .help(reactionTooltip)
+        .popover(isPresented: $showSummary, arrowEdge: .bottom) {
+            reactionSummaryPopover
+        }
+        .contextMenu {
+            Text(reactionTooltip)
+            Divider()
+            if canReact {
+                Button(reaction.isOwn ? "Remove your reaction" : "React with \(reaction.emoji)") {
+                    onToggle(reaction.emoji)
+                }
+            }
+        }
+    }
+
+    private var reactionTooltip: String {
+        let base = "\(reaction.count) × \(reaction.emoji)"
+        return reaction.isOwn ? base + " (including yours)" : base
     }
 
     @ViewBuilder
-    private var addButton: some View {
-        Menu {
-            ForEach(Self.quickEmojis, id: \.self) { emoji in
-                Button {
-                    onToggle(emoji)
-                } label: {
-                    Text(emoji)
+    private var reactionSummaryPopover: some View {
+        VStack(spacing: 6) {
+            Text(reaction.emoji)
+                .font(.system(size: 32))
+            Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
+                .font(.subheadline.weight(.semibold))
+            if reaction.isOwn {
+                Text("You reacted")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(minWidth: 100)
+    }
+}
+
+// MARK: - EmojiPickerPopover
+
+private struct EmojiPickerPopover: View {
+    let onSelect: (String) -> Void
+
+    @State private var customEmoji: String = ""
+    @FocusState private var fieldFocused: Bool
+
+    private let quickEmojis = [
+        "👍", "👎", "❤️", "😂", "😮",
+        "🎉", "🤔", "🔥", "👀", "✅"
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("React")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(34), spacing: 4), count: 5),
+                spacing: 4
+            ) {
+                ForEach(quickEmojis, id: \.self) { emoji in
+                    Button {
+                        onSelect(emoji)
+                    } label: {
+                        Text(emoji)
+                            .font(.title2)
+                            .frame(width: 34, height: 34)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                    .pointerOnHover()
                 }
             }
-        } label: {
-            Image(systemName: "face.smiling")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.08))
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
+
+            Divider()
+
+            HStack(spacing: 6) {
+                TextField("Custom…", text: $customEmoji)
+                    .focused($fieldFocused)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                    .onChange(of: customEmoji) { _, newValue in
+                        // Accept first emoji-looking character typed or pasted
+                        if let first = newValue.first, String(first).containsEmoji {
+                            onSelect(String(first))
+                        } else if newValue.containsEmoji, let emoji = newValue.firstEmojiString {
+                            onSelect(emoji)
+                        }
+                    }
+
+                Button {
+                    fieldFocused = true
+                    #if os(macOS)
+                    NSApp.orderFrontCharacterPalette(nil)
+                    #endif
+                } label: {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.borderless)
+                .help("Open system emoji picker (⌃⌘Space)")
+            }
         }
-        .buttonStyle(.plain)
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .padding(12)
+        .frame(width: 210)
+    }
+}
+
+private extension String {
+    var containsEmoji: Bool {
+        unicodeScalars.contains { $0.properties.isEmoji && $0.value > 0x231A }
+    }
+    var firstEmojiString: String? {
+        for scalar in unicodeScalars where scalar.properties.isEmoji && scalar.value > 0x231A {
+            return String(scalar)
+        }
+        return nil
     }
 }
 

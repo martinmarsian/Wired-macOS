@@ -2273,6 +2273,11 @@ final class ConnectionRuntime: Identifiable {
 
         post.reactions = summaries
         post.reactionsLoaded = true
+
+        // Mirror emoji list to the parent thread for the thread-list preview.
+        if post.isThreadBody {
+            thread(uuid: post.threadUUID)?.topReactionEmojis = summaries.map(\.emoji)
+        }
     }
 
     /// Sends an `add_reaction` toggle request. The server will reply with `reaction_added`
