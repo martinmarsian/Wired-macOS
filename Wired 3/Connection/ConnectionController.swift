@@ -2195,6 +2195,26 @@ final class ConnectionController {
                 }
             }
 
+        case "wired.board.reaction_added", "wired.board.reaction_removed":
+            guard
+                let threadUUID = message.uuid(forField: "wired.board.thread"),
+                let emoji      = message.string(forField: "wired.board.reaction.emoji"),
+                let count      = message.uint32(forField: "wired.board.reaction.count")
+            else { break }
+            let postUUID = message.uuid(forField: "wired.board.post")
+            let nick     = message.string(forField: "wired.board.reaction.nick")
+            let added    = message.name == "wired.board.reaction_added"
+            await MainActor.run {
+                runtime.applyReactionBroadcast(
+                    threadUUID: threadUUID,
+                    postUUID: postUUID,
+                    emoji: emoji,
+                    count: Int(count),
+                    added: added,
+                    nick: nick
+                )
+            }
+
         default:
             break
         }

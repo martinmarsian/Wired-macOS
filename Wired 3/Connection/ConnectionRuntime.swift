@@ -2248,6 +2248,77 @@ final class ConnectionRuntime: Identifiable {
         return false
     }
 
+    // MARK: - Reactions
+
+    /// Fetches the reaction summaries for a post (or a thread body when `post.isThreadBody == true`)
+    /// and updates the post's `reactions` and `reactionsLoaded` properties on the main actor.
+    func getReactions(forPost post: BoardPost) async throws {
+        let connection = try requireAsyncConnection()
+
+        let m = P7Message(withName: "wired.board.get_reactions", spec: spec!)
+        m.addParameter(field: "wired.board.thread", value: post.threadUUID)
+        if !post.isThreadBody {
+            m.addParameter(field: "wired.board.post", value: post.uuid)
+        }
+
+        var summaries: [BoardReactionSummary] = []
+        for try await response in try connection.sendAndWaitMany(m) {
+            guard response.name == "wired.board.reaction_list",
+                  let emoji = response.string(forField: "wired.board.reaction.emoji"),
+                  let count  = response.uint32(forField: "wired.board.reaction.count"),
+                  let isOwn  = response.bool(forField: "wired.board.reaction.is_own")
+            else { continue }
+            summaries.append(BoardReactionSummary(emoji: emoji, count: Int(count), isOwn: isOwn))
+        }
+
+        post.reactions = summaries
+        post.reactionsLoaded = true
+    }
+
+    /// Sends an `add_reaction` toggle request. The server will reply with `reaction_added`
+    /// or `reaction_removed` broadcast which `ConnectionController` handles to update state.
+    func toggleReaction(emoji: String, forPost post: BoardPost) async throws {
+        let m = P7Message(withName: "wired.board.add_reaction", spec: spec!)
+        m.addParameter(field: "wired.board.thread",         value: post.threadUUID)
+        if !post.isThreadBody {
+            m.addParameter(field: "wired.board.post",       value: post.uuid)
+        }
+        m.addParameter(field: "wired.board.reaction.emoji", value: emoji)
+        if let response = try await send(m), response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+    }
+
+    /// Called from `ConnectionController` when a `reaction_added` or `reaction_removed`
+    /// broadcast arrives. Finds the matching post and updates its reaction summaries in-place.
+    func applyReactionBroadcast(threadUUID: String, postUUID: String?,
+                                emoji: String, count: Int, added: Bool, nick: String?) {
+        // Locate the target post (thread body or reply).
+        let target: BoardPost?
+        if let postUUID {
+            target = thread(uuid: threadUUID)?.posts.first { $0.uuid == postUUID }
+        } else {
+            target = thread(uuid: threadUUID)?.posts.first { $0.isThreadBody }
+        }
+
+        guard let post = target, post.reactionsLoaded else { return }
+
+        if count == 0 {
+            post.reactions.removeAll { $0.emoji == emoji }
+        } else if let idx = post.reactions.firstIndex(where: { $0.emoji == emoji }) {
+            // Update existing summary — preserve isOwn from the previous value
+            // (the broadcast doesn't change isOwn for the receiving client directly;
+            // isOwn was already set during getReactions or by the toggle initiator).
+            post.reactions[idx] = BoardReactionSummary(
+                emoji: emoji,
+                count: count,
+                isOwn: post.reactions[idx].isOwn
+            )
+        } else if added {
+            post.reactions.append(BoardReactionSummary(emoji: emoji, count: count, isOwn: false))
+        }
+    }
+
     private func requireAsyncConnection() throws -> AsyncConnection {
         guard let connection = connection as? AsyncConnection else {
             throw AsyncConnectionError.notConnected

@@ -9,6 +9,16 @@
 import SwiftUI
 import WiredSwift
 
+/// Lightweight summary of a single emoji reaction on a thread or post.
+struct BoardReactionSummary: Identifiable, Equatable {
+    let emoji: String
+    let count: Int
+    /// Whether the current session account has contributed to this reaction.
+    let isOwn: Bool
+
+    var id: String { emoji }
+}
+
 @Observable
 @MainActor
 final class BoardPost: Identifiable {
@@ -24,6 +34,8 @@ final class BoardPost: Identifiable {
     var isOwn: Bool
     var isUnread: Bool = false
     var isThreadBody: Bool = false
+    var reactions: [BoardReactionSummary] = []
+    var reactionsLoaded: Bool = false
 
     init(uuid: String,
          threadUUID: String,
