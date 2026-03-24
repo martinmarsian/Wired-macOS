@@ -2287,6 +2287,9 @@ final class ConnectionRuntime: Identifiable {
         if let response = try await send(m), response.name == "wired.error" {
             throw WiredError(message: response)
         }
+        // Refresh so isOwn is accurate. Keep reactionsLoaded = true so applyReactionBroadcast
+        // (which fires concurrently) can still update other clients' counts.
+        try? await getReactions(forPost: post)
     }
 
     /// Called from `ConnectionController` when a `reaction_added` or `reaction_removed`
