@@ -41,7 +41,18 @@ struct ServerSettingsView: View {
 
     let connectionID: UUID
 
-    @State private var selectedCategory: ServerSettingsCategory? = .general
+    @AppStorage("serverSettingsSelectedCategory") private var selectedCategoryRaw: String = ServerSettingsCategory.general.rawValue
+
+    private var selectedCategory: ServerSettingsCategory? {
+        ServerSettingsCategory(rawValue: selectedCategoryRaw)
+    }
+
+    private var selectedCategoryBinding: Binding<ServerSettingsCategory?> {
+        Binding(
+            get: { ServerSettingsCategory(rawValue: selectedCategoryRaw) },
+            set: { selectedCategoryRaw = $0?.rawValue ?? ServerSettingsCategory.general.rawValue }
+        )
+    }
 
     private var runtime: ConnectionRuntime? {
         connectionController.runtime(for: connectionID)
@@ -77,7 +88,7 @@ struct ServerSettingsView: View {
                         .navigationTitle(category.title)
                         .navigationBarTitleDisplayMode(.inline)
                         .onAppear {
-                            selectedCategory = category
+                            selectedCategoryRaw = category.rawValue
                         }
                 }
             }
@@ -93,7 +104,7 @@ struct ServerSettingsView: View {
     }
 
     private var categorySidebar: some View {
-        List(ServerSettingsCategory.allCases, selection: $selectedCategory) { category in
+        List(ServerSettingsCategory.allCases, selection: selectedCategoryBinding) { category in
             Label(category.title, systemImage: category.iconName)
                 .tag(category)
         }
