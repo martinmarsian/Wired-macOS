@@ -1571,8 +1571,44 @@ final class ConnectionRuntime: Identifiable {
             throw normalizedRequestError(error)
         }
     }
-    
-    
+
+
+    // MARK: - Log (wired.log.*)
+
+    /// Fetch the server log buffer via `wired.log.get_log`.
+    func fetchLog() async throws -> [WiredLogEntry] {
+        let connection = try requireAsyncConnection()
+
+        do {
+            let request = P7Message(withName: "wired.log.get_log", spec: spec!)
+            let stream  = try connection.sendAndWaitMany(request)
+            var entries: [WiredLogEntry] = []
+
+            for try await response in stream {
+                guard response.name == "wired.log.list" else { continue }
+                guard let entry = WiredLogEntry(message: response) else { continue }
+                entries.append(entry)
+            }
+
+            return entries
+        } catch {
+            throw normalizedRequestError(error)
+        }
+    }
+
+    /// Subscribe to live log broadcasts (`wired.log.subscribe`).
+    func subscribeToLog() async throws {
+        let message = P7Message(withName: "wired.log.subscribe", spec: spec!)
+        _ = try await send(message)
+    }
+
+    /// Unsubscribe from live log broadcasts (`wired.log.unsubscribe`).
+    func unsubscribeFromLog() async throws {
+        let message = P7Message(withName: "wired.log.unsubscribe", spec: spec!)
+        _ = try await send(message)
+    }
+
+
     // MARK: -
     
     func sendChatMessage( _ chatID: UInt32, _ text: String) async throws -> P7Message? {

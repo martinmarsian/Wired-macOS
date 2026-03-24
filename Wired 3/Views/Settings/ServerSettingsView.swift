@@ -133,7 +133,11 @@ struct ServerSettingsView: View {
                 PlaceholderCategoryView(title: "Évènements")
             }
         case .log:
-            PlaceholderCategoryView(title: "Log")
+            if let runtime {
+                ServerLogSettingsView(runtime: runtime)
+            } else {
+                PlaceholderCategoryView(title: "Log")
+            }
         case .accounts:
             if let runtime {
                 AccountsSettingsView(runtime: runtime)
@@ -1508,5 +1512,258 @@ private struct PlaceholderCategoryView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Server Log
+
+@MainActor
+private final class ServerLogSettingsViewModel: ObservableObject {
+    @Published var entries: [WiredLogEntry] = []
+    @Published var levelFilter: WiredLogLevel? = nil
+    @Published var searchText = ""
+    @Published var isLoading = false
+    @Published var error: Error?
+
+    private weak var runtime: ConnectionRuntime?
+    private var hasLoadedInitialData = false
+    private var isSubscribedToLog = false
+
+    func configure(runtime: ConnectionRuntime) {
+        self.runtime = runtime
+    }
+
+    var canViewLog: Bool {
+        runtime?.hasPrivilege("wired.account.log.view_log") ?? false
+    }
+
+    var filteredEntries: [WiredLogEntry] {
+        entries
+            .filter { entry in
+                if let levelFilter, entry.level != levelFilter { return false }
+                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !query.isEmpty {
+                    return entry.message.localizedStandardContains(query)
+                }
+                return true
+            }
+            .sorted { $0.time > $1.time }
+    }
+
+    func loadIfNeeded() async {
+        if !hasLoadedInitialData {
+            let didLoad = await refresh()
+            hasLoadedInitialData = didLoad
+        }
+        await subscribeToLogIfNeeded()
+    }
+
+    @discardableResult
+    func refresh() async -> Bool {
+        guard let runtime, canViewLog else { return false }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            entries = try await runtime.fetchLog()
+        } catch {
+            self.error = error
+        }
+
+        return true
+    }
+
+    func subscribeToLogIfNeeded() async {
+        guard let runtime, canViewLog, !isSubscribedToLog else { return }
+
+        do {
+            try await runtime.subscribeToLog()
+            isSubscribedToLog = true
+        } catch let wiredError as WiredError {
+            if wiredError.message.contains("already_subscribed") {
+                isSubscribedToLog = true
+            } else {
+                self.error = wiredError
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
+    func unsubscribeFromLogIfNeeded() async {
+        guard let runtime, isSubscribedToLog else { return }
+
+        do {
+            try await runtime.unsubscribeFromLog()
+            isSubscribedToLog = false
+        } catch let wiredError as WiredError {
+            if wiredError.message.contains("not_subscribed") {
+                isSubscribedToLog = false
+            } else {
+                self.error = wiredError
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
+    func handleLiveEntry(_ entry: WiredLogEntry) {
+        guard !entries.contains(where: { $0.id == entry.id }) else { return }
+        entries.append(entry)
+    }
+}
+
+private struct ServerLogSettingsView: View {
+    let runtime: ConnectionRuntime
+
+    @StateObject private var viewModel = ServerLogSettingsViewModel()
+
+    private var hasResolvedPrivileges: Bool {
+        !runtime.privileges.isEmpty
+    }
+
+    private var canViewLog: Bool {
+        runtime.hasPrivilege("wired.account.log.view_log")
+    }
+
+    var body: some View {
+        Group {
+            if !hasResolvedPrivileges {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !canViewLog {
+                ContentUnavailableView(
+                    "Accès refusé",
+                    systemImage: "lock",
+                    description: Text("Permission requise: wired.account.log.view_log")
+                )
+            } else {
+                content
+            }
+        }
+        .task(id: "\(runtime.userID)-\(runtime.status)-\(canViewLog)") {
+            viewModel.configure(runtime: runtime)
+            await viewModel.loadIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .wiredServerLogMessageReceived)) { notification in
+            guard let payload = notification.object as? RemoteServerLogEntry else { return }
+            guard payload.connectionID == runtime.id else { return }
+            viewModel.handleLiveEntry(payload.entry)
+        }
+        .onDisappear {
+            Task { await viewModel.unsubscribeFromLogIfNeeded() }
+        }
+        .errorAlert(
+            error: Binding(
+                get: { viewModel.error },
+                set: { viewModel.error = $0 }
+            ),
+            source: "Log Settings",
+            serverName: nil,
+            connectionID: runtime.id
+        )
+    }
+
+    private var content: some View {
+        VStack(spacing: 0) {
+            filtersBar
+
+            if viewModel.filteredEntries.isEmpty, !viewModel.isLoading {
+                ContentUnavailableView("Aucune entrée", systemImage: "doc.text")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                logTable
+            }
+        }
+        .overlay {
+            if viewModel.isLoading {
+                ProgressView()
+            }
+        }
+    }
+
+    private var filtersBar: some View {
+        HStack(spacing: 10) {
+            Picker("Niveau", selection: $viewModel.levelFilter) {
+                Text("Tous les niveaux").tag(Optional<WiredLogLevel>.none)
+                ForEach(WiredLogLevel.allCases, id: \.self) { level in
+                    Label(level.title, systemImage: level.systemImageName)
+                        .tag(Optional(level))
+                }
+            }
+            .frame(maxWidth: 200)
+
+            TextField("Rechercher", text: $viewModel.searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Button {
+                Task { await viewModel.refresh() }
+            } label: {
+                Label("Rafraîchir", systemImage: "arrow.clockwise")
+            }
+            .disabled(viewModel.isLoading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private var logTable: some View {
+#if os(macOS)
+        Table(viewModel.filteredEntries) {
+            TableColumn("") { entry in
+                Image(systemName: entry.level.systemImageName)
+                    .foregroundStyle(levelColor(entry.level))
+                    .help(entry.level.title)
+            }
+            .width(28)
+            .alignment(.center)
+
+            TableColumn("Date et heure") { entry in
+                Text(entry.time.formatted(date: .abbreviated, time: .standard))
+                    .monospacedDigit()
+            }
+            .width(170)
+
+            TableColumn("Niveau") { entry in
+                Text(entry.level.title)
+                    .foregroundStyle(levelColor(entry.level))
+            }
+            .width(70)
+
+            TableColumn("Message") { entry in
+                Text(entry.message)
+                    .lineLimit(2)
+                    .font(.system(.body, design: .monospaced))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+#else
+        List(viewModel.filteredEntries) { entry in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: entry.level.systemImageName)
+                        .foregroundStyle(levelColor(entry.level))
+                    Text(entry.message)
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(4)
+                }
+                Text(entry.time.formatted(date: .abbreviated, time: .standard))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+#endif
+    }
+
+    private func levelColor(_ level: WiredLogLevel) -> Color {
+        switch level {
+        case .debug:   return .secondary
+        case .info:    return .primary
+        case .warning: return .yellow
+        case .error:   return .red
+        }
     }
 }
