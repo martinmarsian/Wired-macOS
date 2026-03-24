@@ -827,7 +827,7 @@ final class ConnectionController {
         }
 
         let task = Task {
-            let maxConnectAttempts = 1
+            let maxConnectAttempts = 3
 
             for attempt in 1...maxConnectAttempts {
                 do {
@@ -1078,8 +1078,6 @@ final class ConnectionController {
             "network is unreachable",
             "host is down",
             "no route to host",
-            "timed out",
-            "operation timed out",
             "connection refused"
         ]
 
