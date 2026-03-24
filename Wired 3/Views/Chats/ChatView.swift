@@ -113,6 +113,8 @@ struct ChatView: View {
                 .backgroundEdgeFade(top: 0, bottom: 60)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
+            .contentMargins(.bottom, 30, for: .scrollIndicators)
+            
 #if os(macOS)
             Divider()
             
