@@ -13,10 +13,9 @@ import AppKit
 
 struct ChatView: View {
     @Environment(ConnectionRuntime.self) private var runtime
-    
+
     var chat: Chat
     var searchText: String = ""
-    @State private var chatInput: String = ""
     @State private var typingDebounceTask: Task<Void, Never>?
     @State private var typingRefreshTask: Task<Void, Never>?
 #if os(iOS)
@@ -24,6 +23,17 @@ struct ChatView: View {
 #endif
     
     
+    private var chatInput: String {
+        runtime.chatDrafts[chat.id] ?? ""
+    }
+
+    private var chatInputBinding: Binding<String> {
+        Binding(
+            get: { runtime.chatDrafts[chat.id] ?? "" },
+            set: { runtime.chatDrafts[chat.id] = $0.isEmpty ? nil : $0 }
+        )
+    }
+
     private var windowBackground: Color {
         #if os(macOS)
         Color(nsColor: .textBackgroundColor)
@@ -78,7 +88,7 @@ struct ChatView: View {
 
                 HStack(alignment: .top, spacing: 0) {
                     ConversationComposer(
-                        text: $chatInput,
+                        text: chatInputBinding,
                         placeholder: "Chat here…",
                         isEnabled: true,
                         onSend: { text in
