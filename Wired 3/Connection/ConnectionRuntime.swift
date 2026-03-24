@@ -260,6 +260,7 @@ final class ConnectionRuntime: Identifiable {
     var boardsLoaded: Bool = false
     var selectedBoardPath: String?
     var selectedThreadUUID: String?
+    var selectedSmartBoardID: String?
     var boardSearchResults: [BoardSearchResult] = []
     var isSearchingBoards: Bool = false
     var boardNetworkActivityCount: Int = 0
@@ -545,6 +546,7 @@ final class ConnectionRuntime: Identifiable {
         boardsLoaded = false
         selectedBoardPath = nil
         selectedThreadUUID = nil
+        selectedSmartBoardID = nil
         boardSearchResults = []
         isSearchingBoards = false
         pendingBoardPostScrollTarget = nil

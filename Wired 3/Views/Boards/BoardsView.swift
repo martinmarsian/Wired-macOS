@@ -215,11 +215,17 @@ struct BoardsView: View {
     }
 
     private func restoreSelectionFromRuntime() {
-        let boardPath  = runtime.selectedBoardPath
-        let threadUUID = runtime.selectedThreadUUID
-        guard boardPath != nil || threadUUID != nil else { return }
+        let boardPath    = runtime.selectedBoardPath
+        let threadUUID   = runtime.selectedThreadUUID
+        let smartBoardID = runtime.selectedSmartBoardID
+        guard boardPath != nil || threadUUID != nil || smartBoardID != nil else { return }
 
-        selectedBoardPath = boardPath
+        if let smartBoardID {
+            // Smart board: set directly — its onChange does not clear threadUUID
+            selectedSmartBoardID = smartBoardID
+        } else {
+            selectedBoardPath = boardPath
+        }
 
         // onChange(of: selectedBoardPath) clears selectedThreadUUID and
         // runtime.selectedThreadUUID, so we restore the thread in the next
@@ -664,6 +670,7 @@ struct BoardsView: View {
             selectedThreadUUID = nil
             runtime.selectedBoardPath = nil
             runtime.selectedThreadUUID = nil
+            runtime.selectedSmartBoardID = smartID
             if let smartBoard = selectedSmartBoard {
                 Task { await preloadSmartBoardData(for: smartBoard) }
             }
@@ -1247,6 +1254,7 @@ struct BoardsView: View {
             selectedThreadUUID = nil
             if selectedBoardPath != nil {
                 selectedSmartBoardID = nil
+                runtime.selectedSmartBoardID = nil
             }
             guard let board = selectedBoard else { return }
             if !board.threadsLoaded {
