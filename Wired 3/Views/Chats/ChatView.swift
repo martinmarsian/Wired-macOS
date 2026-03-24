@@ -332,6 +332,7 @@ struct ConversationComposer: View {
                     ChatInputField(
                         text: $text,
                         dynamicHeight: $inputHeight,
+                        isEnabled: isEnabled,
                         onSubmit: {
                             submit()
                         },
@@ -626,6 +627,7 @@ private final class FocusableInputScrollView: NSScrollView {
 private struct ChatInputField: NSViewRepresentable {
     @Binding var text: String
     @Binding var dynamicHeight: CGFloat
+    var isEnabled: Bool = true
 
     let onSubmit: () -> Void
     let onHistoryUp: () -> Void
@@ -655,7 +657,7 @@ private struct ChatInputField: NSViewRepresentable {
 
         let textView = NSTextView(frame: .zero)
         textView.isRichText = false
-        textView.isEditable = true
+        textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.allowsUndo = true
         textView.drawsBackground = false
@@ -691,8 +693,10 @@ private struct ChatInputField: NSViewRepresentable {
             }
             context.coordinator.recomputeHeight()
         }
-        DispatchQueue.main.async {
-            textView.window?.makeFirstResponder(textView)
+        if isEnabled {
+            DispatchQueue.main.async {
+                textView.window?.makeFirstResponder(textView)
+            }
         }
         return scrollView
     }
@@ -713,6 +717,12 @@ private struct ChatInputField: NSViewRepresentable {
         }
         DispatchQueue.main.async {
             context.coordinator.recomputeHeight()
+        }
+        if textView.isEditable != isEnabled {
+            textView.isEditable = isEnabled
+            if !isEnabled, textView.window?.firstResponder === textView {
+                textView.window?.makeFirstResponder(nil)
+            }
         }
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onHistoryUp = onHistoryUp

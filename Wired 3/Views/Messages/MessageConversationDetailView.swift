@@ -35,10 +35,16 @@ struct MessageConversationDetailView: View {
     }
 
     private var placeholder: String {
+        guard canSend else {
+            if conversation.kind == .broadcast {
+                return "No broadcast permission"
+            }
+            return "User unavailable"
+        }
         if conversation.kind == .broadcast {
             return "Broadcast to all online users…"
         }
-        return canSend ? "Type message here…" : "User unavailable"
+        return "Type message here…"
     }
 
     var body: some View {
