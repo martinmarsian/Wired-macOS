@@ -3345,7 +3345,8 @@ private struct ReactionChipView: View {
     let canReact: Bool
     let onToggle: (String) -> Void
 
-    @State private var isHovered = false
+    @State private var showPopover = false
+    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
         Button { onToggle(reaction.emoji) } label: {
@@ -3372,8 +3373,19 @@ private struct ReactionChipView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canReact)
-        .onHover { isHovered = $0 }
-        .popover(isPresented: $isHovered, arrowEdge: .bottom) {
+        .onHover { hovering in
+            hoverTask?.cancel()
+            if hovering {
+                hoverTask = Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
+                    showPopover = true
+                }
+            } else {
+                showPopover = false
+            }
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             ReactionSummaryPopover(reactions: allReactions)
         }
         .contextMenu {
