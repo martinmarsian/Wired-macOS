@@ -36,7 +36,7 @@ final class Board: Identifiable, Equatable, Hashable {
     var children: [Board]? = nil  // nil = leaf, [] = loaded empty, [...] = sub-boards
     
     var unreadPostsCount: Int {
-        let threadsUnread = threads.reduce(0) { $0 + $1.unreadPostsCount }
+        let threadsUnread = threads.reduce(0) { $0 + $1.unreadPostsCount + $1.unreadReactionCount }
         let childrenUnread = (children ?? []).reduce(0) { $0 + $1.unreadPostsCount }
         return threadsUnread + childrenUnread
     }

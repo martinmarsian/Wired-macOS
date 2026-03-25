@@ -45,6 +45,8 @@ final class BoardPost: Identifiable {
     var isThreadBody: Bool = false
     var reactions: [BoardReactionSummary] = []
     var reactionsLoaded: Bool = false
+    /// Emojis that arrived from other users and haven't been animated yet (cleared after ~0.8 s).
+    var newReactionEmojis: Set<String> = []
 
     init(uuid: String,
          threadUUID: String,

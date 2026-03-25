@@ -406,7 +406,7 @@ struct BoardsView: View {
         let threads = boardsForSmartBoard(smartBoard).flatMap { $0.threads }
 
         return threads.filter { thread in
-            if smartBoard.unreadOnly && thread.unreadPostsCount <= 0 {
+            if smartBoard.unreadOnly && thread.unreadPostsCount + thread.unreadReactionCount <= 0 {
                 return false
             }
 
@@ -475,11 +475,11 @@ struct BoardsView: View {
     }
 
     private func threadReadStateLabel(for thread: BoardThread) -> String {
-        thread.unreadPostsCount > 0 ? "Mark as Read" : "Mark as Unread"
+        thread.unreadPostsCount + thread.unreadReactionCount > 0 ? "Mark as Read" : "Mark as Unread"
     }
 
     private func toggleThreadReadState(_ thread: BoardThread) {
-        if thread.unreadPostsCount > 0 {
+        if thread.unreadPostsCount + thread.unreadReactionCount > 0 {
             runtime.markThreadAsRead(thread)
         } else {
             runtime.markThreadAsUnread(thread)
@@ -584,8 +584,8 @@ struct BoardsView: View {
             let primary: ComparisonResult = {
                 switch currentThreadSortCriterion {
                 case .unread:
-                    let lhsUnread = lhs.unreadPostsCount
-                    let rhsUnread = rhs.unreadPostsCount
+                    let lhsUnread = lhs.unreadPostsCount + lhs.unreadReactionCount
+                    let rhsUnread = rhs.unreadPostsCount + rhs.unreadReactionCount
                     if lhsUnread < rhsUnread { return .orderedAscending }
                     if lhsUnread > rhsUnread { return .orderedDescending }
                     return .orderedSame
@@ -1714,7 +1714,7 @@ private struct BoardSearchResultRowView: View {
 
                     Spacer(minLength: 6)
 
-                    UnreadCountBadge(count: thread?.unreadPostsCount ?? 0)
+                    UnreadCountBadge(count: (thread?.unreadPostsCount ?? 0) + (thread?.unreadReactionCount ?? 0))
                 }
 
                 Text(result.snippet.isEmpty ? result.subject : result.snippet)
@@ -2667,7 +2667,7 @@ private struct ThreadRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
                     Spacer(minLength: 6)
-                    UnreadCountBadge(count: thread.unreadPostsCount)
+                    UnreadCountBadge(count: thread.unreadPostsCount + thread.unreadReactionCount)
                 }
 
                 HStack(spacing: 6) {
@@ -3177,6 +3177,7 @@ private struct PostRowView: View {
                 if canReact || !post.reactions.isEmpty {
                     ReactionBarView(
                         reactions: post.reactions,
+                        newEmojiSet: post.newReactionEmojis,
                         canReact: canReact,
                         onToggle: onToggleReaction
                     )
@@ -3234,6 +3235,8 @@ private struct PostRowView: View {
 
 private struct ReactionBarView: View {
     let reactions: [BoardReactionSummary]
+    /// Emojis that just arrived from other users — used to trigger the shake animation.
+    var newEmojiSet: Set<String> = []
     let canReact: Bool
     let onToggle: (String) -> Void
 
@@ -3246,6 +3249,7 @@ private struct ReactionBarView: View {
                     reaction: reaction,
                     allReactions: reactions,
                     canReact: canReact,
+                    isNew: newEmojiSet.contains(reaction.emoji),
                     onToggle: onToggle
                 )
             }
@@ -3343,10 +3347,13 @@ private struct ReactionChipView: View {
     /// Full reaction list passed so the hover popover can show all reactions at once.
     let allReactions: [BoardReactionSummary]
     let canReact: Bool
+    /// Set to `true` for one render cycle when this emoji just arrived from another user.
+    var isNew: Bool = false
     let onToggle: (String) -> Void
 
     @State private var showPopover = false
     @State private var hoverTask: Task<Void, Never>?
+    @State private var shakeOffset: CGFloat = 0
 
     var body: some View {
         Button { onToggle(reaction.emoji) } label: {
@@ -3373,6 +3380,10 @@ private struct ReactionChipView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canReact)
+        .offset(x: shakeOffset)
+        .onChange(of: isNew) { _, newVal in
+            if newVal { performShake() }
+        }
         .onHover { hovering in
             hoverTask?.cancel()
             if hovering {
@@ -3394,6 +3405,24 @@ private struct ReactionChipView: View {
                     onToggle(reaction.emoji)
                 }
             }
+        }
+    }
+
+    /// Brief left-right wiggle to signal a newly arrived reaction.
+    private func performShake() {
+        let step = 0.07
+        withAnimation(.easeInOut(duration: step))         { shakeOffset = -4 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 1) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  4 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 2) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset = -3 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 3) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  2 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 4) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  0 }
         }
     }
 }

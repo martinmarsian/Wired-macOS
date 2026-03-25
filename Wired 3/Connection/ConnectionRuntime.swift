@@ -767,6 +767,7 @@ final class ConnectionRuntime: Identifiable {
         for post in thread.posts where !post.isThreadBody {
             boardReadIDs.insert(post.uuid)
         }
+        thread.unreadReactionCount = 0
         if persist {
             persistBoardReadIDs()
         }
@@ -2321,6 +2322,21 @@ final class ConnectionRuntime: Identifiable {
             }
         }
 
+        // Unread-reaction badge: count incoming reactions from other users.
+        let reactorNick = nick
+        let isOwnReaction = reactorNick == nil || reactorNick == currentNick
+        if added, !isOwnReaction, let t = thread(uuid: threadUUID) {
+            // Only increment when the thread is not the one currently being viewed.
+            if threadUUID != selectedThreadUUID {
+                t.unreadReactionCount += 1
+                connectionController.updateNotificationsBadge()
+            }
+        }
+        if !added, !isOwnReaction, let t = thread(uuid: threadUUID), t.unreadReactionCount > 0 {
+            t.unreadReactionCount -= 1
+            connectionController.updateNotificationsBadge()
+        }
+
         // Post-level detail update only makes sense when reactions are already loaded.
         guard let post = target, post.reactionsLoaded else { return }
 
@@ -2345,6 +2361,17 @@ final class ConnectionRuntime: Identifiable {
                 emoji: emoji, count: count, isOwn: false,
                 nicks: nick.map { [$0] } ?? []
             ))
+        }
+
+        // Trigger shake animation on the chip for incoming reactions from other users.
+        if added, !isOwnReaction {
+            post.newReactionEmojis.insert(emoji)
+            let capturedPost = post
+            let capturedEmoji = emoji
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                capturedPost.newReactionEmojis.remove(capturedEmoji)
+            }
         }
     }
 
