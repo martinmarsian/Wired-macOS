@@ -3403,81 +3403,66 @@ private struct ReactionChipView: View {
 private struct EmojiPickerPopover: View {
     let onSelect: (String) -> Void
 
-    @State private var customEmoji: String = ""
-    @FocusState private var fieldFocused: Bool
-
-    private let quickEmojis = [
-        "👍", "👎", "❤️", "😂", "😮",
-        "🎉", "🤔", "🔥", "👀", "✅"
-    ]
+    private static let quickEmojis = ["👍","👎","❤️","😂","😮","🎉","🤔","🔥","👀","✅"]
+    private static let columns     = Array(repeating: GridItem(.flexible(), spacing: 1), count: 8)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("React")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.fixed(34), spacing: 4), count: 5),
-                spacing: 4
-            ) {
-                ForEach(quickEmojis, id: \.self) { emoji in
-                    Button {
-                        onSelect(emoji)
-                    } label: {
-                        Text(emoji)
-                            .font(.title2)
-                            .frame(width: 34, height: 34)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
-                    }
-                    .buttonStyle(.plain)
-                    .pointerOnHover()
+        VStack(spacing: 0) {
+            // ── Quick-access row ──────────────────────────────────────
+            HStack(spacing: 1) {
+                ForEach(Self.quickEmojis, id: \.self) { emoji in
+                    emojiCell(emoji)
                 }
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
 
             Divider()
 
-            HStack(spacing: 6) {
-                TextField("Custom…", text: $customEmoji)
-                    .focused($fieldFocused)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 90)
-                    .onChange(of: customEmoji) { _, newValue in
-                        // Accept first emoji-looking character typed or pasted
-                        if let first = newValue.first, String(first).containsEmoji {
-                            onSelect(String(first))
-                        } else if newValue.containsEmoji, let emoji = newValue.firstEmojiString {
-                            onSelect(emoji)
+            // ── Full library, sectioned ───────────────────────────────
+            ScrollView(.vertical) {
+                LazyVGrid(columns: Self.columns, spacing: 1, pinnedViews: .sectionHeaders) {
+                    ForEach(EmojiLibrary.categories) { section in
+                        Section {
+                            ForEach(section.emojis, id: \.self) { emoji in
+                                emojiCell(emoji)
+                            }
+                        } header: {
+                            Text(section.name)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 6)
+                                .padding(.top, 8)
+                                .padding(.bottom, 3)
+                                .background(Color(nsColor: .windowBackgroundColor))
                         }
                     }
-
-                Button {
-                    fieldFocused = true
-                    #if os(macOS)
-                    NSApp.orderFrontCharacterPalette(nil)
-                    #endif
-                } label: {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 13))
                 }
-                .buttonStyle(.borderless)
-                .help("Open system emoji picker (⌃⌘Space)")
+                .padding(.horizontal, 4)
+                .padding(.bottom, 6)
             }
+            .frame(height: 300)
         }
-        .padding(12)
-        .frame(width: 210)
+        .frame(width: 296)
     }
-}
 
-private extension String {
-    var containsEmoji: Bool {
-        unicodeScalars.contains { $0.properties.isEmoji && $0.value > 0x231A }
-    }
-    var firstEmojiString: String? {
-        for scalar in unicodeScalars where scalar.properties.isEmoji && scalar.value > 0x231A {
-            return String(scalar)
+    @ViewBuilder
+    private func emojiCell(_ emoji: String) -> some View {
+        Button {
+            onSelect(emoji)
+        } label: {
+            Text(emoji)
+                .font(.system(size: 20))
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .contentShape(RoundedRectangle(cornerRadius: 5))
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.primary.opacity(0.001)) // hit-test surface
+                )
         }
-        return nil
+        .buttonStyle(.plain)
+        .pointerOnHover()
     }
 }
 
