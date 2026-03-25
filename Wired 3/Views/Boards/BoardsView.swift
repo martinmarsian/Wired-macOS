@@ -3476,7 +3476,6 @@ private struct EmojiPickerPopover: View {
                     .padding(.horizontal, 4)
                     .padding(.bottom, 6)
                 }
-                .scrollIndicators(.hidden)
                 .frame(height: 300)
             } else {
                 // ── Search results ────────────────────────────────────
@@ -3497,7 +3496,6 @@ private struct EmojiPickerPopover: View {
                         .padding(.vertical, 6)
                     }
                 }
-                .scrollIndicators(.hidden)
                 .frame(height: 300)
             }
         }
