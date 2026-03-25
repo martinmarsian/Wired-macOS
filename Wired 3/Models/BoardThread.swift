@@ -66,9 +66,14 @@ final class BoardThread: Identifiable, Equatable, Hashable {
     var isOwn: Bool
     var isUnreadThread: Bool = false
     var unreadPostsCount: Int = 0
+    /// Number of new reactions received from other users since this thread was last marked read.
+    var unreadReactionCount: Int = 0
 
     var posts: [BoardPost] = []
     var postsLoaded: Bool = false
+
+    /// Emoji list of the thread-body's reactions — populated lazily after first open.
+    var topReactionEmojis: [String] = []
 
     init(uuid: String,
          boardPath: String,

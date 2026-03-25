@@ -45,6 +45,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
     case messageReceived = 8
     case broadcastReceived = 10
     case boardPostAdded = 9
+    case boardReactionReceived = 17
     case transferStarted = 11
     case transferFinished = 12
 
@@ -61,6 +62,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
         case .chatReceived: return "Chat Received"
         case .messageReceived: return "Message Received"
         case .boardPostAdded: return "Board Post Added"
+        case .boardReactionReceived: return "Board Reaction Received"
         case .broadcastReceived: return "Broadcast Received"
         case .transferStarted: return "Transfer Started"
         case .transferFinished: return "Transfer Finished"
@@ -86,6 +88,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
         .messageReceived,
         .broadcastReceived,
         .boardPostAdded,
+        .boardReactionReceived,
         .transferStarted,
         .transferFinished,
     ]
@@ -1853,6 +1856,10 @@ final class ConnectionController {
                                             postDate: postDate, replies: replies, isOwn: isOwn)
                     thread.lastReplyDate = lastReplyDate
                     thread.lastReplyUUID = message.uuid(forField: "wired.board.latest_reply")
+                    if let emojisStr = message.string(forField: "wired.board.reaction.emojis"),
+                       !emojisStr.isEmpty {
+                        thread.topReactionEmojis = emojisStr.components(separatedBy: "|")
+                    }
                     runtime.applyBoardThreadListState(to: thread)
                     board.threads.append(thread)
                 }
@@ -2192,6 +2199,38 @@ final class ConnectionController {
                 if let thread = runtime.thread(uuid: uuid) {
                     runtime.boardsByPath[thread.boardPath]?.threads.removeAll { $0.uuid == uuid }
                     runtime.connectionController.updateNotificationsBadge()
+                }
+            }
+
+        case "wired.board.reaction_added", "wired.board.reaction_removed":
+            guard
+                let threadUUID = message.uuid(forField: "wired.board.thread"),
+                let emoji      = message.string(forField: "wired.board.reaction.emoji"),
+                let count      = message.uint32(forField: "wired.board.reaction.count")
+            else { break }
+            let postUUID = message.uuid(forField: "wired.board.post")
+            let nick     = message.string(forField: "wired.board.reaction.nick")
+            let added    = message.name == "wired.board.reaction_added"
+            await MainActor.run {
+                runtime.applyReactionBroadcast(
+                    threadUUID: threadUUID,
+                    postUUID: postUUID,
+                    emoji: emoji,
+                    count: Int(count),
+                    added: added,
+                    nick: nick
+                )
+
+                // Fire event notification only for incoming reactions (not our own).
+                if added, let reactorNick = nick, reactorNick != runtime.currentNick {
+                    let subject = runtime.thread(uuid: threadUUID)?.subject ?? "a thread"
+                    self.triggerEvent(
+                        .boardReactionReceived,
+                        runtime: runtime,
+                        subtitle: reactorNick,
+                        body: "\(reactorNick) reacted with \(emoji) to \(subject)",
+                        chatText: nil
+                    )
                 }
             }
 

@@ -962,7 +962,7 @@ struct EventsSettingsView: View {
         let activity: [WiredEventTag] = [
             .userJoined, .userChangedNick, .userChangedStatus, .userLeft,
             .chatReceived, .chatSent, .highlightedChatReceived, .chatInvitationReceived,
-            .messageReceived, .broadcastReceived, .boardPostAdded
+            .messageReceived, .broadcastReceived, .boardPostAdded, .boardReactionReceived
         ]
         let transfers: [WiredEventTag] = [.transferStarted, .transferFinished]
 
@@ -1066,6 +1066,7 @@ struct EventsSettingsView: View {
         case .messageReceived: return "envelope.badge"
         case .broadcastReceived: return "megaphone"
         case .boardPostAdded: return "text.page.badge.magnifyingglass"
+        case .boardReactionReceived: return "face.smiling"
         case .transferStarted: return "arrow.down.circle"
         case .transferFinished: return "checkmark.circle"
         }

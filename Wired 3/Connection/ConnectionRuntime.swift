@@ -254,6 +254,11 @@ final class ConnectionRuntime: Identifiable {
     var boardsByPath: [String: Board] = [:]
     @ObservationIgnored
     private var pendingLocalPostUUIDByThread: [String: String] = [:]
+    /// Reaction emojis that arrived while a thread's reactions weren't loaded yet.
+    /// Outer key: threadUUID. Inner key: postUUID or "body" for the thread body.
+    /// Applied as shake animations when `getReactions` completes for the matching post.
+    @ObservationIgnored
+    private var pendingReactionAnimations: [String: [String: Set<String>]] = [:]
     @ObservationIgnored
     private(set) var boardReadIDs: Set<String> = []
     var allBoardThreadsLoaded: Bool = false
@@ -767,6 +772,7 @@ final class ConnectionRuntime: Identifiable {
         for post in thread.posts where !post.isThreadBody {
             boardReadIDs.insert(post.uuid)
         }
+        thread.unreadReactionCount = 0
         if persist {
             persistBoardReadIDs()
         }
@@ -2246,6 +2252,158 @@ final class ConnectionRuntime: Identifiable {
             return p
         }
         return false
+    }
+
+    // MARK: - Reactions
+
+    /// Fetches the reaction summaries for a post (or a thread body when `post.isThreadBody == true`)
+    /// and updates the post's `reactions` and `reactionsLoaded` properties on the main actor.
+    func getReactions(forPost post: BoardPost) async throws {
+        let connection = try requireAsyncConnection()
+
+        let m = P7Message(withName: "wired.board.get_reactions", spec: spec!)
+        m.addParameter(field: "wired.board.thread", value: post.threadUUID)
+        if !post.isThreadBody {
+            m.addParameter(field: "wired.board.post", value: post.uuid)
+        }
+
+        var summaries: [BoardReactionSummary] = []
+        for try await response in try connection.sendAndWaitMany(m) {
+            guard response.name == "wired.board.reaction_list",
+                  let emoji = response.string(forField: "wired.board.reaction.emoji"),
+                  let count  = response.uint32(forField: "wired.board.reaction.count"),
+                  let isOwn  = response.bool(forField: "wired.board.reaction.is_own")
+            else { continue }
+            let nicksStr = response.string(forField: "wired.board.reaction.nicks") ?? ""
+            let nicks = nicksStr.isEmpty ? [] : nicksStr.components(separatedBy: "|")
+            summaries.append(BoardReactionSummary(emoji: emoji, count: Int(count), isOwn: isOwn, nicks: nicks))
+        }
+
+        post.reactions = summaries
+        post.reactionsLoaded = true
+
+        // Mirror emoji list to the parent thread for the thread-list preview.
+        if post.isThreadBody {
+            thread(uuid: post.threadUUID)?.topReactionEmojis = summaries.map(\.emoji)
+        }
+
+        // Apply any reaction animations that arrived while the thread was closed.
+        let innerKey = post.isThreadBody ? "body" : post.uuid
+        if let pendingEmojis = pendingReactionAnimations[post.threadUUID]?[innerKey],
+           !pendingEmojis.isEmpty {
+            pendingReactionAnimations[post.threadUUID]?.removeValue(forKey: innerKey)
+            // Only animate emojis that are actually present in the loaded reactions.
+            let toAnimate = pendingEmojis.filter { e in summaries.contains { $0.emoji == e } }
+            guard !toAnimate.isEmpty else { return }
+            let capturedPost = post
+            Task { @MainActor in
+                // Wait for the thread view to finish rendering before shaking.
+                try? await Task.sleep(for: .milliseconds(600))
+                capturedPost.newReactionEmojis = toAnimate
+                try? await Task.sleep(for: .milliseconds(800))
+                capturedPost.newReactionEmojis = []
+            }
+        }
+    }
+
+    /// Sends an `add_reaction` toggle request. The server will reply with `reaction_added`
+    /// or `reaction_removed` broadcast which `ConnectionController` handles to update state.
+    func toggleReaction(emoji: String, forPost post: BoardPost) async throws {
+        let m = P7Message(withName: "wired.board.add_reaction", spec: spec!)
+        m.addParameter(field: "wired.board.thread",         value: post.threadUUID)
+        if !post.isThreadBody {
+            m.addParameter(field: "wired.board.post",       value: post.uuid)
+        }
+        m.addParameter(field: "wired.board.reaction.emoji", value: emoji)
+        if let response = try await send(m), response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+        // Refresh so isOwn is accurate. Keep reactionsLoaded = true so applyReactionBroadcast
+        // (which fires concurrently) can still update other clients' counts.
+        try? await getReactions(forPost: post)
+    }
+
+    /// Called from `ConnectionController` when a `reaction_added` or `reaction_removed`
+    /// broadcast arrives. Finds the matching post and updates its reaction summaries in-place.
+    func applyReactionBroadcast(threadUUID: String, postUUID: String?,
+                                emoji: String, count: Int, added: Bool, nick: String?) {
+        // Locate the target post (thread body or reply).
+        let target: BoardPost?
+        if let postUUID {
+            target = thread(uuid: threadUUID)?.posts.first { $0.uuid == postUUID }
+        } else {
+            target = thread(uuid: threadUUID)?.posts.first { $0.isThreadBody }
+        }
+
+        // Always keep the thread-list emoji preview in sync, regardless of whether
+        // the full reaction detail has been lazily loaded for this thread.
+        if postUUID == nil, let t = thread(uuid: threadUUID) {
+            if count == 0 {
+                t.topReactionEmojis.removeAll { $0 == emoji }
+            } else if added, !t.topReactionEmojis.contains(emoji) {
+                t.topReactionEmojis.append(emoji)
+            }
+        }
+
+        // Unread-reaction badge: count incoming reactions from other users.
+        let reactorNick = nick
+        let isOwnReaction = reactorNick == nil || reactorNick == currentNick
+        if added, !isOwnReaction, let t = thread(uuid: threadUUID) {
+            // Only increment when the thread is not the one currently being viewed.
+            if threadUUID != selectedThreadUUID {
+                t.unreadReactionCount += 1
+                connectionController.updateNotificationsBadge()
+            }
+        }
+        if !added, !isOwnReaction, let t = thread(uuid: threadUUID), t.unreadReactionCount > 0 {
+            t.unreadReactionCount -= 1
+            connectionController.updateNotificationsBadge()
+        }
+
+        // If the post/reactions aren't loaded yet, store the emoji for deferred animation.
+        if added, !isOwnReaction {
+            if target == nil || !target!.reactionsLoaded {
+                let innerKey = postUUID ?? "body"
+                pendingReactionAnimations[threadUUID, default: [:]][innerKey, default: []].insert(emoji)
+            }
+        }
+
+        // Post-level detail update only makes sense when reactions are already loaded.
+        guard let post = target, post.reactionsLoaded else { return }
+
+        if count == 0 {
+            post.reactions.removeAll { $0.emoji == emoji }
+        } else if let idx = post.reactions.firstIndex(where: { $0.emoji == emoji }) {
+            // Update existing summary — preserve isOwn; append nick on addition.
+            var updatedNicks = post.reactions[idx].nicks
+            if added, let nick, !updatedNicks.contains(nick) {
+                updatedNicks.append(nick)
+            }
+            // On removal we can't know which nick left without a full refresh,
+            // so nicks stay slightly stale until the next getReactions call.
+            post.reactions[idx] = BoardReactionSummary(
+                emoji: emoji,
+                count: count,
+                isOwn: post.reactions[idx].isOwn,
+                nicks: updatedNicks
+            )
+        } else if added {
+            post.reactions.append(BoardReactionSummary(
+                emoji: emoji, count: count, isOwn: false,
+                nicks: nick.map { [$0] } ?? []
+            ))
+        }
+
+        // Trigger shake animation on the chip for incoming reactions from other users.
+        if added, !isOwnReaction {
+            post.newReactionEmojis.insert(emoji)
+            let capturedPost = post
+            let capturedEmoji = emoji
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                capturedPost.newReactionEmojis.remove(capturedEmoji)
+            }
+        }
     }
 
     private func requireAsyncConnection() throws -> AsyncConnection {

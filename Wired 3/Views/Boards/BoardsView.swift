@@ -406,7 +406,7 @@ struct BoardsView: View {
         let threads = boardsForSmartBoard(smartBoard).flatMap { $0.threads }
 
         return threads.filter { thread in
-            if smartBoard.unreadOnly && thread.unreadPostsCount <= 0 {
+            if smartBoard.unreadOnly && thread.unreadPostsCount + thread.unreadReactionCount <= 0 {
                 return false
             }
 
@@ -475,11 +475,11 @@ struct BoardsView: View {
     }
 
     private func threadReadStateLabel(for thread: BoardThread) -> String {
-        thread.unreadPostsCount > 0 ? "Mark as Read" : "Mark as Unread"
+        thread.unreadPostsCount + thread.unreadReactionCount > 0 ? "Mark as Read" : "Mark as Unread"
     }
 
     private func toggleThreadReadState(_ thread: BoardThread) {
-        if thread.unreadPostsCount > 0 {
+        if thread.unreadPostsCount + thread.unreadReactionCount > 0 {
             runtime.markThreadAsRead(thread)
         } else {
             runtime.markThreadAsUnread(thread)
@@ -584,8 +584,8 @@ struct BoardsView: View {
             let primary: ComparisonResult = {
                 switch currentThreadSortCriterion {
                 case .unread:
-                    let lhsUnread = lhs.unreadPostsCount
-                    let rhsUnread = rhs.unreadPostsCount
+                    let lhsUnread = lhs.unreadPostsCount + lhs.unreadReactionCount
+                    let rhsUnread = rhs.unreadPostsCount + rhs.unreadReactionCount
                     if lhsUnread < rhsUnread { return .orderedAscending }
                     if lhsUnread > rhsUnread { return .orderedDescending }
                     return .orderedSame
@@ -1714,7 +1714,7 @@ private struct BoardSearchResultRowView: View {
 
                     Spacer(minLength: 6)
 
-                    UnreadCountBadge(count: thread?.unreadPostsCount ?? 0)
+                    UnreadCountBadge(count: (thread?.unreadPostsCount ?? 0) + (thread?.unreadReactionCount ?? 0))
                 }
 
                 Text(result.snippet.isEmpty ? result.subject : result.snippet)
@@ -2667,7 +2667,7 @@ private struct ThreadRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
                     Spacer(minLength: 6)
-                    UnreadCountBadge(count: thread.unreadPostsCount)
+                    UnreadCountBadge(count: thread.unreadPostsCount + thread.unreadReactionCount)
                 }
 
                 HStack(spacing: 6) {
@@ -2676,6 +2676,12 @@ private struct ThreadRowView: View {
                         .foregroundStyle(.secondary)
 
                     Spacer()
+
+                    if !thread.topReactionEmojis.isEmpty {
+                        Text(thread.topReactionEmojis.prefix(5).joined())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if thread.replies > 0 {
                         Label("\(thread.replies)", systemImage: "bubble.right")
@@ -2894,6 +2900,10 @@ private struct PostsDetailView: View {
         }
     }
 
+    private var canReact: Bool {
+        runtime.hasPrivilege("wired.account.board.add_reactions")
+    }
+
     private func postRow(_ post: BoardPost) -> some View {
         VStack(spacing: 0) {
             PostRowView(
@@ -2902,13 +2912,21 @@ private struct PostsDetailView: View {
                 canReply: canReplyToThread,
                 canEdit: canEditPost(post),
                 canDelete: canDeletePost(post),
+                canReact: canReact,
                 onReply: { openReplyFromPost(post, selectedText: nil) },
                 onQuote: { selectedText in openReplyFromPost(post, selectedText: selectedText) },
                 onEdit: { postToEdit = post },
-                onDelete: { postToDelete = post }
+                onDelete: { postToDelete = post },
+                onToggleReaction: { emoji in
+                    Task { try? await runtime.toggleReaction(emoji: emoji, forPost: post) }
+                }
             )
             .padding(.horizontal)
             .id(post.uuid)
+            .task(id: post.uuid) {
+                guard !post.reactionsLoaded else { return }
+                try? await runtime.getReactions(forPost: post)
+            }
 
             Divider()
                 .padding(.horizontal)
@@ -2924,10 +2942,12 @@ private struct PostRowView: View {
     let canReply: Bool
     let canEdit: Bool
     let canDelete: Bool
+    let canReact: Bool
     let onReply: () -> Void
     let onQuote: (String?) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    let onToggleReaction: (String) -> Void
     @State private var isHoveringText = false
 
     private struct TextSegment: Identifiable {
@@ -3153,7 +3173,15 @@ private struct PostRowView: View {
                 .padding(.top, 4)
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                if canReact || !post.reactions.isEmpty {
+                    ReactionBarView(
+                        reactions: post.reactions,
+                        newEmojiSet: post.newReactionEmojis,
+                        canReact: canReact,
+                        onToggle: onToggleReaction
+                    )
+                }
                 Spacer()
                 if canReply {
                     Button("Reply") { onReply() }
@@ -3170,6 +3198,7 @@ private struct PostRowView: View {
                         .buttonStyle(.borderless)
                 }
             }
+            .padding(.top, 30)
             .font(.caption)
         }
         .padding(.vertical, 12)
@@ -3199,6 +3228,336 @@ private struct PostRowView: View {
         #else
         return nil
         #endif
+    }
+}
+
+// MARK: - ReactionBarView
+
+private struct ReactionBarView: View {
+    let reactions: [BoardReactionSummary]
+    /// Emojis that just arrived from other users — used to trigger the shake animation.
+    var newEmojiSet: Set<String> = []
+    let canReact: Bool
+    let onToggle: (String) -> Void
+
+    @State private var showEmojiPicker = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(reactions) { reaction in
+                ReactionChipView(
+                    reaction: reaction,
+                    allReactions: reactions,
+                    canReact: canReact,
+                    isNew: newEmojiSet.contains(reaction.emoji),
+                    onToggle: onToggle
+                )
+            }
+            if canReact {
+                addButton
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: reactions.map(\.count))
+    }
+
+    @ViewBuilder
+    private var addButton: some View {
+        Button { showEmojiPicker = true } label: {
+            Image(systemName: "face.smiling")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.08)))
+                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Add a reaction")
+        .popover(isPresented: $showEmojiPicker, arrowEdge: .bottom) {
+            EmojiPickerPopover { emoji in
+                onToggle(emoji)
+                showEmojiPicker = false
+            }
+        }
+    }
+}
+
+// MARK: - ReactionSummaryPopover
+
+private struct ReactionSummaryPopover: View {
+    let reactions: [BoardReactionSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Reactions")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(reactions) { reaction in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(reaction.emoji)
+                                .font(.title3)
+                                .frame(width: 28, alignment: .center)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
+                                        .font(.subheadline.weight(.medium))
+                                    if reaction.isOwn {
+                                        Circle()
+                                            .fill(Color.accentColor)
+                                            .frame(width: 5, height: 5)
+                                    }
+                                }
+                                if !reaction.nicks.isEmpty {
+                                    Text(reaction.nicks.joined(separator: ", "))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+
+                        if reaction.id != reactions.last?.id {
+                            Divider().padding(.leading, 52)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 240)
+        }
+        .frame(width: 230)
+        .padding(.bottom, 6)
+    }
+}
+
+// MARK: - ReactionChipView
+
+private struct ReactionChipView: View {
+    let reaction: BoardReactionSummary
+    /// Full reaction list passed so the hover popover can show all reactions at once.
+    let allReactions: [BoardReactionSummary]
+    let canReact: Bool
+    /// Set to `true` for one render cycle when this emoji just arrived from another user.
+    var isNew: Bool = false
+    let onToggle: (String) -> Void
+
+    @State private var showPopover = false
+    @State private var hoverTask: Task<Void, Never>?
+    @State private var shakeOffset: CGFloat = 0
+
+    var body: some View {
+        Button { onToggle(reaction.emoji) } label: {
+            HStack(spacing: 4) {
+                Text(reaction.emoji)
+                    .font(.system(size: 14))
+                Text("\(reaction.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(reaction.isOwn ? Color.white : Color.primary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(reaction.isOwn ? Color.accentColor : Color.secondary.opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        reaction.isOwn ? Color.accentColor : Color.secondary.opacity(0.25),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!canReact)
+        .offset(x: shakeOffset)
+        .onChange(of: isNew) { _, newVal in
+            if newVal { performShake() }
+        }
+        .onHover { hovering in
+            hoverTask?.cancel()
+            if hovering {
+                hoverTask = Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
+                    showPopover = true
+                }
+            } else {
+                showPopover = false
+            }
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+            ReactionSummaryPopover(reactions: allReactions)
+        }
+        .contextMenu {
+            if canReact {
+                Button(reaction.isOwn ? "Remove your reaction" : "React with \(reaction.emoji)") {
+                    onToggle(reaction.emoji)
+                }
+            }
+        }
+    }
+
+    /// Brief left-right wiggle to signal a newly arrived reaction.
+    private func performShake() {
+        let step = 0.07
+        withAnimation(.easeInOut(duration: step))         { shakeOffset = -4 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 1) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  4 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 2) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset = -3 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 3) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  2 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * 4) {
+            withAnimation(.easeInOut(duration: step))     { shakeOffset =  0 }
+        }
+    }
+}
+
+// MARK: - EmojiPickerPopover
+
+private struct EmojiPickerPopover: View {
+    let onSelect: (String) -> Void
+
+    @State private var searchText = ""
+
+    private static let quickEmojis = ["👍","👎","❤️","😂","😮","🎉","🤔","🔥","👀","✅"]
+    private static let columns     = Array(repeating: GridItem(.flexible(), spacing: 1), count: 8)
+
+    /// Flat filtered list used while a search query is active.
+    private var searchResults: [String] {
+        let q = searchText.lowercased()
+        guard !q.isEmpty else { return [] }
+        return EmojiLibrary.categories.flatMap(\.emojis).filter {
+            $0.emojiSearchTerms.contains(q)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ── Search bar ────────────────────────────────────────────
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                TextField("Search emoji…", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            if searchText.isEmpty {
+                // ── Quick-access row ──────────────────────────────────
+                HStack(spacing: 1) {
+                    ForEach(Self.quickEmojis, id: \.self) { emoji in
+                        emojiCell(emoji)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 6)
+
+                Divider()
+
+                // ── Full library, sectioned ───────────────────────────
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: Self.columns, spacing: 1, pinnedViews: .sectionHeaders) {
+                        ForEach(EmojiLibrary.categories) { section in
+                            Section {
+                                ForEach(section.emojis, id: \.self) { emoji in
+                                    emojiCell(emoji)
+                                }
+                            } header: {
+                                Text(section.name)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 6)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 3)
+                                    .background(Color(nsColor: .windowBackgroundColor))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 6)
+                }
+                .frame(height: 300)
+            } else {
+                // ── Search results ────────────────────────────────────
+                ScrollView(.vertical) {
+                    if searchResults.isEmpty {
+                        Text("No results for \"\(searchText)\"")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else {
+                        LazyVGrid(columns: Self.columns, spacing: 1) {
+                            ForEach(searchResults, id: \.self) { emoji in
+                                emojiCell(emoji)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 6)
+                    }
+                }
+                .frame(height: 300)
+            }
+        }
+        .frame(width: 296)
+    }
+
+    @ViewBuilder
+    private func emojiCell(_ emoji: String) -> some View {
+        Button {
+            onSelect(emoji)
+        } label: {
+            Text(emoji)
+                .font(.system(size: 20))
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .contentShape(RoundedRectangle(cornerRadius: 5))
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.primary.opacity(0.001)) // hit-test surface
+                )
+        }
+        .buttonStyle(.plain)
+        .pointerOnHover()
+    }
+}
+
+private extension String {
+    /// Searchable terms built from Unicode scalar names (e.g. "👍" → "thumbs up sign").
+    /// Multi-codepoint emoji join all base scalar names, variation selectors are skipped.
+    var emojiSearchTerms: String {
+        unicodeScalars
+            .compactMap { $0.properties.name }   // variation selectors have no name → dropped
+            .joined(separator: " ")
+            .lowercased()
     }
 }
 
