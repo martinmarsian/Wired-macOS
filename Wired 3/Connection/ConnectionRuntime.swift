@@ -773,7 +773,6 @@ final class ConnectionRuntime: Identifiable {
             boardReadIDs.insert(post.uuid)
         }
         thread.unreadReactionCount = 0
-        pendingReactionAnimations.removeValue(forKey: thread.uuid)
         if persist {
             persistBoardReadIDs()
         }
