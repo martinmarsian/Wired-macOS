@@ -254,6 +254,11 @@ final class ConnectionRuntime: Identifiable {
     var boardsByPath: [String: Board] = [:]
     @ObservationIgnored
     private var pendingLocalPostUUIDByThread: [String: String] = [:]
+    /// Reaction emojis that arrived while a thread's reactions weren't loaded yet.
+    /// Outer key: threadUUID. Inner key: postUUID or "body" for the thread body.
+    /// Applied as shake animations when `getReactions` completes for the matching post.
+    @ObservationIgnored
+    private var pendingReactionAnimations: [String: [String: Set<String>]] = [:]
     @ObservationIgnored
     private(set) var boardReadIDs: Set<String> = []
     var allBoardThreadsLoaded: Bool = false
@@ -768,6 +773,7 @@ final class ConnectionRuntime: Identifiable {
             boardReadIDs.insert(post.uuid)
         }
         thread.unreadReactionCount = 0
+        pendingReactionAnimations.removeValue(forKey: thread.uuid)
         if persist {
             persistBoardReadIDs()
         }
@@ -2281,6 +2287,24 @@ final class ConnectionRuntime: Identifiable {
         if post.isThreadBody {
             thread(uuid: post.threadUUID)?.topReactionEmojis = summaries.map(\.emoji)
         }
+
+        // Apply any reaction animations that arrived while the thread was closed.
+        let innerKey = post.isThreadBody ? "body" : post.uuid
+        if let pendingEmojis = pendingReactionAnimations[post.threadUUID]?[innerKey],
+           !pendingEmojis.isEmpty {
+            pendingReactionAnimations[post.threadUUID]?.removeValue(forKey: innerKey)
+            // Only animate emojis that are actually present in the loaded reactions.
+            let toAnimate = pendingEmojis.filter { e in summaries.contains { $0.emoji == e } }
+            guard !toAnimate.isEmpty else { return }
+            let capturedPost = post
+            Task { @MainActor in
+                // Wait for the thread view to finish rendering before shaking.
+                try? await Task.sleep(for: .milliseconds(600))
+                capturedPost.newReactionEmojis = toAnimate
+                try? await Task.sleep(for: .milliseconds(800))
+                capturedPost.newReactionEmojis = []
+            }
+        }
     }
 
     /// Sends an `add_reaction` toggle request. The server will reply with `reaction_added`
@@ -2335,6 +2359,14 @@ final class ConnectionRuntime: Identifiable {
         if !added, !isOwnReaction, let t = thread(uuid: threadUUID), t.unreadReactionCount > 0 {
             t.unreadReactionCount -= 1
             connectionController.updateNotificationsBadge()
+        }
+
+        // If the post/reactions aren't loaded yet, store the emoji for deferred animation.
+        if added, !isOwnReaction {
+            if target == nil || !target!.reactionsLoaded {
+                let innerKey = postUUID ?? "body"
+                pendingReactionAnimations[threadUUID, default: [:]][innerKey, default: []].insert(emoji)
+            }
         }
 
         // Post-level detail update only makes sense when reactions are already loaded.
