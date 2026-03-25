@@ -2268,7 +2268,9 @@ final class ConnectionRuntime: Identifiable {
                   let count  = response.uint32(forField: "wired.board.reaction.count"),
                   let isOwn  = response.bool(forField: "wired.board.reaction.is_own")
             else { continue }
-            summaries.append(BoardReactionSummary(emoji: emoji, count: Int(count), isOwn: isOwn))
+            let nicksStr = response.string(forField: "wired.board.reaction.nicks") ?? ""
+            let nicks = nicksStr.isEmpty ? [] : nicksStr.components(separatedBy: "|")
+            summaries.append(BoardReactionSummary(emoji: emoji, count: Int(count), isOwn: isOwn, nicks: nicks))
         }
 
         post.reactions = summaries
@@ -2325,16 +2327,24 @@ final class ConnectionRuntime: Identifiable {
         if count == 0 {
             post.reactions.removeAll { $0.emoji == emoji }
         } else if let idx = post.reactions.firstIndex(where: { $0.emoji == emoji }) {
-            // Update existing summary — preserve isOwn from the previous value
-            // (the broadcast doesn't change isOwn for the receiving client directly;
-            // isOwn was already set during getReactions or by the toggle initiator).
+            // Update existing summary — preserve isOwn; append nick on addition.
+            var updatedNicks = post.reactions[idx].nicks
+            if added, let nick, !updatedNicks.contains(nick) {
+                updatedNicks.append(nick)
+            }
+            // On removal we can't know which nick left without a full refresh,
+            // so nicks stay slightly stale until the next getReactions call.
             post.reactions[idx] = BoardReactionSummary(
                 emoji: emoji,
                 count: count,
-                isOwn: post.reactions[idx].isOwn
+                isOwn: post.reactions[idx].isOwn,
+                nicks: updatedNicks
             )
         } else if added {
-            post.reactions.append(BoardReactionSummary(emoji: emoji, count: count, isOwn: false))
+            post.reactions.append(BoardReactionSummary(
+                emoji: emoji, count: count, isOwn: false,
+                nicks: nick.map { [$0] } ?? []
+            ))
         }
     }
 

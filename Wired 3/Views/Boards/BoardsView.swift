@@ -3318,25 +3318,28 @@ private struct ReactionSummaryPopover: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(reactions) { reaction in
-                        HStack(spacing: 10) {
+                        HStack(alignment: .top, spacing: 10) {
                             Text(reaction.emoji)
                                 .font(.title3)
                                 .frame(width: 28, alignment: .center)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
-                                    .font(.subheadline)
-                                if reaction.isOwn {
-                                    Text("Including yours")
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
+                                        .font(.subheadline.weight(.medium))
+                                    if reaction.isOwn {
+                                        Circle()
+                                            .fill(Color.accentColor)
+                                            .frame(width: 5, height: 5)
+                                    }
+                                }
+                                if !reaction.nicks.isEmpty {
+                                    Text(reaction.nicks.joined(separator: ", "))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
-                            Spacer()
-                            if reaction.isOwn {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 6, height: 6)
-                            }
+                            Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 7)

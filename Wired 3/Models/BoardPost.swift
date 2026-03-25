@@ -15,8 +15,17 @@ struct BoardReactionSummary: Identifiable, Equatable {
     let count: Int
     /// Whether the current session account has contributed to this reaction.
     let isOwn: Bool
+    /// Display nicks of everyone who reacted with this emoji (populated from reaction_list).
+    var nicks: [String]
 
     var id: String { emoji }
+
+    init(emoji: String, count: Int, isOwn: Bool, nicks: [String] = []) {
+        self.emoji = emoji
+        self.count = count
+        self.isOwn = isOwn
+        self.nicks = nicks
+    }
 }
 
 @Observable
