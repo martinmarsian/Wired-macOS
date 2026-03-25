@@ -1259,60 +1259,89 @@ final class ConnectionRuntime: Identifiable {
         guard let key = persistenceKey() else { return }
 
         do {
+            // --- Private conversations (upsert) ---
             let privateDescriptor = FetchDescriptor<StoredPrivateConversation>(
                 predicate: #Predicate<StoredPrivateConversation> { $0.connectionKey == key }
             )
             let existingPrivateConversations = try modelContext.fetch(privateDescriptor)
-            for conversation in existingPrivateConversations {
-                modelContext.delete(conversation)
+            let inMemoryPrivateIDs = Set(messageConversations.filter { $0.kind == .direct }.map { $0.id })
+
+            for stored in existingPrivateConversations where !inMemoryPrivateIDs.contains(stored.conversationID) {
+                modelContext.delete(stored)
             }
 
+            for conversation in messageConversations where conversation.kind == .direct {
+                let storedConversation: StoredPrivateConversation
+                if let existing = existingPrivateConversations.first(where: { $0.conversationID == conversation.id }) {
+                    existing.title = conversation.title
+                    existing.participantNick = conversation.participantNick
+                    existing.participantUserID = conversation.participantUserID
+                    existing.unreadMessagesCount = conversation.unreadMessagesCount
+                    existing.lastUpdatedAt = conversation.lastMessageDate ?? .distantPast
+                    storedConversation = existing
+                } else {
+                    let new = StoredPrivateConversation(
+                        conversationID: conversation.id,
+                        connectionKey: key,
+                        title: conversation.title,
+                        participantNick: conversation.participantNick,
+                        participantUserID: conversation.participantUserID,
+                        unreadMessagesCount: conversation.unreadMessagesCount,
+                        lastUpdatedAt: conversation.lastMessageDate ?? .distantPast
+                    )
+                    modelContext.insert(new)
+                    storedConversation = new
+                }
+
+                let existingMessageIDs = Set(storedConversation.messages.map { $0.eventID })
+                for message in conversation.messages where !existingMessageIDs.contains(message.id) {
+                    let storedMessage = StoredPrivateMessage(
+                        eventID: message.id,
+                        senderNick: message.senderNick,
+                        senderUserID: message.senderUserID,
+                        senderIcon: message.senderIcon,
+                        text: message.text,
+                        date: message.date,
+                        isFromCurrentUser: message.isFromCurrentUser,
+                        conversation: storedConversation
+                    )
+                    modelContext.insert(storedMessage)
+                }
+            }
+
+            // --- Broadcast conversations (upsert) ---
             let broadcastDescriptor = FetchDescriptor<StoredBroadcastConversation>(
                 predicate: #Predicate<StoredBroadcastConversation> { $0.connectionKey == key }
             )
             let existingBroadcastConversations = try modelContext.fetch(broadcastDescriptor)
-            for conversation in existingBroadcastConversations {
-                modelContext.delete(conversation)
-            }
+            let inMemoryBroadcastIDs = Set(messageConversations.filter { $0.kind == .broadcast }.map { $0.id })
 
-            for conversation in messageConversations where conversation.kind == .direct {
-                let storedConversation = StoredPrivateConversation(
-                    conversationID: conversation.id,
-                    connectionKey: key,
-                    title: conversation.title,
-                    participantNick: conversation.participantNick,
-                    participantUserID: conversation.participantUserID,
-                    unreadMessagesCount: conversation.unreadMessagesCount,
-                    lastUpdatedAt: conversation.lastMessageDate ?? .distantPast
-                )
-
-                storedConversation.messages = conversation.messages.map { message in
-                    StoredPrivateMessage(
-                        eventID: message.id,
-                        senderNick: message.senderNick,
-                        senderUserID: message.senderUserID,
-                        senderIcon: message.senderIcon,
-                        text: message.text,
-                        date: message.date,
-                        isFromCurrentUser: message.isFromCurrentUser,
-                        conversation: storedConversation
-                    )
-                }
-
-                modelContext.insert(storedConversation)
+            for stored in existingBroadcastConversations where !inMemoryBroadcastIDs.contains(stored.conversationID) {
+                modelContext.delete(stored)
             }
 
             for conversation in messageConversations where conversation.kind == .broadcast {
-                let storedConversation = StoredBroadcastConversation(
-                    conversationID: conversation.id,
-                    connectionKey: key,
-                    title: conversation.title,
-                    unreadMessagesCount: conversation.unreadMessagesCount,
-                    lastUpdatedAt: conversation.lastMessageDate ?? .distantPast
-                )
+                let storedConversation: StoredBroadcastConversation
+                if let existing = existingBroadcastConversations.first(where: { $0.conversationID == conversation.id }) {
+                    existing.title = conversation.title
+                    existing.unreadMessagesCount = conversation.unreadMessagesCount
+                    existing.lastUpdatedAt = conversation.lastMessageDate ?? .distantPast
+                    storedConversation = existing
+                } else {
+                    let new = StoredBroadcastConversation(
+                        conversationID: conversation.id,
+                        connectionKey: key,
+                        title: conversation.title,
+                        unreadMessagesCount: conversation.unreadMessagesCount,
+                        lastUpdatedAt: conversation.lastMessageDate ?? .distantPast
+                    )
+                    modelContext.insert(new)
+                    storedConversation = new
+                }
 
-                storedConversation.messages = conversation.messages.map { message in
-                    StoredBroadcastMessage(
+                let existingMessageIDs = Set(storedConversation.messages.map { $0.eventID })
+                for message in conversation.messages where !existingMessageIDs.contains(message.id) {
+                    let storedMessage = StoredBroadcastMessage(
                         eventID: message.id,
                         senderNick: message.senderNick,
                         senderUserID: message.senderUserID,
@@ -1322,11 +1351,11 @@ final class ConnectionRuntime: Identifiable {
                         isFromCurrentUser: message.isFromCurrentUser,
                         conversation: storedConversation
                     )
+                    modelContext.insert(storedMessage)
                 }
-
-                modelContext.insert(storedConversation)
             }
 
+            // --- Selection ---
             let selectionDescriptor = FetchDescriptor<StoredMessageSelection>(
                 predicate: #Predicate<StoredMessageSelection> { $0.connectionKey == key }
             )
