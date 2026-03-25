@@ -3197,6 +3197,7 @@ private struct PostRowView: View {
                         .buttonStyle(.borderless)
                 }
             }
+            .padding(.top, 30)
             .font(.caption)
         }
         .padding(.vertical, 12)
@@ -3236,17 +3237,17 @@ private struct ReactionBarView: View {
     let canReact: Bool
     let onToggle: (String) -> Void
 
-    @State private var showSummary    = false
     @State private var showEmojiPicker = false
 
     var body: some View {
         HStack(spacing: 6) {
-            // Summary button — visible as soon as there is at least one reaction.
-            if !reactions.isEmpty {
-                summaryButton
-            }
             ForEach(reactions) { reaction in
-                ReactionChipView(reaction: reaction, canReact: canReact, onToggle: onToggle)
+                ReactionChipView(
+                    reaction: reaction,
+                    allReactions: reactions,
+                    canReact: canReact,
+                    onToggle: onToggle
+                )
             }
             if canReact {
                 addButton
@@ -3254,28 +3255,6 @@ private struct ReactionBarView: View {
         }
         .animation(.easeInOut(duration: 0.15), value: reactions.map(\.count))
     }
-
-    // MARK: Summary
-
-    @ViewBuilder
-    private var summaryButton: some View {
-        Button { showSummary = true } label: {
-            Image(systemName: "list.bullet")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.secondary.opacity(0.08)))
-                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help("View all reactions")
-        .popover(isPresented: $showSummary, arrowEdge: .bottom) {
-            ReactionSummaryPopover(reactions: reactions)
-        }
-    }
-
-    // MARK: Add
 
     @ViewBuilder
     private var addButton: some View {
@@ -3361,13 +3340,12 @@ private struct ReactionSummaryPopover: View {
 
 private struct ReactionChipView: View {
     let reaction: BoardReactionSummary
+    /// Full reaction list passed so the hover popover can show all reactions at once.
+    let allReactions: [BoardReactionSummary]
     let canReact: Bool
     let onToggle: (String) -> Void
 
-    private var tooltip: String {
-        let base = "\(reaction.count) × \(reaction.emoji)"
-        return reaction.isOwn ? base + " — including yours" : base
-    }
+    @State private var isHovered = false
 
     var body: some View {
         Button { onToggle(reaction.emoji) } label: {
@@ -3394,10 +3372,11 @@ private struct ReactionChipView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canReact)
-        .help(tooltip)
+        .onHover { isHovered = $0 }
+        .popover(isPresented: $isHovered, arrowEdge: .bottom) {
+            ReactionSummaryPopover(reactions: allReactions)
+        }
         .contextMenu {
-            Text(tooltip)
-            Divider()
             if canReact {
                 Button(reaction.isOwn ? "Remove your reaction" : "React with \(reaction.emoji)") {
                     onToggle(reaction.emoji)
