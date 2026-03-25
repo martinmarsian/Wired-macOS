@@ -45,6 +45,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
     case messageReceived = 8
     case broadcastReceived = 10
     case boardPostAdded = 9
+    case boardReactionReceived = 17
     case transferStarted = 11
     case transferFinished = 12
 
@@ -61,6 +62,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
         case .chatReceived: return "Chat Received"
         case .messageReceived: return "Message Received"
         case .boardPostAdded: return "Board Post Added"
+        case .boardReactionReceived: return "Board Reaction Received"
         case .broadcastReceived: return "Broadcast Received"
         case .transferStarted: return "Transfer Started"
         case .transferFinished: return "Transfer Finished"
@@ -86,6 +88,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
         .messageReceived,
         .broadcastReceived,
         .boardPostAdded,
+        .boardReactionReceived,
         .transferStarted,
         .transferFinished,
     ]
@@ -2217,6 +2220,18 @@ final class ConnectionController {
                     added: added,
                     nick: nick
                 )
+
+                // Fire event notification only for incoming reactions (not our own).
+                if added, let reactorNick = nick, reactorNick != runtime.currentNick {
+                    let subject = runtime.thread(uuid: threadUUID)?.subject ?? "a thread"
+                    self.triggerEvent(
+                        .boardReactionReceived,
+                        runtime: runtime,
+                        subtitle: reactorNick,
+                        body: "\(reactorNick) reacted with \(emoji) to \(subject)",
+                        chatText: nil
+                    )
+                }
             }
 
         default:
