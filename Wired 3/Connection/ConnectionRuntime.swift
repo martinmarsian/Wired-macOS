@@ -2309,6 +2309,17 @@ final class ConnectionRuntime: Identifiable {
             target = thread(uuid: threadUUID)?.posts.first { $0.isThreadBody }
         }
 
+        // Always keep the thread-list emoji preview in sync, regardless of whether
+        // the full reaction detail has been lazily loaded for this thread.
+        if postUUID == nil, let t = thread(uuid: threadUUID) {
+            if count == 0 {
+                t.topReactionEmojis.removeAll { $0 == emoji }
+            } else if added, !t.topReactionEmojis.contains(emoji) {
+                t.topReactionEmojis.append(emoji)
+            }
+        }
+
+        // Post-level detail update only makes sense when reactions are already loaded.
         guard let post = target, post.reactionsLoaded else { return }
 
         if count == 0 {
@@ -2324,15 +2335,6 @@ final class ConnectionRuntime: Identifiable {
             )
         } else if added {
             post.reactions.append(BoardReactionSummary(emoji: emoji, count: count, isOwn: false))
-        }
-
-        // Keep the thread-list emoji preview in sync for thread-body reactions.
-        if postUUID == nil, let t = thread(uuid: threadUUID) {
-            if count == 0 {
-                t.topReactionEmojis.removeAll { $0 == emoji }
-            } else if added, !t.topReactionEmojis.contains(emoji) {
-                t.topReactionEmojis.append(emoji)
-            }
         }
     }
 
