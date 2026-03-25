@@ -703,6 +703,7 @@ private struct ChatInputField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.textBinding = $text
         guard let textView = context.coordinator.textView else { return }
         nsView.backgroundColor = .textBackgroundColor
         nsView.layer?.borderColor = NSColor.separatorColor.cgColor
@@ -743,8 +744,8 @@ private struct ChatInputField: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        @Binding var text: String
-        @Binding var dynamicHeight: CGFloat
+        var textBinding: Binding<String>
+        var dynamicHeightBinding: Binding<CGFloat>
         var onSubmit: () -> Void
         var onHistoryUp: (() -> Void)?
         var onHistoryDown: (() -> Void)?
@@ -760,14 +761,14 @@ private struct ChatInputField: NSViewRepresentable {
         private let minimumHeight: CGFloat = 22
 
         init(text: Binding<String>, dynamicHeight: Binding<CGFloat>, onSubmit: @escaping () -> Void) {
-            self._text = text
-            self._dynamicHeight = dynamicHeight
+            self.textBinding = text
+            self.dynamicHeightBinding = dynamicHeight
             self.onSubmit = onSubmit
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
-            text = textView.string
+            textBinding.wrappedValue = textView.string
             applyTypingStyle()
             recomputeHeight()
         }
@@ -803,12 +804,12 @@ private struct ChatInputField: NSViewRepresentable {
             let minHeight = max(minimumHeight, lineHeight * minimumLineCount + verticalInset + 2)
             let maxHeight = lineHeight * maximumLineCount + verticalInset + 4
             if textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                dynamicHeight = minHeight
+                dynamicHeightBinding.wrappedValue = minHeight
                 return
             }
             let usedRect = layoutManager.usedRect(for: container)
             let contentHeight = ceil(usedRect.height + verticalInset + 2)
-            dynamicHeight = min(max(contentHeight, minHeight), maxHeight)
+            dynamicHeightBinding.wrappedValue = min(max(contentHeight, minHeight), maxHeight)
         }
 
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
