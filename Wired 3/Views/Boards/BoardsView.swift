@@ -3236,10 +3236,15 @@ private struct ReactionBarView: View {
     let canReact: Bool
     let onToggle: (String) -> Void
 
+    @State private var showSummary    = false
     @State private var showEmojiPicker = false
 
     var body: some View {
         HStack(spacing: 6) {
+            // Summary button — visible as soon as there is at least one reaction.
+            if !reactions.isEmpty {
+                summaryButton
+            }
             ForEach(reactions) { reaction in
                 ReactionChipView(reaction: reaction, canReact: canReact, onToggle: onToggle)
             }
@@ -3250,11 +3255,31 @@ private struct ReactionBarView: View {
         .animation(.easeInOut(duration: 0.15), value: reactions.map(\.count))
     }
 
+    // MARK: Summary
+
+    @ViewBuilder
+    private var summaryButton: some View {
+        Button { showSummary = true } label: {
+            Image(systemName: "list.bullet")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.08)))
+                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("View all reactions")
+        .popover(isPresented: $showSummary, arrowEdge: .bottom) {
+            ReactionSummaryPopover(reactions: reactions)
+        }
+    }
+
+    // MARK: Add
+
     @ViewBuilder
     private var addButton: some View {
-        Button {
-            showEmojiPicker = true
-        } label: {
+        Button { showEmojiPicker = true } label: {
             Image(systemName: "face.smiling")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
@@ -3274,6 +3299,61 @@ private struct ReactionBarView: View {
     }
 }
 
+// MARK: - ReactionSummaryPopover
+
+private struct ReactionSummaryPopover: View {
+    let reactions: [BoardReactionSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Reactions")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(reactions) { reaction in
+                        HStack(spacing: 10) {
+                            Text(reaction.emoji)
+                                .font(.title3)
+                                .frame(width: 28, alignment: .center)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
+                                    .font(.subheadline)
+                                if reaction.isOwn {
+                                    Text("Including yours")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if reaction.isOwn {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 6, height: 6)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+
+                        if reaction.id != reactions.last?.id {
+                            Divider().padding(.leading, 52)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 240)
+        }
+        .frame(width: 230)
+        .padding(.bottom, 6)
+    }
+}
+
 // MARK: - ReactionChipView
 
 private struct ReactionChipView: View {
@@ -3281,12 +3361,13 @@ private struct ReactionChipView: View {
     let canReact: Bool
     let onToggle: (String) -> Void
 
-    @State private var showSummary = false
+    private var tooltip: String {
+        let base = "\(reaction.count) × \(reaction.emoji)"
+        return reaction.isOwn ? base + " — including yours" : base
+    }
 
     var body: some View {
-        Button {
-            onToggle(reaction.emoji)
-        } label: {
+        Button { onToggle(reaction.emoji) } label: {
             HStack(spacing: 4) {
                 Text(reaction.emoji)
                     .font(.system(size: 14))
@@ -3310,12 +3391,9 @@ private struct ReactionChipView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canReact)
-        .help(reactionTooltip)
-        .popover(isPresented: $showSummary, arrowEdge: .bottom) {
-            reactionSummaryPopover
-        }
+        .help(tooltip)
         .contextMenu {
-            Text(reactionTooltip)
+            Text(tooltip)
             Divider()
             if canReact {
                 Button(reaction.isOwn ? "Remove your reaction" : "React with \(reaction.emoji)") {
@@ -3323,28 +3401,6 @@ private struct ReactionChipView: View {
                 }
             }
         }
-    }
-
-    private var reactionTooltip: String {
-        let base = "\(reaction.count) × \(reaction.emoji)"
-        return reaction.isOwn ? base + " (including yours)" : base
-    }
-
-    @ViewBuilder
-    private var reactionSummaryPopover: some View {
-        VStack(spacing: 6) {
-            Text(reaction.emoji)
-                .font(.system(size: 32))
-            Text("\(reaction.count) reaction\(reaction.count == 1 ? "" : "s")")
-                .font(.subheadline.weight(.semibold))
-            if reaction.isOwn {
-                Text("You reacted")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding()
-        .frame(minWidth: 100)
     }
 }
 
