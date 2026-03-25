@@ -3403,46 +3403,101 @@ private struct ReactionChipView: View {
 private struct EmojiPickerPopover: View {
     let onSelect: (String) -> Void
 
+    @State private var searchText = ""
+
     private static let quickEmojis = ["👍","👎","❤️","😂","😮","🎉","🤔","🔥","👀","✅"]
     private static let columns     = Array(repeating: GridItem(.flexible(), spacing: 1), count: 8)
 
+    /// Flat filtered list used while a search query is active.
+    private var searchResults: [String] {
+        let q = searchText.lowercased()
+        guard !q.isEmpty else { return [] }
+        return EmojiLibrary.categories.flatMap(\.emojis).filter {
+            $0.emojiSearchTerms.contains(q)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // ── Quick-access row ──────────────────────────────────────
-            HStack(spacing: 1) {
-                ForEach(Self.quickEmojis, id: \.self) { emoji in
-                    emojiCell(emoji)
+            // ── Search bar ────────────────────────────────────────────
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                TextField("Search emoji…", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
 
             Divider()
 
-            // ── Full library, sectioned ───────────────────────────────
-            ScrollView(.vertical) {
-                LazyVGrid(columns: Self.columns, spacing: 1, pinnedViews: .sectionHeaders) {
-                    ForEach(EmojiLibrary.categories) { section in
-                        Section {
-                            ForEach(section.emojis, id: \.self) { emoji in
-                                emojiCell(emoji)
-                            }
-                        } header: {
-                            Text(section.name)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 6)
-                                .padding(.top, 8)
-                                .padding(.bottom, 3)
-                                .background(Color(nsColor: .windowBackgroundColor))
-                        }
+            if searchText.isEmpty {
+                // ── Quick-access row ──────────────────────────────────
+                HStack(spacing: 1) {
+                    ForEach(Self.quickEmojis, id: \.self) { emoji in
+                        emojiCell(emoji)
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 6)
+
+                Divider()
+
+                // ── Full library, sectioned ───────────────────────────
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: Self.columns, spacing: 1, pinnedViews: .sectionHeaders) {
+                        ForEach(EmojiLibrary.categories) { section in
+                            Section {
+                                ForEach(section.emojis, id: \.self) { emoji in
+                                    emojiCell(emoji)
+                                }
+                            } header: {
+                                Text(section.name)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 6)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 3)
+                                    .background(Color(nsColor: .windowBackgroundColor))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 6)
+                }
+                .frame(height: 300)
+            } else {
+                // ── Search results ────────────────────────────────────
+                ScrollView(.vertical) {
+                    if searchResults.isEmpty {
+                        Text("No results for \"\(searchText)\"")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else {
+                        LazyVGrid(columns: Self.columns, spacing: 1) {
+                            ForEach(searchResults, id: \.self) { emoji in
+                                emojiCell(emoji)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 6)
+                    }
+                }
+                .frame(height: 300)
             }
-            .frame(height: 300)
         }
         .frame(width: 296)
     }
@@ -3463,6 +3518,17 @@ private struct EmojiPickerPopover: View {
         }
         .buttonStyle(.plain)
         .pointerOnHover()
+    }
+}
+
+private extension String {
+    /// Searchable terms built from Unicode scalar names (e.g. "👍" → "thumbs up sign").
+    /// Multi-codepoint emoji join all base scalar names, variation selectors are skipped.
+    var emojiSearchTerms: String {
+        unicodeScalars
+            .compactMap { $0.properties.name }   // variation selectors have no name → dropped
+            .joined(separator: " ")
+            .lowercased()
     }
 }
 
