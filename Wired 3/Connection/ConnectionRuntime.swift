@@ -2325,6 +2325,15 @@ final class ConnectionRuntime: Identifiable {
         } else if added {
             post.reactions.append(BoardReactionSummary(emoji: emoji, count: count, isOwn: false))
         }
+
+        // Keep the thread-list emoji preview in sync for thread-body reactions.
+        if postUUID == nil, let t = thread(uuid: threadUUID) {
+            if count == 0 {
+                t.topReactionEmojis.removeAll { $0 == emoji }
+            } else if added, !t.topReactionEmojis.contains(emoji) {
+                t.topReactionEmojis.append(emoji)
+            }
+        }
     }
 
     private func requireAsyncConnection() throws -> AsyncConnection {

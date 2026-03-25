@@ -1853,6 +1853,10 @@ final class ConnectionController {
                                             postDate: postDate, replies: replies, isOwn: isOwn)
                     thread.lastReplyDate = lastReplyDate
                     thread.lastReplyUUID = message.uuid(forField: "wired.board.latest_reply")
+                    if let emojisStr = message.string(forField: "wired.board.reaction.emojis"),
+                       !emojisStr.isEmpty {
+                        thread.topReactionEmojis = emojisStr.components(separatedBy: "|")
+                    }
                     runtime.applyBoardThreadListState(to: thread)
                     board.threads.append(thread)
                 }
