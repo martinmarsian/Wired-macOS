@@ -68,65 +68,61 @@ struct ReplyView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Text("Re: \(thread.subject)")
-                    .font(.headline)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                if let icon = threadAuthorIcon {
+                    authorIconView(icon)
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Re: \(thread.subject)")
+                        .font(.headline)
+                        .lineLimit(1)
+                    HStack(spacing: 10) {
+                        Text(thread.nick)
+                            .fontWeight(.medium)
+                        Label(threadCreatedDateText, systemImage: "calendar")
+                        Label(lastReplyDateText, systemImage: "clock")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 Spacer()
             }
-            .padding()
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    if let icon = threadAuthorIcon {
-                        authorIconView(icon)
-                            .frame(width: 26, height: 26)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    } else {
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .frame(width: 26, height: 26)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text(thread.nick)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                }
-
-                HStack(spacing: 14) {
-                    Label("Thread: \(threadCreatedDateText)", systemImage: "calendar")
-                    Label("Derniere reponse: \(lastReplyDateText)", systemImage: "clock")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
 
             Divider()
 
-            // Editor
-            MarkdownComposer(text: $text, minHeight: 180, autoFocus: true, onOptionEnter: reply)
-                .padding(8)
+            // Composer — edge-to-edge
+            MarkdownComposer(text: $text, autoFocus: true, onOptionEnter: reply)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
-            // Buttons
+            // Footer
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-
                 Button("Reply") { reply() }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canPost || isPosting)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
-        .frame(width: 600, height: 460)
+        .background { ResizableSheet(minWidth: 500, minHeight: 380, sizeKey: "sheet.composer") }
         .onAppear {
             if text.isEmpty, let initialText, !initialText.isEmpty {
                 text = initialText

@@ -8,6 +8,10 @@
 
 import SwiftUI
 
+private enum NewThreadField {
+    case subject
+}
+
 struct NewThreadView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ConnectionRuntime.self) private var runtime
@@ -17,6 +21,7 @@ struct NewThreadView: View {
     @State private var subject: String = ""
     @State private var text: String    = ""
     @State private var isPosting       = false
+    @FocusState private var focusedField: NewThreadField?
 
     private var canPost: Bool {
         !subject.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -27,41 +32,51 @@ struct NewThreadView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("New Thread in \(board.name)")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New Thread")
+                        .font(.headline)
+                    Text(board.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
 
             Divider()
 
-            // Form
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Subject", text: $subject)
-
-                Text("Message")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                MarkdownComposer(text: $text, minHeight: 180, autoFocus: true, onOptionEnter: post)
-            }
-            .padding()
+            // Subject field
+            TextField("Subject", text: $subject)
+                .focused($focusedField, equals: .subject)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
 
             Divider()
 
-            // Buttons
+            // Composer — edge-to-edge
+            MarkdownComposer(text: $text, autoFocus: false, onOptionEnter: post)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            // Footer
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-
                 Button("Post") { post() }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canPost || isPosting)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
-        .frame(width: 560, height: 400)
+        .background { ResizableSheet(minWidth: 500, minHeight: 380, sizeKey: "sheet.composer") }
+        .onAppear { focusedField = .subject }
     }
 
     private func post() {

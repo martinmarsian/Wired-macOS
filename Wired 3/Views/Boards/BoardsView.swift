@@ -1796,49 +1796,232 @@ private struct ThreadSortMenuView: View {
 }
 
 #if os(macOS)
+
+// MARK: - ResizableSheet
+
+struct ResizableSheet: NSViewRepresentable {
+    var minWidth: CGFloat
+    var minHeight: CGFloat
+    var sizeKey: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(sizeKey: sizeKey, minWidth: minWidth, minHeight: minHeight)
+    }
+
+    func makeNSView(context: Context) -> SheetProbeView {
+        let probe = SheetProbeView()
+        probe.coordinator = context.coordinator
+        return probe
+    }
+
+    func updateNSView(_ nsView: SheetProbeView, context: Context) {}
+
+    // MARK: - Probe view
+
+    /// Zero-size NSView subclass that configures the sheet window as soon as it
+    /// enters the view hierarchy — before the first draw, avoiding any visual jump.
+    final class SheetProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let coordinator, !coordinator.isConfigured else { return }
+            coordinator.configure(window)
+        }
+    }
+
+    // MARK: - Coordinator
+
+    final class Coordinator {
+        private let sizeKey: String
+        private let minWidth: CGFloat
+        private let minHeight: CGFloat
+
+        private(set) var isConfigured = false
+        /// The size the user last set (or the restored/default size). We lock
+        /// the window to this size so SwiftUI content changes don't resize it.
+        private var targetSize: CGSize = .zero
+        private var observers: [NSObjectProtocol] = []
+
+        init(sizeKey: String, minWidth: CGFloat, minHeight: CGFloat) {
+            self.sizeKey = sizeKey
+            self.minWidth = minWidth
+            self.minHeight = minHeight
+        }
+
+        func configure(_ window: NSWindow) {
+            isConfigured = true
+
+            window.styleMask.insert(.resizable)
+            window.minSize = NSSize(width: minWidth, height: minHeight)
+
+            let saved = loadSize()
+            targetSize = CGSize(
+                width: max(saved?.width ?? minWidth, minWidth),
+                height: max(saved?.height ?? minHeight, minHeight)
+            )
+            window.setContentSize(NSSize(width: targetSize.width, height: targetSize.height))
+
+            // User finished a manual resize → persist new size
+            observers.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.didEndLiveResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self, weak window] _ in
+                guard let self, let window else { return }
+                let sz = window.contentRect(forFrameRect: window.frame).size
+                self.targetSize = sz
+                self.saveSize(sz)
+            })
+
+            // SwiftUI-driven resize (content change) → restore targetSize.
+            // queue: nil = fires synchronously on the posting thread (main),
+            // before the next draw cycle → no visible flash.
+            observers.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: nil
+            ) { [weak self, weak window] _ in
+                guard let self, let window, !window.inLiveResize else { return }
+                let current = window.contentRect(forFrameRect: window.frame).size
+                let target = self.targetSize
+                if abs(current.width - target.width) > 1 || abs(current.height - target.height) > 1 {
+                    window.setContentSize(NSSize(width: target.width, height: target.height))
+                }
+            })
+        }
+
+        private func loadSize() -> CGSize? {
+            guard let dict = UserDefaults.standard.dictionary(forKey: sizeKey),
+                  let w = dict["w"] as? Double,
+                  let h = dict["h"] as? Double else { return nil }
+            return CGSize(width: w, height: h)
+        }
+
+        private func saveSize(_ size: CGSize) {
+            UserDefaults.standard.set(
+                ["w": Double(size.width), "h": Double(size.height)],
+                forKey: sizeKey
+            )
+        }
+
+        deinit {
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
+        }
+    }
+}
+
+// MARK: - MarkdownComposer
+
 struct MarkdownComposer: View {
     @Binding var text: String
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
+    var bordered: Bool = false
     var onOptionEnter: (() -> Void)? = nil
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
+    @State private var showPreview = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                button("B", help: "Gras") { wrapSelection(prefix: "**", suffix: "**", placeholder: "bold") }
-                button("I", help: "Italique") { wrapSelection(prefix: "*", suffix: "*", placeholder: "italic") }
-                button("Code", help: "Code inline") { wrapSelection(prefix: "`", suffix: "`", placeholder: "code") }
-                button("Link", help: "Lien") { insertLink() }
-                button("Img", help: "Image") { insertImage() }
-                button("Quote", help: "Citation") { prefixLines(with: "> ") }
-                button("List", help: "Liste") { prefixLines(with: "- ") }
-                Spacer(minLength: 0)
-            }
-
-            MarkdownTextView(
-                text: $text,
-                selectedRange: $selectedRange,
-                autoFocus: autoFocus,
-                onOptionEnter: onOptionEnter
+        baseContent
+            .overlay(
+                Group {
+                    if bordered {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                    }
+                }
             )
-                .frame(minHeight: minHeight)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
-                        .allowsHitTesting(false)
-                )
-        }
-        .padding(8)
-        .background(Color.boardsTextBackground)
     }
 
-    private func button(_ title: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(help)
+    @ViewBuilder
+    private var baseContent: some View {
+        VStack(spacing: 0) {
+            toolbar
+            Divider()
+            if showPreview {
+                previewPane
+            } else {
+                editorPane
+            }
+        }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 2) {
+            toolbarButton(icon: "bold", help: "Gras") {
+                wrapSelection(prefix: "**", suffix: "**", placeholder: "bold")
+            }
+            toolbarButton(icon: "italic", help: "Italique") {
+                wrapSelection(prefix: "*", suffix: "*", placeholder: "italic")
+            }
+            toolbarButton(icon: "chevron.left.forwardslash.chevron.right", help: "Code inline") {
+                wrapSelection(prefix: "`", suffix: "`", placeholder: "code")
+            }
+            Divider().frame(height: 14).padding(.horizontal, 3)
+            toolbarButton(icon: "link", help: "Lien") { insertLink() }
+            toolbarButton(icon: "photo", help: "Image") { insertImage() }
+            Divider().frame(height: 14).padding(.horizontal, 3)
+            toolbarButton(icon: "text.quote", help: "Citation") { prefixLines(with: "> ") }
+            toolbarButton(icon: "list.bullet", help: "Liste") { prefixLines(with: "- ") }
+            Spacer(minLength: 0)
+            Divider().frame(height: 14).padding(.horizontal, 4)
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showPreview.toggle() }
+            } label: {
+                Image(systemName: showPreview ? "pencil" : "eye")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.borderless)
+            .help(showPreview ? "Éditer" : "Aperçu")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private var previewPane: some View {
+        ScrollView {
+            Group {
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Rien à prévisualiser")
+                        .foregroundStyle(.tertiary)
+                        .italic()
+                } else if let attributed = try? AttributedString(
+                    markdown: text,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                ) {
+                    Text(attributed)
+                } else {
+                    Text(text)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+        }
+        .frame(minHeight: minHeight, maxHeight: .infinity)
+        .background(Color(NSColor.textBackgroundColor))
+    }
+
+    private var editorPane: some View {
+        MarkdownTextView(
+            text: $text,
+            selectedRange: $selectedRange,
+            autoFocus: autoFocus,
+            onOptionEnter: onOptionEnter
+        )
+        .frame(minHeight: minHeight, maxHeight: .infinity)
+    }
+
+    private func toolbarButton(icon: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .disabled(showPreview)
     }
 
     private func clampedRange(in value: String) -> NSRange {
@@ -1949,7 +2132,7 @@ private struct MarkdownTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.typingAttributes = [
-            .font: NSFont.preferredFont(forTextStyle: .body),
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
             .foregroundColor: NSColor.textColor
         ]
         textView.selectedTextAttributes = [
@@ -2934,6 +3117,47 @@ private struct PostsDetailView: View {
     }
 }
 
+// MARK: - PostActionButton
+
+private struct PostActionButton: View {
+    let label: String
+    let icon: String
+    var destructive: Bool = false
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Label(label, systemImage: icon)
+                .labelStyle(.titleAndIcon)
+                .font(.caption)
+                .foregroundStyle(destructive
+                    ? (isHovering ? Color.red : Color.red.opacity(0.75))
+                    : (isHovering ? Color.primary : Color.secondary))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering
+                            ? (destructive ? Color.red.opacity(0.08) : Color.secondary.opacity(0.1))
+                            : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(
+                            isHovering
+                                ? (destructive ? Color.red.opacity(0.35) : Color.secondary.opacity(0.4))
+                                : Color.secondary.opacity(0.2),
+                            lineWidth: 0.5
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
+    }
+}
+
 // MARK: - PostRowView
 
 private struct PostRowView: View {
@@ -3184,22 +3408,17 @@ private struct PostRowView: View {
                 }
                 Spacer()
                 if canReply {
-                    Button("Reply") { onReply() }
-                        .buttonStyle(.borderless)
-                    Button("Quote") { onQuote(currentSelectedText()) }
-                        .buttonStyle(.borderless)
+                    PostActionButton(label: "Reply", icon: "arrowshape.turn.up.left", action: onReply)
+                    PostActionButton(label: "Quote", icon: "quote.bubble", action: { onQuote(currentSelectedText()) })
                 }
                 if canEdit {
-                    Button("Edit") { onEdit() }
-                        .buttonStyle(.borderless)
+                    PostActionButton(label: "Edit", icon: "pencil", action: onEdit)
                 }
                 if canDelete {
-                    Button("Delete", role: .destructive) { onDelete() }
-                        .buttonStyle(.borderless)
+                    PostActionButton(label: "Delete", icon: "trash", destructive: true, action: onDelete)
                 }
             }
-            .padding(.top, 30)
-            .font(.caption)
+            .padding(.top, 12)
         }
         .padding(.vertical, 12)
         .contextMenu {
@@ -3708,18 +3927,22 @@ private struct EditThreadView: View {
                     .font(.headline)
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Subject", text: $subject)
-                Text("Message")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                MarkdownComposer(text: $text, minHeight: 220, onOptionEnter: save)
-            }
-            .padding()
+            // Subject field
+            TextField("Subject", text: $subject)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+
+            Divider()
+
+            // Composer — edge-to-edge
+            MarkdownComposer(text: $text, onOptionEnter: save)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -3729,11 +3952,14 @@ private struct EditThreadView: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canSubmit)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
-        .frame(width: 600, height: 430)
+        .background { ResizableSheet(minWidth: 500, minHeight: 380, sizeKey: "sheet.composer") }
         .task {
             // Prefill body with currently loaded first post when available.
             if let firstPost = thread.posts.first {
@@ -3887,12 +4113,15 @@ private struct EditPostView: View {
                     .font(.headline)
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
 
             Divider()
 
-            MarkdownComposer(text: $text, minHeight: 200, onOptionEnter: save)
-                .padding(8)
+            // Composer — edge-to-edge
+            MarkdownComposer(text: $text, autoFocus: true, onOptionEnter: save)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -3902,11 +4131,14 @@ private struct EditPostView: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canSubmit)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
-        .frame(width: 560, height: 390)
+        .background { ResizableSheet(minWidth: 500, minHeight: 380, sizeKey: "sheet.composer") }
     }
 
     private func save() {
