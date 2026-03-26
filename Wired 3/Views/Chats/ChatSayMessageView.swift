@@ -343,6 +343,23 @@ final class ChatRemoteImageLoader: NSObject, ObservableObject, @preconcurrency U
     }
 }
 
+#if os(macOS)
+private struct AnimatedNSImageView: NSViewRepresentable {
+    let image: NSImage
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.animates = true
+        view.imageScaling = .scaleProportionallyUpOrDown
+        return view
+    }
+
+    func updateNSView(_ nsView: NSImageView, context: Context) {
+        nsView.image = image
+    }
+}
+#endif
+
 struct ChatRemoteImageBubbleView: View {
     let url: URL
     let isFromYou: Bool
@@ -467,16 +484,22 @@ struct ChatRemoteImageBubbleView: View {
 
     private func imageView(_ image: PlatformImage) -> some View {
         let size = resolvedSize(for: image)
+        let isGIF = url.pathExtension.lowercased() == "gif"
         return Group {
             #if os(iOS)
             Image(uiImage: image)
                 .resizable()
+                .scaledToFit()
             #else
-            Image(nsImage: image)
-                .resizable()
+            if isGIF {
+                AnimatedNSImageView(image: image)
+            } else {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            }
             #endif
         }
-        .scaledToFit()
         .frame(width: size.width, height: size.height)
     }
 
