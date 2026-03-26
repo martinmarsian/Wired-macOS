@@ -9,6 +9,26 @@
 import Foundation
 import SwiftUI
 
+extension Character {
+    var isEmojiCharacter: Bool {
+        guard let scalar = unicodeScalars.first else { return false }
+        // Multi-scalar sequences (ZWJ, skin tone variants, etc.) are always visual emoji
+        if unicodeScalars.count > 1 { return scalar.properties.isEmoji }
+        // Single scalar: must default to emoji presentation (excludes #, *, 0-9, etc.)
+        return scalar.properties.isEmojiPresentation
+    }
+}
+
+extension String {
+    /// True when the trimmed string contains only 1–3 emoji characters and nothing else.
+    var isShortEmojiOnly: Bool {
+        let trimmed = trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        let emojis = trimmed.filter(\.isEmojiCharacter)
+        return emojis.count == trimmed.count && emojis.count <= 3
+    }
+}
+
 extension String {
     private static let markdownURLPattern = try? NSRegularExpression(
         pattern: "!?\\[[^\\]]*\\]\\((https?://[^\\s\\)]+)\\)",

@@ -199,6 +199,10 @@ private struct MessageBubbleRow: View {
         !isImageOnlyMessage
     }
 
+    private var isEmojiOnlyMessage: Bool {
+        primaryImageURL == nil && trimmedMessageText.isShortEmojiOnly
+    }
+
     var body: some View {
         let isFromYou = message.isFromCurrentUser || message.senderUserID == currentUserID
         let linkColor: Color = isFromYou ? .white : .blue
@@ -217,9 +221,12 @@ private struct MessageBubbleRow: View {
                         messageContentStack(isFromYou: isFromYou, linkColor: linkColor)
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
+                    .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
                     avatarView
+                        .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
                 } else {
                     avatarView
+                        .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
                     VStack(alignment: .leading) {
                         if showNickname {
                             Text(message.senderNick)
@@ -230,6 +237,7 @@ private struct MessageBubbleRow: View {
                         messageContentStack(isFromYou: isFromYou, linkColor: linkColor)
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
+                    .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
                     Spacer()
                 }
             }
@@ -250,7 +258,11 @@ private struct MessageBubbleRow: View {
     @ViewBuilder
     private func messageContentStack(isFromYou: Bool, linkColor: Color) -> some View {
         VStack(alignment: isFromYou ? .trailing : .leading, spacing: 6) {
-            if shouldShowTextBubble {
+            if isEmojiOnlyMessage {
+                Text(trimmedMessageText)
+                    .font(.system(size: 52))
+                    .padding(.horizontal, 4)
+            } else if shouldShowTextBubble {
                 Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
                     .messageBubbleStyle(
                         isFromYou: isFromYou,

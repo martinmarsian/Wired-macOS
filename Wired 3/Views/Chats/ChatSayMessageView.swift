@@ -40,7 +40,11 @@ struct ChatSayMessageView: View {
     private var shouldShowTextBubble: Bool {
         !isImageOnlyMessage
     }
-    
+
+    private var isEmojiOnlyMessage: Bool {
+        primaryImageURL == nil && trimmedMessageText.isShortEmojiOnly
+    }
+
     var body: some View {
         let isFromYou = message.user.id == runtime.userID
         let matchedRule = matchedHighlightRule(in: message.text)
@@ -67,11 +71,14 @@ struct ChatSayMessageView: View {
                         )
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
-                    
+                    .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
+
                     avatarView
-                    
+                        .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
+
                 } else {
                     avatarView
+                        .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
 
                     VStack(alignment: .leading) {
                         if showNickname {
@@ -88,6 +95,7 @@ struct ChatSayMessageView: View {
                         )
                     }
                     .padding(.bottom, isGroupedWithNext ? 2 : 8)
+                    .alignmentGuide(.bottom) { d in isEmojiOnlyMessage ? d[VerticalAlignment.center] : d[.bottom] }
                     Spacer()
                 }
             }
@@ -129,7 +137,11 @@ struct ChatSayMessageView: View {
         bubbleTextColor: Color?
     ) -> some View {
         VStack(alignment: isFromYou ? .trailing : .leading, spacing: 6) {
-            if shouldShowTextBubble {
+            if isEmojiOnlyMessage {
+                Text(trimmedMessageText)
+                    .font(.system(size: 52))
+                    .padding(.horizontal, 4)
+            } else if shouldShowTextBubble {
                 Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
                     .messageBubbleStyle(
                         isFromYou: isFromYou,
