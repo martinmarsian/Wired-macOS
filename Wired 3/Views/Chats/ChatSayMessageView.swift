@@ -344,17 +344,23 @@ final class ChatRemoteImageLoader: NSObject, ObservableObject, @preconcurrency U
 }
 
 #if os(macOS)
+private final class _AnimatingImageView: NSImageView {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+}
+
 private struct AnimatedNSImageView: NSViewRepresentable {
     let image: NSImage
 
-    func makeNSView(context: Context) -> NSImageView {
-        let view = NSImageView()
+    func makeNSView(context: Context) -> _AnimatingImageView {
+        let view = _AnimatingImageView()
         view.animates = true
         view.imageScaling = .scaleProportionallyUpOrDown
         return view
     }
 
-    func updateNSView(_ nsView: NSImageView, context: Context) {
+    func updateNSView(_ nsView: _AnimatingImageView, context: Context) {
         nsView.image = image
     }
 }
