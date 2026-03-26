@@ -637,7 +637,6 @@ struct BoardsView: View {
 
     var body: some View {
         layout
-        .searchable(text: $searchText)
         .task {
             loadSmartBoards()
         }
@@ -690,13 +689,16 @@ struct BoardsView: View {
         HSplitView {
             boardsList
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+                .searchable(text: $searchText)
 
-            threadsList
-                .frame(minWidth: 280, idealWidth: 360, maxWidth: 520)
+            HSplitView {
+                threadsList
+                    .frame(minWidth: 280, idealWidth: 360, maxWidth: 520)
 
-            postsDetail
-                .frame(minWidth: 320, idealWidth: 520, maxWidth: .infinity)
-                .layoutPriority(1)
+                postsDetail
+                    .frame(minWidth: 320, idealWidth: 520, maxWidth: .infinity)
+                    .layoutPriority(1)
+            }
         }
         #else
         if horizontalSizeClass == .compact {

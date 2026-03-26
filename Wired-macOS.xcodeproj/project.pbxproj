@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */; };
 		4C0C2DDF2EF4372200213277 /* WiredSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DDE2EF4372200213277 /* WiredSwift */; };
 		4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE02EF437DE00213277 /* Assets.xcassets */; };
 		4C0C2DE72EF437DE00213277 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE12EF437DE00213277 /* MainView.swift */; };
@@ -57,8 +58,8 @@
 		4C62A70E2F62C8F100FB42E3 /* ToolbarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C62A70D2F62C8F100FB42E3 /* ToolbarContent.swift */; };
 		4C62A7762F6852F300FB42E3 /* BackgroundEdgeFade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C62A7752F6852F200FB42E3 /* BackgroundEdgeFade.swift */; };
 		4C62A77E2F698AB500FB42E3 /* ServerTrustStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C62A77D2F698AB500FB42E3 /* ServerTrustStore.swift */; };
+		4C62A8542F747E9600FB42E3 /* AccountsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */; };
 		4C7E10042F21000100213277 /* ServerSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7E10012F21000100213277 /* ServerSettingsView.swift */; };
-		4C7E10052F21000100213277 /* AccountsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7E10022F21000100213277 /* AccountsSettingsView.swift */; };
 		4C8A826B2F5ED07200C271A8 /* MessageConversationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */; };
 		4C8D11012F30000100213277 /* StoredPrivateConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11112F30000100213277 /* StoredPrivateConversation.swift */; };
 		4C8D11022F30000100213277 /* StoredPrivateMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11122F30000100213277 /* StoredPrivateMessage.swift */; };
@@ -75,7 +76,6 @@
 		4C95F16C2F56CB7D005CD1BA /* ReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */; };
 		4C95F16D2F56CB7D005CD1BA /* NewThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */; };
 		4C95F16E2F56CB7D005CD1BA /* BoardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1682F56CB7D005CD1BA /* BoardsView.swift */; };
-		18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */; };
 		4C95F1712F571884005CD1BA /* wired.xml in Resources */ = {isa = PBXBuildFile; fileRef = 4C95F1702F571884005CD1BA /* wired.xml */; };
 		4CA1B0012F70000100213277 /* BoardDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA1B0112F70000100213277 /* BoardDragPayload.swift */; };
 		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
@@ -103,6 +103,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
 		4C0C2DB42EF436FE00213277 /* Wired 3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired 3.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -154,8 +155,8 @@
 		4C62A70D2F62C8F100FB42E3 /* ToolbarContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarContent.swift; sourceTree = "<group>"; };
 		4C62A7752F6852F200FB42E3 /* BackgroundEdgeFade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundEdgeFade.swift; sourceTree = "<group>"; };
 		4C62A77D2F698AB500FB42E3 /* ServerTrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerTrustStore.swift; sourceTree = "<group>"; };
+		4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsSettingsView.swift; sourceTree = "<group>"; };
 		4C7E10012F21000100213277 /* ServerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSettingsView.swift; sourceTree = "<group>"; };
-		4C7E10022F21000100213277 /* AccountsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsSettingsView.swift; sourceTree = "<group>"; };
 		4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationDetailView.swift; sourceTree = "<group>"; };
 		4C8D11112F30000100213277 /* StoredPrivateConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateConversation.swift; sourceTree = "<group>"; };
 		4C8D11122F30000100213277 /* StoredPrivateMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateMessage.swift; sourceTree = "<group>"; };
@@ -170,7 +171,6 @@
 		4C95F1622F56CB5F005CD1BA /* BoardPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardPost.swift; sourceTree = "<group>"; };
 		4C95F1632F56CB5F005CD1BA /* BoardThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardThread.swift; sourceTree = "<group>"; };
 		4C95F1682F56CB7D005CD1BA /* BoardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardsView.swift; sourceTree = "<group>"; };
-		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
 		4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewThreadView.swift; sourceTree = "<group>"; };
 		4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyView.swift; sourceTree = "<group>"; };
 		4C95F1702F571884005CD1BA /* wired.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = wired.xml; sourceTree = "<group>"; };
@@ -403,8 +403,8 @@
 		4C7E10032F21000100213277 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */,
 				4C7E10012F21000100213277 /* ServerSettingsView.swift */,
-				4C7E10022F21000100213277 /* AccountsSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -606,7 +606,6 @@
 				4C95F1642F56CB5F005CD1BA /* Board.swift in Sources */,
 				4C95F1652F56CB5F005CD1BA /* BoardPost.swift in Sources */,
 				4C95F1662F56CB5F005CD1BA /* BoardThread.swift in Sources */,
-				4C7E10052F21000100213277 /* AccountsSettingsView.swift in Sources */,
 				4C0C2E002EF5649C00213277 /* ConnectionRowView.swift in Sources */,
 				4C0C2E312EFDB97300213277 /* ChatEvent.swift in Sources */,
 				4C0C2E3C2F0042FA00213277 /* ChatMessagesView.swift in Sources */,
@@ -636,6 +635,7 @@
 				4C0C2E352EFDBD4000213277 /* SettingsView.swift in Sources */,
 				4C0C2E3A2F00421F00213277 /* ChatUsersList.swift in Sources */,
 				4C0C2E632F15840000213277 /* TransferConnection.swift in Sources */,
+				4C62A8542F747E9600FB42E3 /* AccountsSettingsView.swift in Sources */,
 				4C0C2E542F110DC400213277 /* FilesView.swift in Sources */,
 				4C0C2E2D2EFDB93B00213277 /* Topic.swift in Sources */,
 				4C0C2E2B2EFDB92200213277 /* Chat.swift in Sources */,
