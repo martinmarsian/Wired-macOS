@@ -13,6 +13,7 @@ import CoreTransferable
 #if os(macOS)
 import AppKit
 import ObjectiveC
+import Darwin
 #endif
 
 extension UTType {
@@ -146,13 +147,13 @@ private func dragExportTemporaryURL(for item: FileItem, connectionID: UUID) -> U
         .appendingPathComponent("WiredDragExports", isDirectory: true)
         .appendingPathComponent(unique, isDirectory: true)
     try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-    let isDirectory = (item.type == .directory || item.type == .uploads || item.type == .dropbox)
+    let isDirectory = (item.type.isDirectoryLike)
     return base.appendingPathComponent(fileName, isDirectory: isDirectory)
 }
 
 private func dragExportStagingURL(for item: FileItem, connectionID: UUID) -> URL {
     let baseURL = dragExportTemporaryURL(for: item, connectionID: connectionID)
-    let isDirectory = (item.type == .directory || item.type == .uploads || item.type == .dropbox)
+    let isDirectory = (item.type.isDirectoryLike)
     guard !isDirectory else { return baseURL }
     let partialName = baseURL.lastPathComponent + ".\(Wired.transfersFileExtension)"
     return baseURL.deletingLastPathComponent().appendingPathComponent(partialName, isDirectory: false)
@@ -160,14 +161,90 @@ private func dragExportStagingURL(for item: FileItem, connectionID: UUID) -> URL
 
 private func isDownloadableRemoteItem(_ item: FileItem) -> Bool {
     if item.path == "/" { return false }
-    return item.type == .file || item.type == .directory || item.type == .uploads || item.type == .dropbox
+    return item.type == .file || item.type.isDirectoryLike
 }
 
 private func canGetInfoForRemoteItem(_ item: FileItem) -> Bool {
-    if item.type == .dropbox {
+    if item.type.isManagedAccessType {
         return item.readable
     }
     return true
+}
+
+private struct SyncActivationNotice: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+private enum WiredSyncDaemonIPC {
+    static let socketPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
+        .appendingPathComponent("Library/Application Support/WiredSync/run/wiredsyncd.sock")
+
+    static func addPair(remotePath: String, localPath: String, mode: String = "bidirectional") throws {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(domain: "wiredsyncd.ipc", code: 1, userInfo: [NSLocalizedDescriptionKey: "socket() failed"])
+        }
+        defer { close(fd) }
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let maxLen = MemoryLayout.size(ofValue: addr.sun_path)
+        let bytes = Array(socketPath.utf8.prefix(maxLen - 1))
+        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            let raw = UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: CChar.self)
+            raw.initialize(repeating: 0, count: maxLen)
+            for (i, b) in bytes.enumerated() {
+                raw[i] = CChar(bitPattern: b)
+            }
+        }
+
+        let addrLen = socklen_t(MemoryLayout<sa_family_t>.size + maxLen)
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, addrLen)
+            }
+        }
+        guard result == 0 else {
+            throw NSError(domain: "wiredsyncd.ipc", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to connect to wiredsyncd socket at \(socketPath)"])
+        }
+
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "add_pair",
+            "params": [
+                "remote_path": remotePath,
+                "local_path": localPath,
+                "mode": mode
+            ]
+        ]
+
+        let payload = try JSONSerialization.data(withJSONObject: request)
+        try payload.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            guard Darwin.write(fd, base, payload.count) >= 0 else {
+                throw NSError(domain: "wiredsyncd.ipc", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to write request to wiredsyncd"])
+            }
+            _ = Darwin.write(fd, "\n", 1)
+        }
+
+        var responseBuffer = [UInt8](repeating: 0, count: 4096)
+        let n = Darwin.read(fd, &responseBuffer, responseBuffer.count)
+        guard n > 0 else {
+            throw NSError(domain: "wiredsyncd.ipc", code: 4, userInfo: [NSLocalizedDescriptionKey: "No response from wiredsyncd"])
+        }
+
+        let data = Data(responseBuffer.prefix(n))
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "wiredsyncd.ipc", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid response from wiredsyncd"])
+        }
+        if let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String {
+            throw NSError(domain: "wiredsyncd.ipc", code: 6, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+    }
 }
 
 #if os(macOS)
@@ -175,6 +252,7 @@ private enum RemoteFolderIconKind: String {
     case directory
     case uploads
     case dropbox
+    case sync
 }
 
 private final class RemoteFolderIconCache {
@@ -205,7 +283,14 @@ private final class RemoteFolderIconCache {
             return base
         }
 
-        let badgeName = (kind == .uploads) ? "UploadsBadge" : "DropBoxBadge"
+        let badgeName: String = {
+            switch kind {
+            case .uploads: return "UploadsBadge"
+            case .dropbox: return "DropBoxBadge"
+            case .sync: return "SyncBadge"
+            case .directory: return ""
+            }
+        }()
         guard let badgeImage = loadBadgeImage(named: badgeName)?.copy() as? NSImage else {
             return base
         }
@@ -252,6 +337,8 @@ private func remoteItemIconImage(for item: FileItem, size: CGFloat) -> NSImage {
         icon = RemoteFolderIconCache.shared.icon(for: .uploads, size: size)
     case .dropbox:
         icon = RemoteFolderIconCache.shared.icon(for: .dropbox, size: size)
+    case .sync:
+        icon = RemoteFolderIconCache.shared.icon(for: .sync, size: size)
     }
 
     let copy = (icon.copy() as? NSImage) ?? icon
@@ -311,6 +398,7 @@ struct FilesView: View {
     @State private var forwardDirectoryHistory: [String] = []
     @State private var currentDirectoryPath: String = "/"
     @State private var isApplyingHistoryNavigation: Bool = false
+    @State private var syncActivationNotice: SyncActivationNotice? = nil
     
     @State private var currentSearchTask: Task<Void, Never>? = nil
 
@@ -376,13 +464,18 @@ struct FilesView: View {
             selected = selectedItem
         }
 
-        if selected.type == .directory || selected.type == .uploads || selected.type == .dropbox {
+        if selected.type.isDirectoryLike {
             return selected
         }
 
         let parentPath = selected.path.stringByDeletingLastPathComponent
         selected = FileItem(parentPath.lastPathComponent, path: parentPath, type: .directory)
         return selected
+    }
+
+    private var selectedSyncDirectory: FileItem? {
+        guard let target = selectedDirectoryForUpload, target.type == .sync else { return nil }
+        return target
     }
 
     private var selectedDownloadableItem: FileItem? {
@@ -405,11 +498,11 @@ struct FilesView: View {
     }
 
     private func canWriteDropbox(_ item: FileItem) -> Bool {
-        item.type != .dropbox || item.writable
+        !item.type.isManagedAccessType || item.writable
     }
 
     private func canReadDropbox(_ item: FileItem) -> Bool {
-        item.type != .dropbox || item.readable
+        !item.type.isManagedAccessType || item.readable
     }
 
     private func canDownload(item: FileItem) -> Bool {
@@ -420,6 +513,9 @@ struct FilesView: View {
 
     private func canDelete(item: FileItem) -> Bool {
         guard item.path != "/" else { return false }
+        if item.type == .sync {
+            return item.writable
+        }
         if item.type == .dropbox {
             return item.readable && item.writable
         }
@@ -427,13 +523,13 @@ struct FilesView: View {
     }
 
     private func canUpload(to directory: FileItem) -> Bool {
-        guard directory.type == .directory || directory.type == .uploads || directory.type == .dropbox else { return false }
+        guard directory.type.isDirectoryLike else { return false }
 
         let canUploadFiles = runtime.hasPrivilege("wired.account.transfer.upload_files")
         let canUploadDirectories = runtime.hasPrivilege("wired.account.transfer.upload_directories")
         guard canUploadFiles || canUploadDirectories else { return false }
 
-        if directory.type == .dropbox {
+        if directory.type.isManagedAccessType {
             return directory.writable
         }
 
@@ -445,8 +541,8 @@ struct FilesView: View {
     }
 
     private func canCreateFolder(in directory: FileItem) -> Bool {
-        guard directory.type == .directory || directory.type == .uploads || directory.type == .dropbox else { return false }
-        if directory.type == .dropbox {
+        guard directory.type.isDirectoryLike else { return false }
+        if directory.type.isManagedAccessType {
             return directory.writable
         }
         return runtime.hasPrivilege("wired.account.file.create_directories")
@@ -454,6 +550,36 @@ struct FilesView: View {
 
     private func canGetInfo(for item: FileItem) -> Bool {
         runtime.hasPrivilege("wired.account.file.get_info") && canGetInfoForRemoteItem(item)
+    }
+
+    private func activateSync(for directory: FileItem) {
+#if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use Folder"
+        panel.message = "Select the local folder paired with \(directory.path)"
+
+        guard panel.runModal() == .OK, let localURL = panel.url else { return }
+
+        do {
+            try WiredSyncDaemonIPC.addPair(
+                remotePath: directory.path,
+                localPath: localURL.path,
+                mode: "bidirectional"
+            )
+            syncActivationNotice = SyncActivationNotice(
+                title: "Sync Enabled",
+                message: "Pair created for:\n\(directory.path)\n↔\n\(localURL.path)"
+            )
+        } catch {
+            syncActivationNotice = SyncActivationNotice(
+                title: "Sync Error",
+                message: error.localizedDescription
+            )
+        }
+#endif
     }
 
     @ViewBuilder
@@ -724,6 +850,13 @@ struct FilesView: View {
                 }
             )
         }
+        .alert(item: $syncActivationNotice) { notice in
+            Alert(
+                title: Text(notice.title),
+                message: Text(notice.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
         .errorAlert(
             error: $filesViewModel.error,
             source: "Files",
@@ -856,6 +989,15 @@ struct FilesView: View {
             }
             .help("Create Folder")
             .disabled(selectedDirectoryForUpload == nil || !(selectedDirectoryForUpload.map(canCreateFolder(in:)) ?? false))
+
+            Button {
+                guard let syncDirectory = selectedSyncDirectory else { return }
+                activateSync(for: syncDirectory)
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+            }
+            .help("Activate Sync Pair")
+            .disabled(selectedSyncDirectory == nil)
 
             Button {
                 requestDelete(selectedDeletableItems)
@@ -1085,7 +1227,7 @@ struct FilesView: View {
     private func directoryPath(from path: String?) -> String? {
         guard let path else { return nil }
         if let item = itemForPath(path) {
-            if item.type == .directory || item.type == .uploads || item.type == .dropbox {
+            if item.type.isDirectoryLike {
                 return normalizedRemotePath(item.path)
             }
             return normalizedRemotePath(item.path.stringByDeletingLastPathComponent)
@@ -1292,7 +1434,7 @@ struct FilesTreeView: View {
 
     private func contextMenuTargetDirectory() -> FileItem {
         if let selected = filesViewModel.selectedTreeItem() {
-            if selected.type == .directory || selected.type == .uploads || selected.type == .dropbox {
+            if selected.type.isDirectoryLike {
                 return selected
             }
 
@@ -1493,7 +1635,7 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         }
 
         private func isDirectory(_ item: FileItem) -> Bool {
-            item.type == .directory || item.type == .uploads || item.type == .dropbox
+            item.type.isDirectoryLike
         }
 
         private func sortedItems(_ items: [FileItem]) -> [FileItem] {
@@ -1982,7 +2124,7 @@ private final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProvi
 
     init(item: FileItem) {
         self.item = item
-        self.isDirectory = (item.type == .directory || item.type == .uploads || item.type == .dropbox)
+        self.isDirectory = (item.type.isDirectoryLike)
         self.fileName = dragExportFileName(for: item)
         self.partialName = fileName + ".\(Wired.transfersFileExtension)"
         super.init()
@@ -2285,7 +2427,7 @@ struct FilesColumnsView: View {
                 onPrimarySelectionChange(item.path)
                 notifySelectionItemsChanged()
 
-                if item.type == .directory || item.type == .uploads || item.type == .dropbox {
+                if item.type.isDirectoryLike {
                     filesViewModel.selectColumnItem(
                         id: item.id,
                         at: index,
@@ -2470,7 +2612,7 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
         }
 
         private func isDirectory(_ item: FileItem) -> Bool {
-            item.type == .directory || item.type == .uploads || item.type == .dropbox
+            item.type.isDirectoryLike
         }
 
         private func columnDirectory() -> FileItem {
@@ -2893,7 +3035,7 @@ private struct FilePreviewColumn: View {
     }
 
     private func containsString(for item: FileItem) -> String {
-        if item.type == .directory || item.type == .uploads || item.type == .dropbox {
+        if item.type.isDirectoryLike {
             return "\(item.directoryCount)"
         }
         return "-"
@@ -2908,7 +3050,7 @@ private struct FilePreviewColumn: View {
 
 extension View {
     public func sizeString(for item: FileItem) -> String {
-        if item.type == .directory || item.type == .uploads || item.type == .dropbox {
+        if item.type.isDirectoryLike {
             return "-"
         }
         let total = Int64(item.dataSize + item.rsrcSize)

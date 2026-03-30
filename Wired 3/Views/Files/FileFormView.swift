@@ -22,6 +22,20 @@ struct FileFormView: View {
     var parentDirectory: FileItem
     var file: FileItem?
     var onCreated: ((String) -> Void)? = nil
+
+    private var availableDirectoryTypes: [FileType] {
+        if parentDirectory.type == .sync {
+            // Server invariant: nested managed directory types are rejected under sync.
+            return [.directory]
+        }
+
+        return [
+            .directory,
+            .uploads,
+            .dropbox,
+            .sync
+        ]
+    }
     
     var body: some View {
         NavigationStack {
@@ -30,11 +44,7 @@ struct FileFormView: View {
                 
                 if runtime.hasPrivilege("wired.account.file.set_type") {
                     Picker("Type", selection: $fileType) {
-                        ForEach([
-                            FileType.directory,
-                            FileType.uploads,
-                            FileType.dropbox
-                        ], id: \.rawValue) { c in
+                        ForEach(availableDirectoryTypes, id: \.rawValue) { c in
                             Text(c.description).tag(c.rawValue)
                         }
                     }
@@ -62,6 +72,9 @@ struct FileFormView: View {
         .onAppear {
             if let file {
                 fileName = file.name
+            }
+            if !availableDirectoryTypes.contains(where: { $0.rawValue == fileType }) {
+                fileType = FileType.directory.rawValue
             }
         }
     }

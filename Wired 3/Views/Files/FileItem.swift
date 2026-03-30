@@ -14,6 +14,7 @@ enum FileType: UInt32, CustomStringConvertible {
     case directory  = 1
     case uploads    = 2
     case dropbox    = 3
+    case sync       = 4
     
     var description: String {
         switch self {
@@ -25,7 +26,17 @@ enum FileType: UInt32, CustomStringConvertible {
             "Uploads"
         case .dropbox:
             "Drop Box"
+        case .sync:
+            "Sync"
         }
+    }
+
+    var isDirectoryLike: Bool {
+        self == .directory || self == .uploads || self == .dropbox || self == .sync
+    }
+
+    var isManagedAccessType: Bool {
+        self == .dropbox || self == .sync
     }
 }
 

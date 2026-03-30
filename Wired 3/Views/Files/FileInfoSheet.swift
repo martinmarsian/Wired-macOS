@@ -74,7 +74,18 @@ struct FileInfoSheet: View {
     }
 
     private var isDirectoryType: Bool {
-        info.type == .directory || info.type == .uploads || info.type == .dropbox
+        info.type.isDirectoryLike
+    }
+
+    private var isInsideSyncSubtree: Bool {
+        filesViewModel.isInsideSyncTree(info.path)
+    }
+
+    private var availableFolderTypes: [FileType] {
+        if isInsideSyncSubtree {
+            return [.directory]
+        }
+        return [.directory, .uploads, .dropbox, .sync]
     }
 
     private var canEditType: Bool {
@@ -86,7 +97,7 @@ struct FileInfoSheet: View {
     }
 
     private var hasDropboxPermissionChanges: Bool {
-        guard info.type == .dropbox else { return false }
+        guard info.type.isManagedAccessType else { return false }
         return ownerSelection != info.owner
         || groupSelection != info.group
         || ownerAccess != .from(read: info.ownerRead, write: info.ownerWrite)
@@ -95,7 +106,7 @@ struct FileInfoSheet: View {
     }
 
     private var canEditDropboxPermissions: Bool {
-        info.type == .dropbox && (runtime.hasPrivilege("wired.account.file.set_permissions") || info.writable)
+        info.type.isManagedAccessType && (runtime.hasPrivilege("wired.account.file.set_permissions") || info.writable)
     }
 
     private var canSaveChanges: Bool {
@@ -147,15 +158,15 @@ struct FileInfoSheet: View {
 
                     Section("Folder Type") {
                         Picker("Type", selection: $selectedTypeRawValue) {
-                            ForEach([FileType.directory, FileType.uploads, FileType.dropbox], id: \.rawValue) { type in
+                            ForEach(availableFolderTypes, id: \.rawValue) { type in
                                 Text(type.description).tag(type.rawValue)
                             }
                         }
                         .disabled(!canEditType)
                     }
 
-                    if info.type == .dropbox {
-                        Section("Dropbox Permissions") {
+                    if info.type.isManagedAccessType {
+                        Section("Managed Folder Permissions") {
                             Picker("Owner", selection: $ownerSelection) {
                                 Text("Aucun").tag("")
                                 ForEach(ownerNames, id: \.self) { name in
@@ -234,6 +245,9 @@ struct FileInfoSheet: View {
             let loadedInfo = try await filesViewModel.getFileInfo(path: file.path)
             info = loadedInfo
             selectedTypeRawValue = loadedInfo.type.rawValue
+            if isInsideSyncSubtree && selectedTypeRawValue != FileType.directory.rawValue {
+                selectedTypeRawValue = FileType.directory.rawValue
+            }
             ownerSelection = loadedInfo.owner
             groupSelection = loadedInfo.group
             ownerAccess = .from(read: loadedInfo.ownerRead, write: loadedInfo.ownerWrite)
@@ -246,7 +260,7 @@ struct FileInfoSheet: View {
 
     @MainActor
     private func loadAccounts() async {
-        guard info.type == .dropbox else { return }
+        guard info.type.isManagedAccessType else { return }
 
         isLoadingAccounts = true
         defer { isLoadingAccounts = false }
@@ -273,7 +287,7 @@ struct FileInfoSheet: View {
                 try await filesViewModel.setFileType(path: info.path, type: selectedType)
             }
 
-            if info.type == .dropbox, hasDropboxPermissionChanges, canEditDropboxPermissions {
+            if info.type.isManagedAccessType, hasDropboxPermissionChanges, canEditDropboxPermissions {
                 let permissions = DropboxPermissions(
                     owner: ownerSelection,
                     group: groupSelection,
