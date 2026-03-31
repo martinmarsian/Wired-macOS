@@ -415,6 +415,20 @@ final class FilesViewModel: ObservableObject {
         }
     }
 
+    func currentItem(path: String) -> FileItem? {
+        for column in columns {
+            if let match = column.items.first(where: { $0.path == path }) {
+                return match
+            }
+        }
+        for children in treeChildrenByPath.values {
+            if let match = children.first(where: { $0.path == path }) {
+                return match
+            }
+        }
+        return nil
+    }
+
     @MainActor
     func loadTreeRoot() async {
         let rootPath = normalizedRemotePath(treeRootPath)

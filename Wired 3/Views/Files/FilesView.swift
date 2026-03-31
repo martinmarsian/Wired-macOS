@@ -14,6 +14,7 @@ import CoreTransferable
 import AppKit
 import ObjectiveC
 import Darwin
+import SQLite3
 #endif
 
 extension UTType {
@@ -164,11 +165,16 @@ private func isDownloadableRemoteItem(_ item: FileItem) -> Bool {
     return item.type == .file || item.type.isDirectoryLike
 }
 
-private func canGetInfoForRemoteItem(_ item: FileItem) -> Bool {
-    if item.type.isManagedAccessType {
-        return item.readable
+private func normalizeSyncRemotePath(_ path: String) -> String {
+    var normalized = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    if normalized.isEmpty { return "/" }
+    while normalized.count > 1 && normalized.hasSuffix("/") {
+        normalized.removeLast()
     }
-    return true
+    if !normalized.hasPrefix("/") {
+        normalized = "/" + normalized
+    }
+    return normalized
 }
 
 private struct SyncActivationNotice: Identifiable {
@@ -177,16 +183,341 @@ private struct SyncActivationNotice: Identifiable {
     let message: String
 }
 
-private enum WiredSyncDaemonIPC {
-    static let socketPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
-        .appendingPathComponent("Library/Application Support/WiredSync/run/wiredsyncd.sock")
+enum SyncPairStatusDisplay: Equatable {
+    case hidden
+    case checking
+    case active
+    case inactive
+}
 
-    static func addPair(remotePath: String, localPath: String, mode: String = "bidirectional") throws {
+private enum SyncPairLocalOverride: Equatable {
+    case checking(active: Bool)
+    case sticky(active: Bool, until: Date)
+}
+
+private struct WiredSyncPairDescriptor: Hashable {
+    let remotePath: String
+    let serverURL: String
+    let login: String
+    let mode: String
+    let paused: Bool
+}
+
+private enum WiredSyncDaemonIPC {
+    static let defaultRPCTimeoutSeconds: Int = 8
+    static let baseSupportPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
+        .appendingPathComponent("Library/Application Support/WiredSync")
+    static let runPath = (baseSupportPath as NSString).appendingPathComponent("run")
+    static let socketPath = (runPath as NSString).appendingPathComponent("wiredsyncd.sock")
+    static let configPath = (baseSupportPath as NSString).appendingPathComponent("config.json")
+    static let statePath = (baseSupportPath as NSString).appendingPathComponent("state.sqlite")
+    static let daemonInstallPath = (baseSupportPath as NSString).appendingPathComponent("daemon")
+    static let daemonResourcesPath = (daemonInstallPath as NSString).appendingPathComponent("Resources")
+    static let installedDaemonPath = (daemonInstallPath as NSString).appendingPathComponent("wiredsyncd")
+    static let launchAgentLabel = "fr.read-write.wiredsyncd"
+    static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
+        .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
+    /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
+    static let expectedDaemonVersion = "4"
+
+    static func addPair(
+        remotePath: String,
+        localPath: String,
+        mode: String = "bidirectional",
+        serverURL: String,
+        login: String,
+        password: String
+    ) throws -> String? {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "add_pair",
+            "params": [
+                "remote_path": remotePath,
+                "local_path": localPath,
+                "mode": mode,
+                "server_url": serverURL,
+                "login": login,
+                "password": password
+            ]
+        ]
+        let response = try sendRequest(request)
+        let result = response["result"] as? [String: Any]
+        return result?["pair_id"] as? String
+    }
+
+    static func syncNow(remotePath: String, serverURL: String? = nil, login: String? = nil) throws -> (matched: Int, launched: Int) {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "sync_now",
+            "params": [
+                "remote_path": remotePath,
+                "server_url": serverURL ?? "",
+                "login": login ?? ""
+            ]
+        ]
+        let response = try sendRequest(request)
+        let result = response["result"] as? [String: Any]
+        let matched = result?["matched"] as? Int ?? 0
+        let launched = result?["launched"] as? Int ?? 0
+        return (matched, launched)
+    }
+
+    static func removePairForRemote(remotePath: String, serverURL: String, login: String? = nil) throws {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "remove_pair_for_remote",
+            "params": [
+                "remote_path": remotePath,
+                "server_url": serverURL,
+                "login": login ?? ""
+            ]
+        ]
+        _ = try sendRequest(request)
+    }
+
+    static func listPairedDescriptors(serverURL: String? = nil, login: String? = nil) throws -> Set<WiredSyncPairDescriptor> {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "list_pairs"
+        ]
+        let response = try sendRequest(request)
+        guard let result = response["result"] as? [String: Any],
+              let pairs = result["pairs"] as? [[String: Any]] else {
+            return []
+        }
+
+        let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedLogin = login?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let descriptors: [WiredSyncPairDescriptor] = pairs.compactMap { pair in
+            guard let remotePath = pair["remote_path"] as? String else { return nil }
+            if let normalizedServer, !normalizedServer.isEmpty {
+                guard let pairServer = pair["server_url"] as? String, pairServer == normalizedServer else { return nil }
+            }
+            if let normalizedLogin, !normalizedLogin.isEmpty {
+                let pairLogin = (pair["login"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard pairLogin == normalizedLogin else { return nil }
+            }
+            let pairServer = (pair["server_url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let pairLogin = (pair["login"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let pausedRaw = (pair["paused"] as? String)?.lowercased() ?? "false"
+            let paused = pausedRaw == "true" || pausedRaw == "1"
+            return WiredSyncPairDescriptor(
+                remotePath: normalizeSyncRemotePath(remotePath),
+                serverURL: pairServer,
+                login: pairLogin,
+                mode: (pair["mode"] as? String) ?? "bidirectional",
+                paused: paused
+            )
+        }
+        return Set(descriptors)
+    }
+
+    static func updatePairMode(remotePath: String, mode: String, serverURL: String, login: String) throws -> Int {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "update_pair_mode",
+            "params": [
+                "remote_path": remotePath,
+                "mode": mode,
+                "server_url": serverURL,
+                "login": login
+            ]
+        ]
+        let response = try sendRequest(request)
+        let result = response["result"] as? [String: Any]
+        return result?["updated_count"] as? Int ?? 0
+    }
+
+    static func listPairedRemotePaths(serverURL: String? = nil, login: String? = nil) throws -> Set<String> {
+        let descriptors = try listPairedDescriptors(serverURL: serverURL, login: login)
+        return Set(descriptors.filter { !$0.paused }.map(\.remotePath))
+    }
+
+    static func configuredPairedRemotePaths(serverURL: String? = nil, login: String? = nil) -> Set<String> {
+        struct ConfigFile: Decodable {
+            struct Pair: Decodable {
+                struct Endpoint: Decodable {
+                    let serverURL: String
+                    let login: String?
+
+                    enum CodingKeys: String, CodingKey {
+                        case serverURL
+                        case login
+                    }
+                }
+
+                let remotePath: String
+                let endpoint: Endpoint
+                let paused: Bool?
+
+                enum CodingKeys: String, CodingKey {
+                    case remotePath
+                    case endpoint
+                    case paused
+                }
+            }
+
+            let pairs: [Pair]
+        }
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+              let config = try? JSONDecoder().decode(ConfigFile.self, from: data) else {
+            return []
+        }
+
+        let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedLogin = login?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let paths = config.pairs.compactMap { pair -> String? in
+            if pair.paused == true {
+                return nil
+            }
+            if let normalizedServer, !normalizedServer.isEmpty,
+               pair.endpoint.serverURL != normalizedServer {
+                return nil
+            }
+            if let normalizedLogin, !normalizedLogin.isEmpty {
+                let pairLogin = pair.endpoint.login?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if pairLogin != normalizedLogin {
+                    return nil
+                }
+            }
+            return normalizeSyncRemotePath(pair.remotePath)
+        }
+        return Set(paths)
+    }
+
+    static func stateDatabasePairedRemotePaths(serverURL: String? = nil, login: String? = nil) -> Set<String> {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(statePath, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let database else {
+            sqlite3_close(database)
+            return []
+        }
+        defer { sqlite3_close(database) }
+
+        let sql = "SELECT remote_path, endpoint_json FROM sync_pairs WHERE paused = 0;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            sqlite3_finalize(statement)
+            return []
+        }
+        defer { sqlite3_finalize(statement) }
+
+        let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedLogin = login?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needsEndpointFiltering = (normalizedServer?.isEmpty == false) || (normalizedLogin?.isEmpty == false)
+        var paths: Set<String> = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(statement, 0) else { continue }
+            let remotePath = String(cString: raw)
+            if needsEndpointFiltering {
+                let endpointJSON: String
+                if let endpointRaw = sqlite3_column_text(statement, 1) {
+                    endpointJSON = String(cString: endpointRaw)
+                } else {
+                    endpointJSON = ""
+                }
+                let endpointData = Data(endpointJSON.utf8)
+                let endpointObject = (try? JSONSerialization.jsonObject(with: endpointData)) as? [String: Any]
+                let pairServer = (endpointObject?["serverURL"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let pairLogin = (endpointObject?["login"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if let normalizedServer, !normalizedServer.isEmpty, pairServer != normalizedServer {
+                    continue
+                }
+                if let normalizedLogin, !normalizedLogin.isEmpty, pairLogin != normalizedLogin {
+                    continue
+                }
+            }
+            paths.insert(normalizeSyncRemotePath(remotePath))
+        }
+        return paths
+    }
+
+    static func persistedPairedRemotePaths(serverURL: String? = nil, login: String? = nil) -> Set<String> {
+        configuredPairedRemotePaths(serverURL: serverURL, login: login).union(
+            stateDatabasePairedRemotePaths(serverURL: serverURL, login: login)
+        )
+    }
+
+    @discardableResult
+    private static func sendRequest(_ request: [String: Any]) throws -> [String: Any] {
+        let method = request["method"] as? String
+        let timeoutSeconds = timeoutSecondsForMethod(method)
+        do {
+            return try performRequest(request, timeoutSeconds: timeoutSeconds)
+        } catch {
+            guard shouldAttemptLaunchAgentRecovery(after: error) else {
+                throw error
+            }
+            try installAndStartLaunchAgent()
+            return try performRequest(request, timeoutSeconds: timeoutSeconds)
+        }
+    }
+
+    private static func shouldAttemptLaunchAgentRecovery(after error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == "wiredsyncd.ipc" else { return false }
+        return nsError.code == 1 || nsError.code == 2
+    }
+
+    private static func timeoutSecondsForMethod(_ method: String?) -> Int {
+        switch method {
+        case "status", "list_pairs":
+            return 3
+        case "logs_tail":
+            return 4
+        case "add_pair", "remove_pair", "remove_pair_for_remote", "pause_pair", "resume_pair", "sync_now":
+            return 8
+        default:
+            return defaultRPCTimeoutSeconds
+        }
+    }
+
+    private static func performRequest(_ request: [String: Any], timeoutSeconds: Int) throws -> [String: Any] {
+        let fd = try connectSocket(timeoutSeconds: timeoutSeconds)
+        defer { close(fd) }
+
+        let payload = try JSONSerialization.data(withJSONObject: request)
+        try payload.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            guard Darwin.write(fd, base, payload.count) >= 0 else {
+                throw NSError(domain: "wiredsyncd.ipc", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to write request to wiredsyncd"])
+            }
+            _ = Darwin.write(fd, "\n", 1)
+        }
+
+        var responseBuffer = [UInt8](repeating: 0, count: 4096)
+        let n = Darwin.read(fd, &responseBuffer, responseBuffer.count)
+        guard n > 0 else {
+            throw NSError(
+                domain: "wiredsyncd.ipc",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "No response from wiredsyncd (timeout \(timeoutSeconds)s)"]
+            )
+        }
+
+        let data = Data(responseBuffer.prefix(n))
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "wiredsyncd.ipc", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid response from wiredsyncd"])
+        }
+        if let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String {
+            throw NSError(domain: "wiredsyncd.ipc", code: 6, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return json
+    }
+
+    private static func connectSocket(timeoutSeconds: Int) throws -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
             throw NSError(domain: "wiredsyncd.ipc", code: 1, userInfo: [NSLocalizedDescriptionKey: "socket() failed"])
         }
-        defer { close(fd) }
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -207,42 +538,252 @@ private enum WiredSyncDaemonIPC {
             }
         }
         guard result == 0 else {
-            throw NSError(domain: "wiredsyncd.ipc", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to connect to wiredsyncd socket at \(socketPath)"])
+            close(fd)
+            throw NSError(
+                domain: "wiredsyncd.ipc",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to connect to wiredsyncd socket at \(socketPath)"]
+            )
         }
 
-        let request: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": UUID().uuidString,
-            "method": "add_pair",
-            "params": [
-                "remote_path": remotePath,
-                "local_path": localPath,
-                "mode": mode
-            ]
+        var timeout = timeval(tv_sec: timeoutSeconds, tv_usec: 0)
+        withUnsafePointer(to: &timeout) { ptr in
+            ptr.withMemoryRebound(to: UInt8.self, capacity: MemoryLayout<timeval>.size) { rawPtr in
+                _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, rawPtr, socklen_t(MemoryLayout<timeval>.size))
+                _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, rawPtr, socklen_t(MemoryLayout<timeval>.size))
+            }
+        }
+
+        return fd
+    }
+
+    private static func installAndStartLaunchAgent() throws {
+        let fm = FileManager.default
+        let launchAgentsDir = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent("Library/LaunchAgents")
+        let logDir = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent("Library/Logs/WiredSync")
+        try fm.createDirectory(atPath: launchAgentsDir, withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: logDir, withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: runPath, withIntermediateDirectories: true)
+
+        let daemonPath = try installDaemonArtifacts()
+        try? fm.removeItem(atPath: socketPath)
+        print("[WiredSyncUI] launchd.install daemon=\(daemonPath) resource_root=\(daemonResourcesPath)")
+
+        let plist: [String: Any] = [
+            "Label": launchAgentLabel,
+            "ProgramArguments": [daemonPath],
+            "RunAtLoad": true,
+            "KeepAlive": true,
+            "WorkingDirectory": daemonInstallPath,
+            "EnvironmentVariables": [
+                "WIRED_SYNCD_RESOURCE_ROOT": daemonResourcesPath
+            ],
+            "StandardOutPath": (logDir as NSString).appendingPathComponent("wiredsyncd.out.log"),
+            "StandardErrorPath": (logDir as NSString).appendingPathComponent("wiredsyncd.err.log"),
+            "ProcessType": "Background"
         ]
 
-        let payload = try JSONSerialization.data(withJSONObject: request)
-        try payload.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            guard Darwin.write(fd, base, payload.count) >= 0 else {
-                throw NSError(domain: "wiredsyncd.ipc", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to write request to wiredsyncd"])
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: URL(fileURLWithPath: launchAgentPath), options: .atomic)
+
+        let domain = "gui/\(getuid())"
+        _ = try runLaunchctl(arguments: ["bootout", "\(domain)/\(launchAgentLabel)"], allowFailure: true)
+        _ = try runLaunchctl(arguments: ["bootout", domain, launchAgentPath], allowFailure: true)
+        _ = try runLaunchctl(arguments: ["enable", "\(domain)/\(launchAgentLabel)"], allowFailure: true)
+        _ = try runLaunchctl(arguments: ["bootstrap", domain, launchAgentPath], allowFailure: false)
+        try waitForDaemonReady()
+    }
+
+    private static func installDaemonArtifacts() throws -> String {
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: daemonInstallPath, withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: daemonResourcesPath, withIntermediateDirectories: true)
+
+        let sourceBinaryPath = try resolveBundledDaemonExecutablePath()
+        try installFile(from: sourceBinaryPath, to: installedDaemonPath, executable: true)
+
+        if let resourcePath = resolveBundledDaemonResourcePath() {
+            let installedResourcePath = (daemonResourcesPath as NSString).appendingPathComponent("wired.xml")
+            try installFile(from: resourcePath, to: installedResourcePath, executable: false)
+        }
+
+        return installedDaemonPath
+    }
+
+    private static func installFile(from sourcePath: String, to destinationPath: String, executable: Bool) throws {
+        let fm = FileManager.default
+        let tempPath = destinationPath + ".tmp"
+        try? fm.removeItem(atPath: tempPath)
+        if fm.fileExists(atPath: destinationPath) {
+            try fm.removeItem(atPath: destinationPath)
+        }
+        try fm.copyItem(atPath: sourcePath, toPath: tempPath)
+        if executable {
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempPath)
+        } else {
+            try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: tempPath)
+        }
+        try fm.moveItem(atPath: tempPath, toPath: destinationPath)
+    }
+
+    private static func resolveBundledDaemonExecutablePath() throws -> String {
+        let fm = FileManager.default
+        let env = ProcessInfo.processInfo.environment
+
+        var candidates: [String] = []
+        if let fromEnv = env["WIRED_SYNCD_PATH"], !fromEnv.isEmpty {
+            candidates.append(fromEnv)
+        }
+        if let aux = Bundle.main.url(forAuxiliaryExecutable: "wiredsyncd")?.path {
+            candidates.append(aux)
+        }
+        candidates.append((Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/MacOS/wiredsyncd"))
+        candidates.append((FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("wiredsyncd/.build/debug/wiredsyncd"))
+        candidates.append((FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("wiredsyncd/.build/release/wiredsyncd"))
+        candidates.append((NSHomeDirectory() as NSString).appendingPathComponent(".local/bin/wiredsyncd"))
+        candidates.append("/opt/homebrew/bin/wiredsyncd")
+        candidates.append("/usr/local/bin/wiredsyncd")
+
+        for candidate in candidates {
+            if fm.fileExists(atPath: candidate), fm.isExecutableFile(atPath: candidate) {
+                return candidate
             }
-            _ = Darwin.write(fd, "\n", 1)
         }
 
-        var responseBuffer = [UInt8](repeating: 0, count: 4096)
-        let n = Darwin.read(fd, &responseBuffer, responseBuffer.count)
-        guard n > 0 else {
-            throw NSError(domain: "wiredsyncd.ipc", code: 4, userInfo: [NSLocalizedDescriptionKey: "No response from wiredsyncd"])
+        throw NSError(
+            domain: "wiredsyncd.ipc",
+            code: 8,
+            userInfo: [NSLocalizedDescriptionKey: "Unable to locate wiredsyncd executable. Set WIRED_SYNCD_PATH or install wiredsyncd in PATH."]
+        )
+    }
+
+    private static func resolveBundledDaemonResourcePath() -> String? {
+        let fm = FileManager.default
+        let candidates: [String?] = [
+            Bundle.main.url(forResource: "wired", withExtension: "xml")?.path,
+            (Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/Resources/wired.xml"),
+            (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("wiredsyncd/Sources/wiredsyncd/Resources/wired.xml")
+        ]
+
+        for candidate in candidates.compactMap({ $0 }) {
+            if fm.fileExists(atPath: candidate) {
+                return candidate
+            }
         }
 
-        let data = Data(responseBuffer.prefix(n))
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw NSError(domain: "wiredsyncd.ipc", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid response from wiredsyncd"])
+        return nil
+    }
+
+    @discardableResult
+    private static func runLaunchctl(arguments: [String], allowFailure: Bool) throws -> String {
+        try runExecutable(path: "/bin/launchctl", arguments: arguments, allowFailure: allowFailure)
+    }
+
+    @discardableResult
+    private static func runExecutable(path: String, arguments: [String], allowFailure: Bool) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+        if process.terminationStatus != 0, !allowFailure {
+            let reason = stderr.isEmpty ? stdout : stderr
+            throw NSError(
+                domain: "wiredsyncd.ipc",
+                code: 9,
+                userInfo: [NSLocalizedDescriptionKey: "\(URL(fileURLWithPath: path).lastPathComponent) \(arguments.joined(separator: " ")) failed: \(reason)"]
+            )
         }
-        if let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
-            throw NSError(domain: "wiredsyncd.ipc", code: 6, userInfo: [NSLocalizedDescriptionKey: message])
+
+        return stdout + stderr
+    }
+
+    private static func waitForDaemonReady(timeout: TimeInterval = 5.0) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastError: Error?
+
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: socketPath) {
+                do {
+                    let response = try performRequest(
+                        ["jsonrpc": "2.0", "id": UUID().uuidString, "method": "status"],
+                        timeoutSeconds: 1
+                    )
+                    if let result = response["result"] as? [String: Any],
+                       let version = result["version"] as? String,
+                       version == expectedDaemonVersion {
+                        print("[WiredSyncUI] launchd.ready socket=\(socketPath) version=\(version)")
+                        return
+                    }
+                } catch {
+                    lastError = error
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        let reason = (lastError as NSError?)?.localizedDescription ?? "socket did not become ready"
+        print("[WiredSyncUI] launchd.timeout socket=\(socketPath) reason=\(reason)")
+        throw NSError(
+            domain: "wiredsyncd.ipc",
+            code: 11,
+            userInfo: [NSLocalizedDescriptionKey: "wiredsyncd launchd startup timed out: \(reason)"]
+        )
+    }
+
+    static func waitForPairRegistration(
+        remotePath: String,
+        serverURL: String,
+        login: String,
+        timeout: TimeInterval = 5.0
+    ) throws {
+        let normalizedPath = normalizeSyncRemotePath(remotePath)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if persistedPairedRemotePaths(serverURL: serverURL, login: login).contains(normalizedPath) {
+                return
+            }
+            if let livePaths = try? listPairedRemotePaths(serverURL: serverURL, login: login),
+               livePaths.contains(normalizedPath) {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw NSError(
+            domain: "wiredsyncd.ipc",
+            code: 10,
+            userInfo: [NSLocalizedDescriptionKey: "wiredsyncd did not confirm the pair for \(remotePath) on \(serverURL) as \(login)."]
+        )
+    }
+
+    /// Checks whether the running daemon matches the expected version.
+    /// If a version mismatch is detected (stale process after an app update), the daemon
+    /// is replaced transparently via `kickstart -k`.  Safe to call at every app launch.
+    static func ensureDaemonIsCurrentVersion() {
+        Task.detached(priority: .background) {
+            guard let result = try? performRequest(
+                ["jsonrpc": "2.0", "id": UUID().uuidString, "method": "status"],
+                timeoutSeconds: 3
+            ),
+            let data = result["result"] as? [String: Any] else {
+                // Daemon unreachable – will be installed on next IPC call.
+                return
+            }
+            let runningVersion = data["version"] as? String ?? ""
+            guard runningVersion != expectedDaemonVersion else { return }
+
+            // Version mismatch: reinstall plist and replace the running process.
+            try? installAndStartLaunchAgent()
         }
     }
 }
@@ -253,6 +794,12 @@ private enum RemoteFolderIconKind: String {
     case uploads
     case dropbox
     case sync
+}
+
+private enum SyncContextMenuItemTag {
+    static let status = 9_101
+    static let toggle = 9_102
+    static let syncNow = 9_103
 }
 
 private final class RemoteFolderIconCache {
@@ -399,6 +946,19 @@ struct FilesView: View {
     @State private var currentDirectoryPath: String = "/"
     @State private var isApplyingHistoryNavigation: Bool = false
     @State private var syncActivationNotice: SyncActivationNotice? = nil
+    @State private var pendingDeactivateSyncDirectory: FileItem? = nil
+    @State private var showDeactivateSyncConfirmation: Bool = false
+    @State private var pairedSyncRemotePaths: Set<String> = []
+    @State private var pairedSyncDescriptors: Set<WiredSyncPairDescriptor> = []
+    @State private var syncPairLocalOverrides: [String: SyncPairLocalOverride] = [:]
+    @State private var syncPairModeReconciliationInFlight: Set<String> = []
+    @State private var isSyncPairStatusRefreshing: Bool = false
+    @State private var syncPairStatusRefreshToken: UUID? = nil
+    @State private var lastSyncPairStatusRefreshAt: Date = .distantPast
+    @State private var syncPairStatusRefreshTask: Task<Void, Never>? = nil
+    @State private var syncPairPollingTask: Task<Void, Never>? = nil
+    @State private var syncPairStatusVersion: Int = 0
+    @State private var selectedSyncStatusPath: String? = nil
     
     @State private var currentSearchTask: Task<Void, Never>? = nil
 
@@ -453,12 +1013,15 @@ struct FilesView: View {
         var selected: FileItem
         switch filesViewModel.selectedFileViewType {
         case .columns:
-            guard let lastColumn = filesViewModel.columns.last,
-                  let selectedID = lastColumn.selection,
-                  let selectedItem = lastColumn.items.first(where: { $0.id == selectedID }) else {
+            if let lastColumn = filesViewModel.columns.last,
+               let selectedID = lastColumn.selection,
+               let selectedItem = lastColumn.items.first(where: { $0.id == selectedID }) {
+                selected = selectedItem
+            } else if let selectedItem {
+                selected = selectedItem
+            } else {
                 return nil
             }
-            selected = selectedItem
         case .tree:
             guard let selectedItem else { return nil }
             selected = selectedItem
@@ -468,14 +1031,215 @@ struct FilesView: View {
             return selected
         }
 
-        let parentPath = selected.path.stringByDeletingLastPathComponent
-        selected = FileItem(parentPath.lastPathComponent, path: parentPath, type: .directory)
-        return selected
+        let parentPath = normalizedRemotePath(selected.path.stringByDeletingLastPathComponent)
+        if let parentItem = itemForPath(parentPath), parentItem.type.isDirectoryLike {
+            return parentItem
+        }
+        return FileItem(parentPath.lastPathComponent, path: parentPath, type: .directory)
     }
 
     private var selectedSyncDirectory: FileItem? {
-        guard let target = selectedDirectoryForUpload, target.type == .sync else { return nil }
-        return target
+        if let target = selectedDirectoryForUpload {
+            if target.type == .sync {
+                return target
+            }
+            if let resolved = itemForPath(target.path), resolved.type == .sync {
+                return resolved
+            }
+        }
+
+        if let path = primarySelectionPath,
+           let directoryPath = directoryPath(from: path),
+           let directoryItem = itemForPath(directoryPath),
+           directoryItem.type == .sync {
+            return directoryItem
+        }
+
+        return nil
+    }
+
+    private func syncDirectoryPath(for primaryPath: String?) -> String? {
+        guard let primaryPath else { return nil }
+        if let item = itemForPath(primaryPath) {
+            if item.type == .sync {
+                return normalizeSyncRemotePath(item.path)
+            }
+            let parentPath = normalizedRemotePath(item.path.stringByDeletingLastPathComponent)
+            if let parent = itemForPath(parentPath), parent.type == .sync {
+                return normalizeSyncRemotePath(parent.path)
+            }
+        }
+        return nil
+    }
+
+    private func updatePrimarySelectionPath(_ path: String?) {
+        primarySelectionPath = path
+        if let syncPath = syncDirectoryPath(for: path) {
+            selectedSyncStatusPath = syncPath
+        } else if path != nil {
+            selectedSyncStatusPath = nil
+        }
+    }
+
+    private func bumpSyncPairStatusVersion() {
+        syncPairStatusVersion &+= 1
+    }
+
+    private var currentSyncServerURL: String? {
+        guard let connection = runtime.connection as? AsyncConnection,
+              let url = connection.url else {
+            return nil
+        }
+        return "\(url.hostname):\(url.port)"
+    }
+
+    private var currentSyncLogin: String? {
+        guard let connection = runtime.connection as? AsyncConnection,
+              let url = connection.url else {
+            return nil
+        }
+        return url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func visibleSyncItems() -> [FileItem] {
+        let items = filesViewModel.columns.flatMap(\.items) + filesViewModel.visibleTreeNodes().map(\.item)
+        var seen: Set<String> = []
+        return items.filter { item in
+            guard item.type == .sync else { return false }
+            let path = normalizeSyncRemotePath(item.path)
+            guard !seen.contains(path) else { return false }
+            seen.insert(path)
+            return true
+        }
+    }
+
+    private func effectiveSyncMode(for item: FileItem) -> String? {
+        guard item.type == .sync else { return nil }
+        switch (item.readable, item.writable) {
+        case (true, true):
+            return "bidirectional"
+        case (true, false):
+            return "server_to_client"
+        case (false, true):
+            return "client_to_server"
+        case (false, false):
+            return nil
+        }
+    }
+
+    private func reconcileSyncPairModesIfNeeded(descriptors: Set<WiredSyncPairDescriptor>) {
+        guard let serverURL = currentSyncServerURL,
+              let login = currentSyncLogin else { return }
+
+        let visibleItems = visibleSyncItems()
+        for item in visibleItems {
+            let path = normalizeSyncRemotePath(item.path)
+            guard pairedSyncRemotePaths.contains(path) else { continue }
+            guard let expectedMode = effectiveSyncMode(for: item) else { continue }
+            guard let descriptor = descriptors.first(where: {
+                $0.remotePath == path && $0.serverURL == serverURL && $0.login == login
+            }) else { continue }
+            guard descriptor.mode != expectedMode else { continue }
+            guard !syncPairModeReconciliationInFlight.contains(path) else { continue }
+
+            syncPairModeReconciliationInFlight.insert(path)
+            print("[WiredSyncUI] reconcile.mode remote=\(path) stored=\(descriptor.mode) effective=\(expectedMode)")
+
+            Task.detached(priority: .utility) {
+                do {
+                    let updatedCount = try WiredSyncDaemonIPC.updatePairMode(
+                        remotePath: path,
+                        mode: expectedMode,
+                        serverURL: serverURL,
+                        login: login
+                    )
+                    await MainActor.run {
+                        syncPairModeReconciliationInFlight.remove(path)
+                        print("[WiredSyncUI] reconcile.mode.success remote=\(path) updated=\(updatedCount) mode=\(expectedMode)")
+                        scheduleSyncPairStatusRefresh(delayNanoseconds: 500_000_000, force: true, showProgress: false)
+                    }
+                } catch {
+                    await MainActor.run {
+                        syncPairModeReconciliationInFlight.remove(path)
+                        print("[WiredSyncUI] reconcile.mode.error remote=\(path) error=\(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func debugLogSyncStatuses(context: String, livePaths: Set<String>? = nil, persistedPaths: Set<String>? = nil) {
+        let endpoint = currentSyncServerURL ?? "<none>"
+        let login = (currentSyncLogin?.isEmpty == false ? currentSyncLogin! : "<none>")
+        let visible = visibleSyncItems()
+        let visiblePaths = visible.map { normalizeSyncRemotePath($0.path) }.sorted()
+        print("[WiredSyncUI] context=\(context) endpoint=\(endpoint) login=\(login) visible=\(visiblePaths)")
+        if let livePaths {
+            print("[WiredSyncUI] context=\(context) live_paths=\(Array(livePaths).sorted())")
+        }
+        if let persistedPaths {
+            print("[WiredSyncUI] context=\(context) persisted_paths=\(Array(persistedPaths).sorted())")
+        }
+        for item in visible.sorted(by: { $0.path < $1.path }) {
+            let path = normalizeSyncRemotePath(item.path)
+            let overrideDescription: String
+            if let override = syncPairLocalOverrides[path] {
+                switch override {
+                case .checking(let active):
+                    overrideDescription = "checking(\(active ? "active" : "inactive"))"
+                case .sticky(let active, let until):
+                    overrideDescription = "sticky(\(active ? "active" : "inactive"),until=\(until.timeIntervalSince1970))"
+                }
+            } else {
+                overrideDescription = "none"
+            }
+            print(
+                "[WiredSyncUI] item=\(path) status=\(String(describing: syncPairStatus(for: item))) " +
+                "exists=\(syncPairExists(for: item)) paired=\(pairedSyncRemotePaths.contains(path)) override=\(overrideDescription)"
+            )
+        }
+    }
+
+    private func setSyncPairLocalOverride(_ override: SyncPairLocalOverride?, for path: String) {
+        let normalizedPath = normalizeSyncRemotePath(path)
+        if let override {
+            syncPairLocalOverrides[normalizedPath] = override
+        } else {
+            syncPairLocalOverrides.removeValue(forKey: normalizedPath)
+        }
+        bumpSyncPairStatusVersion()
+    }
+
+    private func syncPairStatus(for item: FileItem) -> SyncPairStatusDisplay {
+        guard item.type == .sync else { return .hidden }
+        let path = normalizeSyncRemotePath(item.path)
+        if let override = syncPairLocalOverrides[path] {
+            switch override {
+            case .checking:
+                return .checking
+            case .sticky(let active, let until):
+                if until > Date() {
+                    return active ? .active : .inactive
+                }
+            }
+        }
+        return pairedSyncRemotePaths.contains(path) ? .active : .inactive
+    }
+
+    private func syncPairExists(for item: FileItem) -> Bool {
+        guard item.type == .sync else { return false }
+        let path = normalizeSyncRemotePath(item.path)
+        if let override = syncPairLocalOverrides[path] {
+            switch override {
+            case .checking(let active):
+                return active
+            case .sticky(let active, let until):
+                if until > Date() {
+                    return active
+                }
+            }
+        }
+        return pairedSyncRemotePaths.contains(path)
     }
 
     private var selectedDownloadableItem: FileItem? {
@@ -549,11 +1313,25 @@ struct FilesView: View {
     }
 
     private func canGetInfo(for item: FileItem) -> Bool {
-        runtime.hasPrivilege("wired.account.file.get_info") && canGetInfoForRemoteItem(item)
+        guard runtime.hasPrivilege("wired.account.file.get_info") else { return false }
+        guard item.type.isManagedAccessType else { return true }
+        if item.type == .sync && runtime.hasPrivilege("wired.account.file.set_permissions") {
+            return true
+        }
+        return item.readable
     }
 
     private func activateSync(for directory: FileItem) {
 #if os(macOS)
+        guard let connection = runtime.connection as? AsyncConnection,
+              let url = connection.url else {
+            syncActivationNotice = SyncActivationNotice(
+                title: "Sync Error",
+                message: "No active Wired connection available for sync activation."
+            )
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -563,21 +1341,279 @@ struct FilesView: View {
 
         guard panel.runModal() == .OK, let localURL = panel.url else { return }
 
-        do {
-            try WiredSyncDaemonIPC.addPair(
-                remotePath: directory.path,
-                localPath: localURL.path,
-                mode: "bidirectional"
-            )
-            syncActivationNotice = SyncActivationNotice(
-                title: "Sync Enabled",
-                message: "Pair created for:\n\(directory.path)\n↔\n\(localURL.path)"
-            )
-        } catch {
+        let currentDirectory = filesViewModel.currentItem(path: directory.path) ?? directory
+        let mode: String
+        let serverURL = "\(url.hostname):\(url.port)"
+        let login = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch (currentDirectory.readable, currentDirectory.writable) {
+        case (true, true):
+            mode = "bidirectional"
+        case (true, false):
+            mode = "server_to_client"
+        case (false, true):
+            mode = "client_to_server"
+        case (false, false):
             syncActivationNotice = SyncActivationNotice(
                 title: "Sync Error",
-                message: error.localizedDescription
+                message: "The selected sync folder grants no effective read/write access for your account."
             )
+            return
+        }
+
+        Task.detached(priority: .userInitiated) {
+            await MainActor.run {
+                setSyncPairLocalOverride(.checking(active: true), for: directory.path)
+                print("[WiredSyncUI] activate path=\(directory.path) readable=\(currentDirectory.readable) writable=\(currentDirectory.writable) mode=\(mode)")
+            }
+            do {
+                let _ = try WiredSyncDaemonIPC.addPair(
+                    remotePath: directory.path,
+                    localPath: localURL.path,
+                    mode: mode,
+                    serverURL: serverURL,
+                    login: login,
+                    password: url.password
+                )
+                try WiredSyncDaemonIPC.waitForPairRegistration(
+                    remotePath: directory.path,
+                    serverURL: serverURL,
+                    login: login
+                )
+                let syncResult = try WiredSyncDaemonIPC.syncNow(
+                    remotePath: directory.path,
+                    serverURL: serverURL,
+                    login: login
+                )
+                await MainActor.run {
+                    pairedSyncRemotePaths.insert(normalizeSyncRemotePath(directory.path))
+                    setSyncPairLocalOverride(.sticky(active: true, until: Date().addingTimeInterval(15)), for: directory.path)
+                    // Delay the reconciliation refresh so the daemon has time to settle;
+                    // the manual insert above is already the correct optimistic state.
+                    scheduleSyncPairStatusRefresh(delayNanoseconds: 2_000_000_000, force: true, showProgress: false)
+                    debugLogSyncStatuses(
+                        context: "activate.success remote=\(normalizeSyncRemotePath(directory.path)) matched=\(syncResult.matched) launched=\(syncResult.launched)"
+                    )
+                    syncActivationNotice = SyncActivationNotice(
+                        title: "Sync Enabled",
+                        message: "Pair created for:\n\(directory.path)\n↔\n\(localURL.path)\nMode: \(mode)\n\nSync matched: \(syncResult.matched), launched: \(syncResult.launched)"
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    setSyncPairLocalOverride(nil, for: directory.path)
+                    debugLogSyncStatuses(context: "activate.error remote=\(normalizeSyncRemotePath(directory.path)) error=\(error.localizedDescription)")
+                    syncActivationNotice = SyncActivationNotice(
+                        title: "Sync Error",
+                        message: error.localizedDescription
+                    )
+                }
+            }
+        }
+#endif
+    }
+
+    private func syncNow(for directory: FileItem) {
+#if os(macOS)
+        let serverURL = currentSyncServerURL
+        let login = currentSyncLogin
+        Task.detached(priority: .userInitiated) {
+            do {
+                let result = try WiredSyncDaemonIPC.syncNow(
+                    remotePath: directory.path,
+                    serverURL: serverURL,
+                    login: login
+                )
+                await MainActor.run {
+                    refreshSyncPairStatus(force: true, showProgress: false)
+                    debugLogSyncStatuses(
+                        context: "sync_now.success remote=\(normalizeSyncRemotePath(directory.path)) matched=\(result.matched) launched=\(result.launched)"
+                    )
+                    syncActivationNotice = SyncActivationNotice(
+                        title: result.launched > 0 ? "Sync Triggered" : "Sync Already Running",
+                        message: result.launched > 0
+                            ? "Immediate sync requested for:\n\(directory.path)"
+                            : "A sync cycle is already running for:\n\(directory.path)\n\nWait for completion and check wiredsyncd logs."
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    debugLogSyncStatuses(context: "sync_now.error remote=\(normalizeSyncRemotePath(directory.path)) error=\(error.localizedDescription)")
+                    syncActivationNotice = SyncActivationNotice(
+                        title: "Sync Error",
+                        message: error.localizedDescription
+                    )
+                }
+            }
+        }
+#endif
+    }
+
+    private func deactivateSync(for directory: FileItem) {
+#if os(macOS)
+        guard let connection = runtime.connection as? AsyncConnection,
+              let url = connection.url else {
+            syncActivationNotice = SyncActivationNotice(
+                title: "Sync Error",
+                message: "No active Wired connection available for sync deactivation."
+            )
+            return
+        }
+
+        let serverURL = "\(url.hostname):\(url.port)"
+        let login = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task.detached(priority: .userInitiated) {
+            await MainActor.run {
+                setSyncPairLocalOverride(.checking(active: false), for: directory.path)
+            }
+            do {
+                try WiredSyncDaemonIPC.removePairForRemote(remotePath: directory.path, serverURL: serverURL, login: login)
+                await MainActor.run {
+                    pairedSyncRemotePaths.remove(normalizeSyncRemotePath(directory.path))
+                    setSyncPairLocalOverride(.sticky(active: false, until: Date().addingTimeInterval(15)), for: directory.path)
+                    debugLogSyncStatuses(context: "deactivate.success remote=\(normalizeSyncRemotePath(directory.path))")
+                    syncActivationNotice = SyncActivationNotice(
+                        title: "Sync Disabled",
+                        message: "Pair removed for:\n\(directory.path)"
+                    )
+                    // Delay the reconciliation refresh so the daemon has time to settle;
+                    // the manual remove above is already the correct optimistic state.
+                    scheduleSyncPairStatusRefresh(delayNanoseconds: 2_000_000_000, force: true, showProgress: false)
+                }
+            } catch {
+                await MainActor.run {
+                    setSyncPairLocalOverride(nil, for: directory.path)
+                    debugLogSyncStatuses(context: "deactivate.error remote=\(normalizeSyncRemotePath(directory.path)) error=\(error.localizedDescription)")
+                    syncActivationNotice = SyncActivationNotice(
+                        title: "Sync Error",
+                        message: error.localizedDescription
+                    )
+                }
+            }
+        }
+#endif
+    }
+
+    private func requestDeactivateSync(for directory: FileItem) {
+        pendingDeactivateSyncDirectory = directory
+        showDeactivateSyncConfirmation = true
+    }
+
+    private func refreshSyncPairStatus(force: Bool = false, showProgress: Bool = true) {
+#if os(macOS)
+        let now = Date()
+        if !force, now.timeIntervalSince(lastSyncPairStatusRefreshAt) < 1.0 {
+            return
+        }
+        lastSyncPairStatusRefreshAt = now
+
+        let token = UUID()
+        syncPairStatusRefreshToken = token
+        if showProgress {
+            isSyncPairStatusRefreshing = true
+        }
+        let serverURL = currentSyncServerURL
+        let login = currentSyncLogin
+
+        Task.detached(priority: .utility) {
+            do {
+                // Prefer the live daemon view, but reconcile it with the persisted daemon
+                // state on disk. This keeps the UI truthful during daemon restarts and
+                // socket hiccups instead of flashing false "inactive" statuses.
+                let liveDescriptors = try WiredSyncDaemonIPC.listPairedDescriptors(serverURL: serverURL, login: login)
+                let livePaths = Set(liveDescriptors.filter { !$0.paused }.map(\.remotePath))
+                let persistedPaths = WiredSyncDaemonIPC.persistedPairedRemotePaths(serverURL: serverURL, login: login)
+                let paths = livePaths.union(persistedPaths)
+                await MainActor.run {
+                    guard syncPairStatusRefreshToken == token else { return }
+                    var effectivePaths = paths
+                    var nextOverrides = syncPairLocalOverrides
+                    for (path, override) in syncPairLocalOverrides {
+                        switch override {
+                        case .checking(let active):
+                            if active {
+                                effectivePaths.insert(path)
+                            } else {
+                                effectivePaths.remove(path)
+                            }
+                        case .sticky(let active, let until):
+                            let daemonAgrees = active ? paths.contains(path) : !paths.contains(path)
+                            if daemonAgrees || until <= Date() {
+                                nextOverrides.removeValue(forKey: path)
+                            } else if active {
+                                effectivePaths.insert(path)
+                            } else {
+                                effectivePaths.remove(path)
+                            }
+                        }
+                    }
+                    syncPairLocalOverrides = nextOverrides
+                    pairedSyncDescriptors = liveDescriptors
+                    pairedSyncRemotePaths = effectivePaths
+                    bumpSyncPairStatusVersion()
+                    isSyncPairStatusRefreshing = false
+                    debugLogSyncStatuses(context: "refresh.success", livePaths: livePaths, persistedPaths: persistedPaths)
+                    reconcileSyncPairModesIfNeeded(descriptors: liveDescriptors)
+                }
+            } catch {
+                let persistedPaths = WiredSyncDaemonIPC.persistedPairedRemotePaths(serverURL: serverURL, login: login)
+                await MainActor.run {
+                    guard syncPairStatusRefreshToken == token else { return }
+                    if !persistedPaths.isEmpty {
+                        var effectivePaths = persistedPaths
+                        var nextOverrides = syncPairLocalOverrides
+                        for (path, override) in syncPairLocalOverrides {
+                            switch override {
+                            case .checking(let active):
+                                if active {
+                                    effectivePaths.insert(path)
+                                } else {
+                                    effectivePaths.remove(path)
+                                }
+                            case .sticky(let active, let until):
+                                if until <= Date() {
+                                    nextOverrides.removeValue(forKey: path)
+                                } else if active {
+                                    effectivePaths.insert(path)
+                                } else {
+                                    effectivePaths.remove(path)
+                                }
+                            }
+                        }
+                        syncPairLocalOverrides = nextOverrides
+                        pairedSyncRemotePaths = effectivePaths
+                        bumpSyncPairStatusVersion()
+                    }
+                    pairedSyncDescriptors = []
+                    isSyncPairStatusRefreshing = false
+                    debugLogSyncStatuses(context: "refresh.error \(error.localizedDescription)", persistedPaths: persistedPaths)
+                }
+            }
+        }
+#endif
+    }
+
+    private func scheduleSyncPairStatusRefresh(delayNanoseconds: UInt64 = 300_000_000, force: Bool = false, showProgress: Bool = false) {
+#if os(macOS)
+        syncPairStatusRefreshTask?.cancel()
+        syncPairStatusRefreshTask = Task { @MainActor in
+            if delayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+            }
+            guard !Task.isCancelled else { return }
+            refreshSyncPairStatus(force: force, showProgress: showProgress)
+        }
+#endif
+    }
+
+    private func startSyncPairPolling() {
+#if os(macOS)
+        syncPairPollingTask?.cancel()
+        syncPairPollingTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard !Task.isCancelled else { break }
+                refreshSyncPairStatus(force: true, showProgress: false)
+            }
         }
 #endif
     }
@@ -593,7 +1629,7 @@ struct FilesView: View {
                 filesViewModel.showCreateFolderSheet = true
             },
             onPrimarySelectionChange: { path in
-                primarySelectionPath = path
+                updatePrimarySelectionPath(path)
                 registerNavigation(fromPrimarySelectionPath: path)
             },
             onSelectionItemsChange: { items in
@@ -602,7 +1638,7 @@ struct FilesView: View {
             onOpenDirectory: { directory in
                 Task { @MainActor in
                     guard await filesViewModel.setTreeRoot(directory.path) else { return }
-                    primarySelectionPath = directory.path
+                    updatePrimarySelectionPath(directory.path)
                     registerNavigation(toDirectoryPath: directory.path)
                 }
             },
@@ -620,6 +1656,22 @@ struct FilesView: View {
             onRequestGetInfo: { item in
                 presentInfo(for: item)
             },
+            onRequestSyncNow: { item in
+                syncNow(for: item)
+            },
+            onRequestActivateSync: { item in
+                activateSync(for: item)
+            },
+            onRequestDeactivateSync: { item in
+                requestDeactivateSync(for: item)
+            },
+            syncPairStatusForItem: { item in
+                syncPairStatus(for: item)
+            },
+            syncPairExistsForItem: { item in
+                syncPairExists(for: item)
+            },
+            syncPairStatusVersion: syncPairStatusVersion,
             canSetFileType: canSetFileType,
             canGetInfoForItem: { item in
                 canGetInfo(for: item)
@@ -646,6 +1698,9 @@ struct FilesView: View {
         .environment(connectionController)
         .environment(runtime)
         .environmentObject(transfers)
+        .onAppear {
+            scheduleSyncPairStatusRefresh(delayNanoseconds: 0, force: true, showProgress: false)
+        }
     }
 
     @ViewBuilder
@@ -659,7 +1714,7 @@ struct FilesView: View {
                 filesViewModel.showCreateFolderSheet = true
             },
             onPrimarySelectionChange: { path in
-                primarySelectionPath = path
+                updatePrimarySelectionPath(path)
                 registerNavigation(fromPrimarySelectionPath: path)
             },
             onSelectionItemsChange: { items in
@@ -679,6 +1734,22 @@ struct FilesView: View {
             onRequestGetInfo: { item in
                 presentInfo(for: item)
             },
+            onRequestSyncNow: { item in
+                syncNow(for: item)
+            },
+            onRequestActivateSync: { item in
+                activateSync(for: item)
+            },
+            onRequestDeactivateSync: { item in
+                requestDeactivateSync(for: item)
+            },
+            syncPairStatusForItem: { item in
+                syncPairStatus(for: item)
+            },
+            syncPairExistsForItem: { item in
+                syncPairExists(for: item)
+            },
+            syncPairStatusVersion: syncPairStatusVersion,
             canSetFileType: canSetFileType,
             canGetInfoForItem: { item in
                 canGetInfo(for: item)
@@ -789,7 +1860,7 @@ struct FilesView: View {
                         Task { @MainActor in
                             let didReveal = await filesViewModel.revealRemotePath(createdPath)
                             guard didReveal else { return }
-                            primarySelectionPath = createdPath
+                            updatePrimarySelectionPath(createdPath)
                             registerNavigation(fromPrimarySelectionPath: createdPath)
                         }
                     }
@@ -850,6 +1921,25 @@ struct FilesView: View {
                 }
             )
         }
+        .alert(
+            "Deactivate Sync Pair",
+            isPresented: $showDeactivateSyncConfirmation,
+            actions: {
+                Button("Cancel", role: .cancel) {
+                    pendingDeactivateSyncDirectory = nil
+                }
+                Button("Deactivate", role: .destructive) {
+                    if let directory = pendingDeactivateSyncDirectory {
+                        deactivateSync(for: directory)
+                    }
+                    pendingDeactivateSyncDirectory = nil
+                }
+            },
+            message: {
+                let targetPath = pendingDeactivateSyncDirectory?.path ?? "this folder"
+                Text("Disable synchronization for \(targetPath)? The local folder is kept, only the pairing is removed.")
+            }
+        )
         .alert(item: $syncActivationNotice) { notice in
             Alert(
                 title: Text(notice.title),
@@ -864,7 +1954,8 @@ struct FilesView: View {
             connectionID: connectionID
         )
         .onChange(of: filesViewModel.selectedFileViewType) { _, newValue in
-            primarySelectionPath = nil
+            updatePrimarySelectionPath(nil)
+            selectedSyncStatusPath = nil
             selectedItemsForToolbar.removeAll()
             Task {
                 if newValue == .tree && !filesViewModel.isSearchMode {
@@ -899,7 +1990,17 @@ struct FilesView: View {
                 await filesViewModel.remoteDirectoryDeleted(event.path)
             }
         }
+        .onAppear {
+            WiredSyncDaemonIPC.ensureDaemonIsCurrentVersion()
+            scheduleSyncPairStatusRefresh(delayNanoseconds: 0, force: true, showProgress: false)
+            startSyncPairPolling()
+        }
+        .onChange(of: selectedSyncStatusPath) { _, _ in
+            scheduleSyncPairStatusRefresh(delayNanoseconds: 300_000_000, force: false, showProgress: false)
+        }
         .onDisappear {
+            syncPairStatusRefreshTask?.cancel()
+            syncPairPollingTask?.cancel()
             Task { @MainActor in
                 await filesViewModel.clearDirectorySubscriptions()
             }
@@ -989,15 +2090,6 @@ struct FilesView: View {
             }
             .help("Create Folder")
             .disabled(selectedDirectoryForUpload == nil || !(selectedDirectoryForUpload.map(canCreateFolder(in:)) ?? false))
-
-            Button {
-                guard let syncDirectory = selectedSyncDirectory else { return }
-                activateSync(for: syncDirectory)
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-            }
-            .help("Activate Sync Pair")
-            .disabled(selectedSyncDirectory == nil)
 
             Button {
                 requestDelete(selectedDeletableItems)
@@ -1268,10 +2360,10 @@ struct FilesView: View {
                     onColumnAppended: { _ in }
                 )
             }
-            primarySelectionPath = normalized
+            updatePrimarySelectionPath(normalized)
         case .tree:
             _ = await filesViewModel.setTreeRoot(normalized)
-            primarySelectionPath = normalized
+            updatePrimarySelectionPath(normalized)
         }
     }
 
@@ -1322,6 +2414,12 @@ struct FilesTreeView: View {
     let onRequestDeleteSelection: ([FileItem]) -> Void
     let onRequestDownloadSelection: ([FileItem]) -> Void
     let onRequestGetInfo: (FileItem) -> Void
+    let onRequestSyncNow: (FileItem) -> Void
+    let onRequestActivateSync: (FileItem) -> Void
+    let onRequestDeactivateSync: (FileItem) -> Void
+    let syncPairStatusForItem: (FileItem) -> SyncPairStatusDisplay
+    let syncPairExistsForItem: (FileItem) -> Bool
+    let syncPairStatusVersion: Int
     let canSetFileType: Bool
     let canGetInfoForItem: (FileItem) -> Bool
     let canDownloadForItem: (FileItem) -> Bool
@@ -1395,12 +2493,31 @@ struct FilesTreeView: View {
                 guard !downloadable.isEmpty else { return }
                 onRequestDownloadSelection(downloadable)
             },
-            onRequestGetInfo: {
-                let selected = selectedItems(from: selectedPaths)
-                guard selected.count == 1, let item = selected.first else { return }
+            onRequestGetInfo: { item in
                 guard canGetInfoForItem(item) else { return }
                 onRequestGetInfo(item)
             },
+            onRequestSyncNow: { item in
+                guard item.type == .sync else { return }
+                onRequestSyncNow(item)
+            },
+            onRequestActivateSync: { item in
+                guard item.type == .sync else { return }
+                onRequestActivateSync(item)
+            },
+            onRequestDeactivateSync: { item in
+                guard item.type == .sync else { return }
+                onRequestDeactivateSync(item)
+            },
+            syncPairStatusForPath: { path in
+                // The caller (cell renderer) already guards on item.type == .sync before
+                // invoking this closure, so constructing a minimal FileItem is safe here.
+                return syncPairStatusForItem(FileItem("", path: path, type: .sync))
+            },
+            syncPairExistsForPath: { path in
+                syncPairExistsForItem(FileItem("", path: path, type: .sync))
+            },
+            syncPairStatusVersion: syncPairStatusVersion,
             canSetFileType: canSetFileType,
             canGetInfoForItem: canGetInfoForItem,
             canDownloadForItem: canDownloadForItem,
@@ -1502,7 +2619,13 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
     let onRequestUploadInDirectory: (FileItem) -> Void
     let onRequestDeleteSelection: () -> Void
     let onRequestDownloadSelection: () -> Void
-    let onRequestGetInfo: () -> Void
+    let onRequestGetInfo: (FileItem) -> Void
+    let onRequestSyncNow: (FileItem) -> Void
+    let onRequestActivateSync: (FileItem) -> Void
+    let onRequestDeactivateSync: (FileItem) -> Void
+    let syncPairStatusForPath: (String) -> SyncPairStatusDisplay
+    let syncPairExistsForPath: (String) -> Bool
+    let syncPairStatusVersion: Int
     let canSetFileType: Bool
     let canGetInfoForItem: (FileItem) -> Bool
     let canDownloadForItem: (FileItem) -> Bool
@@ -1530,8 +2653,8 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         outlineView.headerView = nil
         outlineView.allowsMultipleSelection = true
         outlineView.allowsEmptySelection = true
-        outlineView.rowHeight = 22
-        outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        outlineView.rowHeight = 26
+        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
         outlineView.setDraggingSourceOperationMask(.copy, forLocal: true)
         outlineView.usesAlternatingRowBackgroundColors = true
@@ -1543,6 +2666,7 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         column.title = "Name"
         column.minWidth = 220
         column.width = 420
+        column.resizingMask = .autoresizingMask
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
 
@@ -1550,6 +2674,7 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         sizeColumn.title = "Size"
         sizeColumn.minWidth = 90
         sizeColumn.width = 120
+        sizeColumn.resizingMask = []
         outlineView.addTableColumn(sizeColumn)
 
         outlineView.delegate = context.coordinator
@@ -1565,7 +2690,8 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             rootPath: rootPath,
             childrenByPath: treeChildrenByPath,
             expandedPaths: expandedPaths,
-            selectedPaths: selectedPaths
+            selectedPaths: selectedPaths,
+            syncPairStatusVersion: syncPairStatusVersion
         )
 
         NotificationCenter.default.addObserver(
@@ -1590,7 +2716,8 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             rootPath: rootPath,
             childrenByPath: treeChildrenByPath,
             expandedPaths: expandedPaths,
-            selectedPaths: selectedPaths
+            selectedPaths: selectedPaths,
+            syncPairStatusVersion: syncPairStatusVersion
         )
     }
 
@@ -1615,7 +2742,11 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         private var suppressDisclosureCallbacks = false
         private var pendingExpansionState: [String: Bool] = [:]
         private var contextDirectoryTarget: FileItem = FileItem("/", path: "/", type: .directory)
+        private var contextSyncTarget: FileItem?
         private var clickedRowHadSelection = false
+        /// Path structure snapshot used to detect tree data changes vs. sync-status-only changes.
+        private var lastChildrenPaths: [String: [String]] = [:]
+        private var lastSyncPairStatusVersion: Int = -1
 
         init(parent: AppKitFilesTreeView) {
             self.parent = parent
@@ -1692,6 +2823,7 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
         }
 
         func refreshTree(rootPath: String, childrenByPath: [String: [FileItem]]) {
+            lastChildrenPaths = childrenByPath.mapValues { $0.map(\.path) }
             nodesByPath.removeAll()
             currentRootPath = normalizedRemotePath(rootPath)
 
@@ -1728,7 +2860,8 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             rootPath: String,
             childrenByPath: [String: [FileItem]],
             expandedPaths: Set<String>,
-            selectedPaths: Set<String>
+            selectedPaths: Set<String>,
+            syncPairStatusVersion: Int
         ) {
             // Drop pending entries once model caught up to user-driven disclosure changes.
             for (path, desiredExpanded) in pendingExpansionState {
@@ -1750,9 +2883,37 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
 
             suppressDisclosureCallbacks = true
             defer { suppressDisclosureCallbacks = false }
-            refreshTree(rootPath: rootPath, childrenByPath: childrenByPath)
+
+            let newRoot = normalizedRemotePath(rootPath)
+            let treeChanged = newRoot != currentRootPath || treeStructureDidChange(childrenByPath)
+            let syncStatusChanged = syncPairStatusVersion != lastSyncPairStatusVersion
+            if treeChanged {
+                refreshTree(rootPath: rootPath, childrenByPath: childrenByPath)
+            } else if syncStatusChanged {
+                // Tree structure is unchanged; only sync-pair status may have changed.
+                // Reload just the .sync nodes to update their indicators.
+                refreshSyncIndicators()
+            }
+            lastSyncPairStatusVersion = syncPairStatusVersion
             applyExpandedState(effectiveExpandedPaths)
             updateSelection(selectedPaths)
+        }
+
+        /// Returns true when the path-level structure of the tree differs from the last known snapshot.
+        private func treeStructureDidChange(_ newChildren: [String: [FileItem]]) -> Bool {
+            guard newChildren.count == lastChildrenPaths.count else { return true }
+            for (key, items) in newChildren {
+                guard let cached = lastChildrenPaths[key], cached == items.map(\.path) else { return true }
+            }
+            return false
+        }
+
+        /// Reloads only the visible .sync nodes to refresh their pair-status indicators.
+        private func refreshSyncIndicators() {
+            guard let outlineView else { return }
+            for node in nodesByPath.values where node.item.type == .sync {
+                outlineView.reloadItem(node, reloadChildren: false)
+            }
         }
 
         func applyExpandedState(_ expandedPaths: Set<String>) {
@@ -1859,19 +3020,71 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
                 cell.addSubview(tf)
                 cell.textField = tf
                 cell.addSubview(icon)
+
+                let statusIcon = NSImageView()
+                statusIcon.identifier = NSUserInterfaceItemIdentifier("SyncStatusIcon")
+                statusIcon.translatesAutoresizingMaskIntoConstraints = false
+                statusIcon.imageScaling = .scaleProportionallyUpOrDown
+                cell.addSubview(statusIcon)
+
+                let statusSpinner = NSProgressIndicator()
+                statusSpinner.identifier = NSUserInterfaceItemIdentifier("SyncStatusSpinner")
+                statusSpinner.translatesAutoresizingMaskIntoConstraints = false
+                statusSpinner.controlSize = .regular
+                statusSpinner.style = .spinning
+                statusSpinner.isDisplayedWhenStopped = false
+                cell.addSubview(statusSpinner)
+
                 NSLayoutConstraint.activate([
                     icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
                     icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     icon.widthAnchor.constraint(equalToConstant: 16),
                     icon.heightAnchor.constraint(equalToConstant: 16),
                     tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-                    tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
-                    tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusIcon.leadingAnchor, constant: -6),
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusSpinner.leadingAnchor, constant: -6),
+                    tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusIcon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.widthAnchor.constraint(equalToConstant: 16),
+                    statusIcon.heightAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusSpinner.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusSpinner.widthAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.heightAnchor.constraint(equalToConstant: 16)
                 ])
                 return cell
             }()
             cell.textField?.stringValue = item.name
             cell.imageView?.image = remoteItemIconImage(for: item, size: 16)
+
+            let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
+            let statusSpinner = cell.subviews.compactMap { $0 as? NSProgressIndicator }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusSpinner") })
+            // Only query sync status for .sync items; non-sync items always hide the indicator.
+            let syncStatus: SyncPairStatusDisplay = item.type == .sync
+                ? parent.syncPairStatusForPath(item.path)
+                : .hidden
+            switch syncStatus {
+            case .hidden:
+                statusIcon?.isHidden = true
+                statusSpinner?.stopAnimation(nil)
+            case .checking:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+            case .active:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemGreen
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair active")
+            case .inactive:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle", accessibilityDescription: "Pair inactive")
+            }
             return cell
         }
 
@@ -2009,6 +3222,13 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
             menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
             menu.addItem(NSMenuItem.separator())
+            let statusItem = menu.addItem(withTitle: "Sync Status: Pair inactive", action: nil, keyEquivalent: "")
+            statusItem.tag = SyncContextMenuItemTag.status
+            let toggleItem = menu.addItem(withTitle: "Activate Sync Pair", action: #selector(contextToggleSyncPair), keyEquivalent: "")
+            toggleItem.tag = SyncContextMenuItemTag.toggle
+            let syncNowItem = menu.addItem(withTitle: "Sync Now", action: #selector(contextSyncNow), keyEquivalent: "")
+            syncNowItem.tag = SyncContextMenuItemTag.syncNow
+            menu.addItem(NSMenuItem.separator())
             menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
             for item in menu.items {
                 item.target = self
@@ -2069,6 +3289,50 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
                 }()
                 infoItem.isEnabled = canGetSelectedInfo
             }
+            let selectedSyncItem: FileItem? = {
+                guard selectedItems.count == 1, let item = selectedItems.first, item.type == .sync else { return nil }
+                return item
+            }()
+            contextSyncTarget = selectedSyncItem
+            let syncState: SyncPairStatusDisplay = selectedSyncItem.map { parent.syncPairStatusForPath($0.path) } ?? .hidden
+            let pairExists = selectedSyncItem.map { parent.syncPairExistsForPath($0.path) } ?? false
+
+            if let syncStatusItem = menu.item(withTag: SyncContextMenuItemTag.status) {
+                switch syncState {
+                case .active:
+                    syncStatusItem.title = "Sync Status: Pair active"
+                case .inactive:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                case .checking:
+                    syncStatusItem.title = "Sync Status: Updating…"
+                case .hidden:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                }
+                syncStatusItem.isHidden = selectedSyncItem == nil
+                syncStatusItem.isEnabled = false
+            }
+
+            if let toggleItem = menu.item(withTag: SyncContextMenuItemTag.toggle) {
+                if selectedSyncItem == nil {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if syncState == .checking {
+                    toggleItem.title = pairExists ? "Deactivate Sync Pair" : "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if pairExists {
+                    toggleItem.title = "Deactivate Sync Pair"
+                    toggleItem.isEnabled = true
+                } else {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = true
+                }
+                toggleItem.isHidden = selectedSyncItem == nil
+            }
+            if let syncItem = menu.item(withTag: SyncContextMenuItemTag.syncNow) {
+                let canSyncNow = selectedSyncItem != nil && pairExists && syncState != .checking
+                syncItem.isHidden = selectedSyncItem == nil
+                syncItem.isEnabled = canSyncNow
+            }
             if let newFolderItem = menu.item(withTitle: "New Folder") {
                 newFolderItem.isEnabled = parent.canCreateFolderInDirectory(contextDirectoryTarget)
             }
@@ -2081,14 +3345,33 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             parent.onRequestUploadInDirectory(contextDirectoryTarget)
         }
         @objc private func contextGetInfo() {
-            guard let outlineView else { return }
+            guard let item = contextSyncTarget ?? selectedItem() else { return }
+            guard parent.canGetInfoForItem(item) else { return }
+            parent.onRequestGetInfo(item)
+        }
+        @objc private func contextSyncNow() {
+            guard let item = contextSyncTarget else { return }
+            parent.onRequestSyncNow(item)
+        }
+        @objc private func contextToggleSyncPair() {
+            guard let item = contextSyncTarget, item.type == .sync else { return }
+            if parent.syncPairStatusForPath(item.path) == .checking {
+                return
+            }
+            if parent.syncPairExistsForPath(item.path) {
+                parent.onRequestDeactivateSync(item)
+            } else {
+                parent.onRequestActivateSync(item)
+            }
+        }
+        private func selectedItem() -> FileItem? {
+            guard let outlineView else { return nil }
             let selectedRows = outlineView.selectedRowIndexes.compactMap { row -> Int? in row >= 0 ? row : nil }
             let selectedItems = selectedRows.compactMap { row -> FileItem? in
                 (outlineView.item(atRow: row) as? OutlineNode)?.item
             }
-            guard selectedItems.count == 1, let item = selectedItems.first else { return }
-            guard parent.canGetInfoForItem(item) else { return }
-            parent.onRequestGetInfo()
+            guard selectedItems.count == 1 else { return nil }
+            return selectedItems.first
         }
         @objc private func contextNewFolder() {
             guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
@@ -2308,6 +3591,12 @@ struct FilesColumnsView: View {
     let onRequestDeleteSelection: ([FileItem]) -> Void
     let onRequestDownloadSelection: ([FileItem]) -> Void
     let onRequestGetInfo: (FileItem) -> Void
+    let onRequestSyncNow: (FileItem) -> Void
+    let onRequestActivateSync: (FileItem) -> Void
+    let onRequestDeactivateSync: (FileItem) -> Void
+    let syncPairStatusForItem: (FileItem) -> SyncPairStatusDisplay
+    let syncPairExistsForItem: (FileItem) -> Bool
+    let syncPairStatusVersion: Int
     let canSetFileType: Bool
     let canGetInfoForItem: (FileItem) -> Bool
     let canDownloadForItem: (FileItem) -> Bool
@@ -2407,6 +3696,12 @@ struct FilesColumnsView: View {
             onRequestDeleteSelection: onRequestDeleteSelection,
             onRequestDownloadSelection: onRequestDownloadSelection,
             onRequestGetInfo: onRequestGetInfo,
+            onRequestSyncNow: onRequestSyncNow,
+            onRequestActivateSync: onRequestActivateSync,
+            onRequestDeactivateSync: onRequestDeactivateSync,
+            syncPairStatusForItem: syncPairStatusForItem,
+            syncPairExistsForItem: syncPairExistsForItem,
+            syncPairStatusVersion: syncPairStatusVersion,
             canSetFileType: canSetFileType,
             canGetInfoForItem: canGetInfoForItem,
             canDownloadForItem: canDownloadForItem,
@@ -2520,6 +3815,12 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
     let onRequestDeleteSelection: ([FileItem]) -> Void
     let onRequestDownloadSelection: ([FileItem]) -> Void
     let onRequestGetInfo: (FileItem) -> Void
+    let onRequestSyncNow: (FileItem) -> Void
+    let onRequestActivateSync: (FileItem) -> Void
+    let onRequestDeactivateSync: (FileItem) -> Void
+    let syncPairStatusForItem: (FileItem) -> SyncPairStatusDisplay
+    let syncPairExistsForItem: (FileItem) -> Bool
+    let syncPairStatusVersion: Int
     let canSetFileType: Bool
     let canGetInfoForItem: (FileItem) -> Bool
     let canDownloadForItem: (FileItem) -> Bool
@@ -2547,7 +3848,9 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
         tableView.headerView = nil
         tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
-        tableView.rowHeight = 22
+        tableView.rowHeight = 26
+        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.registerForDraggedTypes([.fileURL, wiredRemotePathPasteboardType])
@@ -2556,8 +3859,9 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ColumnName"))
         column.title = "Name"
-        column.minWidth = 160
-        column.width = 240
+        column.minWidth = 220
+        column.width = 300
+        column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
 
         tableView.delegate = context.coordinator
@@ -2569,7 +3873,7 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
         context.coordinator.scrollView = scrollView
-        context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths)
+        context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths, syncPairStatusVersion: syncPairStatusVersion)
 
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -2589,7 +3893,7 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths)
+        context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths, syncPairStatusVersion: syncPairStatusVersion)
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
@@ -2598,6 +3902,8 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
         weak var scrollView: NSScrollView?
         private var items: [FileItem] = []
         private var byPath: [String: Int] = [:]
+        private var lastItemPaths: [String] = []
+        private var lastSyncPairStatusVersion: Int = -1
         private var isApplyingSelectionFromSwiftUI = false
         private var contextDirectoryTarget: FileItem
 
@@ -2619,7 +3925,22 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             FileItem((parent.column.path as NSString).lastPathComponent, path: parent.column.path, type: .directory)
         }
 
-        func syncFromModel(items: [FileItem], selectedPaths: Set<String>) {
+        private func desiredColumnWidth(for items: [FileItem]) -> CGFloat {
+            let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let longestTextWidth = items.reduce(CGFloat(0)) { partial, item in
+                let width = (item.name as NSString).size(withAttributes: [.font: font]).width
+                return max(partial, width)
+            }
+            let paddedWidth = longestTextWidth + 64 + 24
+            return min(max(220, ceil(paddedWidth)), 420)
+        }
+
+        func syncFromModel(items: [FileItem], selectedPaths: Set<String>, syncPairStatusVersion: Int) {
+            let newPaths = items.map(\.path)
+            let listChanged = newPaths != lastItemPaths
+            let syncStatusChanged = syncPairStatusVersion != lastSyncPairStatusVersion
+            lastItemPaths = newPaths
+            lastSyncPairStatusVersion = syncPairStatusVersion
             self.items = items
             var map: [String: Int] = [:]
             for (idx, item) in items.enumerated() {
@@ -2627,7 +3948,20 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             }
             self.byPath = map
             contextDirectoryTarget = columnDirectory()
-            tableView?.reloadData()
+            if let tableColumn = tableView?.tableColumns.first {
+                tableColumn.width = desiredColumnWidth(for: items)
+            }
+            if listChanged {
+                // Item list changed: full reload needed.
+                tableView?.reloadData()
+            } else if syncStatusChanged {
+                // Only sync-pair status may have changed: targeted reload of .sync rows only.
+                // This avoids resetting the selection for unrelated state updates.
+                let syncRows = IndexSet(items.indices.filter { items[$0].type == .sync })
+                if !syncRows.isEmpty {
+                    tableView?.reloadData(forRowIndexes: syncRows, columnIndexes: IndexSet(integer: 0))
+                }
+            }
             updateSelection(selectedPaths)
         }
 
@@ -2669,20 +4003,67 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
                 cell.addSubview(tf)
                 cell.textField = tf
                 cell.addSubview(icon)
+
+                let statusIcon = NSImageView()
+                statusIcon.identifier = NSUserInterfaceItemIdentifier("SyncStatusIcon")
+                statusIcon.translatesAutoresizingMaskIntoConstraints = false
+                statusIcon.imageScaling = .scaleProportionallyUpOrDown
+                cell.addSubview(statusIcon)
+
+                let statusSpinner = NSProgressIndicator()
+                statusSpinner.identifier = NSUserInterfaceItemIdentifier("SyncStatusSpinner")
+                statusSpinner.translatesAutoresizingMaskIntoConstraints = false
+                statusSpinner.controlSize = .regular
+                statusSpinner.style = .spinning
+                statusSpinner.isDisplayedWhenStopped = false
+                cell.addSubview(statusSpinner)
+
                 NSLayoutConstraint.activate([
                     icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
                     icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     icon.widthAnchor.constraint(equalToConstant: 16),
                     icon.heightAnchor.constraint(equalToConstant: 16),
-                    tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-                    tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
-                    tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                    tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusIcon.leadingAnchor, constant: -6),
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusSpinner.leadingAnchor, constant: -6),
+                    tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusIcon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.widthAnchor.constraint(equalToConstant: 16),
+                    statusIcon.heightAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusSpinner.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusSpinner.widthAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.heightAnchor.constraint(equalToConstant: 16)
                 ])
                 return cell
             }()
 
             cell.textField?.stringValue = item.name
             cell.imageView?.image = remoteItemIconImage(for: item, size: 16)
+            let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
+            let statusSpinner = cell.subviews.compactMap { $0 as? NSProgressIndicator }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusSpinner") })
+            switch parent.syncPairStatusForItem(item) {
+            case .hidden:
+                statusIcon?.isHidden = true
+                statusSpinner?.stopAnimation(nil)
+            case .checking:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+            case .active:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemGreen
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair active")
+            case .inactive:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle", accessibilityDescription: "Pair inactive")
+            }
             return cell
         }
 
@@ -2844,6 +4225,13 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
             menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
             menu.addItem(NSMenuItem.separator())
+            let statusItem = menu.addItem(withTitle: "Sync Status: Pair inactive", action: nil, keyEquivalent: "")
+            statusItem.tag = SyncContextMenuItemTag.status
+            let toggleItem = menu.addItem(withTitle: "Activate Sync Pair", action: #selector(contextToggleSyncPair), keyEquivalent: "")
+            toggleItem.tag = SyncContextMenuItemTag.toggle
+            let syncNowItem = menu.addItem(withTitle: "Sync Now", action: #selector(contextSyncNow), keyEquivalent: "")
+            syncNowItem.tag = SyncContextMenuItemTag.syncNow
+            menu.addItem(NSMenuItem.separator())
             menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
             for item in menu.items {
                 item.target = self
@@ -2882,6 +4270,44 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
                 return parent.canGetInfoForItem(item)
             }()
             menu.item(withTitle: "Get Info")?.isEnabled = canGetSelectedInfo
+            let selectedSyncItem: FileItem? = {
+                guard selected.count == 1, let item = selected.first, item.type == .sync else { return nil }
+                return item
+            }()
+            let syncState: SyncPairStatusDisplay = selectedSyncItem.map { parent.syncPairStatusForItem($0) } ?? .hidden
+            let pairExists = selectedSyncItem.map { parent.syncPairExistsForItem($0) } ?? false
+            if let syncStatusItem = menu.item(withTag: SyncContextMenuItemTag.status) {
+                switch syncState {
+                case .active:
+                    syncStatusItem.title = "Sync Status: Pair active"
+                case .inactive:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                case .checking:
+                    syncStatusItem.title = "Sync Status: Updating…"
+                case .hidden:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                }
+                syncStatusItem.isHidden = selectedSyncItem == nil
+                syncStatusItem.isEnabled = false
+            }
+            if let toggleItem = menu.item(withTag: SyncContextMenuItemTag.toggle) {
+                if selectedSyncItem == nil {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if syncState == .checking {
+                    toggleItem.title = pairExists ? "Deactivate Sync Pair" : "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if pairExists {
+                    toggleItem.title = "Deactivate Sync Pair"
+                    toggleItem.isEnabled = true
+                } else {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = true
+                }
+                toggleItem.isHidden = selectedSyncItem == nil
+            }
+            menu.item(withTag: SyncContextMenuItemTag.syncNow)?.isHidden = selectedSyncItem == nil
+            menu.item(withTag: SyncContextMenuItemTag.syncNow)?.isEnabled = selectedSyncItem != nil && pairExists && syncState != .checking
             menu.item(withTitle: "New Folder")?.isEnabled = parent.canCreateFolderInDirectory(contextDirectoryTarget)
         }
 
@@ -2914,6 +4340,23 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             guard let item = selectedItems().first else { return }
             guard parent.canGetInfoForItem(item) else { return }
             parent.onRequestGetInfo(item)
+        }
+
+        @objc private func contextSyncNow() {
+            guard let item = selectedItems().first, item.type == .sync else { return }
+            parent.onRequestSyncNow(item)
+        }
+
+        @objc private func contextToggleSyncPair() {
+            guard let item = selectedItems().first, item.type == .sync else { return }
+            if parent.syncPairStatusForItem(item) == .checking {
+                return
+            }
+            if parent.syncPairExistsForItem(item) {
+                parent.onRequestDeactivateSync(item)
+            } else {
+                parent.onRequestActivateSync(item)
+            }
         }
 
         @objc private func contextNewFolder() {

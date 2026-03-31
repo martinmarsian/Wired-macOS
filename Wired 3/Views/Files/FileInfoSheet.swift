@@ -42,6 +42,40 @@ private enum DropboxAccessLevel: String, CaseIterable, Identifiable {
     }
 }
 
+private enum SyncAccessMode: String, CaseIterable, Identifiable {
+    case serverToClient = "server_to_client"
+    case clientToServer = "client_to_server"
+    case bidirectional = "bidirectional"
+
+    var id: String { rawValue }
+
+    var title: String {
+        rawValue
+    }
+
+    var readEnabled: Bool {
+        self == .serverToClient || self == .bidirectional
+    }
+
+    var writeEnabled: Bool {
+        self == .clientToServer || self == .bidirectional
+    }
+
+    static func from(read: Bool, write: Bool) -> SyncAccessMode {
+        switch (read, write) {
+        case (true, false):
+            return .serverToClient
+        case (false, true):
+            return .clientToServer
+        case (true, true):
+            return .bidirectional
+        case (false, false):
+            // Sync v1 only exposes 3 operational modes.
+            return .serverToClient
+        }
+    }
+}
+
 struct FileInfoSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ConnectionRuntime.self) private var runtime
@@ -61,6 +95,9 @@ struct FileInfoSheet: View {
     @State private var ownerAccess: DropboxAccessLevel = .denied
     @State private var groupAccess: DropboxAccessLevel = .denied
     @State private var everyoneAccess: DropboxAccessLevel = .denied
+    @State private var syncOwnerMode: SyncAccessMode = .bidirectional
+    @State private var syncGroupMode: SyncAccessMode = .bidirectional
+    @State private var syncEveryoneMode: SyncAccessMode = .bidirectional
 
     init(filesViewModel: FilesViewModel, file: FileItem) {
         self.filesViewModel = filesViewModel
@@ -98,6 +135,13 @@ struct FileInfoSheet: View {
 
     private var hasDropboxPermissionChanges: Bool {
         guard info.type.isManagedAccessType else { return false }
+        if info.type == .sync {
+            return syncOwnerMode != SyncAccessMode.from(read: info.ownerRead, write: info.ownerWrite)
+                || syncGroupMode != SyncAccessMode.from(read: info.groupRead, write: info.groupWrite)
+                || syncEveryoneMode != SyncAccessMode.from(read: info.everyoneRead, write: info.everyoneWrite)
+                || ownerSelection != info.owner
+                || groupSelection != info.group
+        }
         return ownerSelection != info.owner
         || groupSelection != info.group
         || ownerAccess != .from(read: info.ownerRead, write: info.ownerWrite)
@@ -175,12 +219,21 @@ struct FileInfoSheet: View {
                             }
                             .disabled(!canEditDropboxPermissions || isLoadingAccounts)
 
-                            Picker("Owner Access", selection: $ownerAccess) {
-                                ForEach(DropboxAccessLevel.allCases) { level in
-                                    Text(level.title).tag(level)
+                            if info.type == .sync {
+                                Picker("User Mode", selection: $syncOwnerMode) {
+                                    ForEach(SyncAccessMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
                                 }
+                                .disabled(!canEditDropboxPermissions)
+                            } else {
+                                Picker("Owner Access", selection: $ownerAccess) {
+                                    ForEach(DropboxAccessLevel.allCases) { level in
+                                        Text(level.title).tag(level)
+                                    }
+                                }
+                                .disabled(!canEditDropboxPermissions)
                             }
-                            .disabled(!canEditDropboxPermissions)
 
                             Picker("Group", selection: $groupSelection) {
                                 Text("Aucun").tag("")
@@ -190,19 +243,37 @@ struct FileInfoSheet: View {
                             }
                             .disabled(!canEditDropboxPermissions || isLoadingAccounts)
 
-                            Picker("Group Access", selection: $groupAccess) {
-                                ForEach(DropboxAccessLevel.allCases) { level in
-                                    Text(level.title).tag(level)
+                            if info.type == .sync {
+                                Picker("Group Mode", selection: $syncGroupMode) {
+                                    ForEach(SyncAccessMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
                                 }
+                                .disabled(!canEditDropboxPermissions)
+                            } else {
+                                Picker("Group Access", selection: $groupAccess) {
+                                    ForEach(DropboxAccessLevel.allCases) { level in
+                                        Text(level.title).tag(level)
+                                    }
+                                }
+                                .disabled(!canEditDropboxPermissions)
                             }
-                            .disabled(!canEditDropboxPermissions)
 
-                            Picker("Everyone", selection: $everyoneAccess) {
-                                ForEach(DropboxAccessLevel.allCases) { level in
-                                    Text(level.title).tag(level)
+                            if info.type == .sync {
+                                Picker("Everyone Mode", selection: $syncEveryoneMode) {
+                                    ForEach(SyncAccessMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
                                 }
+                                .disabled(!canEditDropboxPermissions)
+                            } else {
+                                Picker("Everyone", selection: $everyoneAccess) {
+                                    ForEach(DropboxAccessLevel.allCases) { level in
+                                        Text(level.title).tag(level)
+                                    }
+                                }
+                                .disabled(!canEditDropboxPermissions)
                             }
-                            .disabled(!canEditDropboxPermissions)
                         }
                     }
                 }
@@ -253,6 +324,9 @@ struct FileInfoSheet: View {
             ownerAccess = .from(read: loadedInfo.ownerRead, write: loadedInfo.ownerWrite)
             groupAccess = .from(read: loadedInfo.groupRead, write: loadedInfo.groupWrite)
             everyoneAccess = .from(read: loadedInfo.everyoneRead, write: loadedInfo.everyoneWrite)
+            syncOwnerMode = .from(read: loadedInfo.ownerRead, write: loadedInfo.ownerWrite)
+            syncGroupMode = .from(read: loadedInfo.groupRead, write: loadedInfo.groupWrite)
+            syncEveryoneMode = .from(read: loadedInfo.everyoneRead, write: loadedInfo.everyoneWrite)
         } catch {
             filesViewModel.error = error
         }
@@ -288,15 +362,38 @@ struct FileInfoSheet: View {
             }
 
             if info.type.isManagedAccessType, hasDropboxPermissionChanges, canEditDropboxPermissions {
+                let ownerRead: Bool
+                let ownerWrite: Bool
+                let groupRead: Bool
+                let groupWrite: Bool
+                let everyoneRead: Bool
+                let everyoneWrite: Bool
+
+                if info.type == .sync {
+                    ownerRead = syncOwnerMode.readEnabled
+                    ownerWrite = syncOwnerMode.writeEnabled
+                    groupRead = syncGroupMode.readEnabled
+                    groupWrite = syncGroupMode.writeEnabled
+                    everyoneRead = syncEveryoneMode.readEnabled
+                    everyoneWrite = syncEveryoneMode.writeEnabled
+                } else {
+                    ownerRead = ownerAccess.readEnabled
+                    ownerWrite = ownerAccess.writeEnabled
+                    groupRead = groupAccess.readEnabled
+                    groupWrite = groupAccess.writeEnabled
+                    everyoneRead = everyoneAccess.readEnabled
+                    everyoneWrite = everyoneAccess.writeEnabled
+                }
+
                 let permissions = DropboxPermissions(
                     owner: ownerSelection,
                     group: groupSelection,
-                    ownerRead: ownerAccess.readEnabled,
-                    ownerWrite: ownerAccess.writeEnabled,
-                    groupRead: groupAccess.readEnabled,
-                    groupWrite: groupAccess.writeEnabled,
-                    everyoneRead: everyoneAccess.readEnabled,
-                    everyoneWrite: everyoneAccess.writeEnabled
+                    ownerRead: ownerRead,
+                    ownerWrite: ownerWrite,
+                    groupRead: groupRead,
+                    groupWrite: groupWrite,
+                    everyoneRead: everyoneRead,
+                    everyoneWrite: everyoneWrite
                 )
                 try await filesViewModel.setFilePermissions(path: info.path, permissions: permissions)
             }

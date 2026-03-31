@@ -70,6 +70,7 @@
 		4C8D12022F30000200213277 /* MessageConversationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D12122F30000200213277 /* MessageConversationRow.swift */; };
 		4C8D12042F30000200213277 /* MessageConversationMessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D12142F30000200213277 /* MessageConversationMessagesView.swift */; };
 		4C8D13012F30000300213277 /* UserDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D13112F30000300213277 /* UserDragPayload.swift */; };
+		4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4C90D0022FA1000100213277 /* SyncBadge.icns */; };
 		4C95F1642F56CB5F005CD1BA /* Board.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1612F56CB5F005CD1BA /* Board.swift */; };
 		4C95F1652F56CB5F005CD1BA /* BoardPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1622F56CB5F005CD1BA /* BoardPost.swift */; };
 		4C95F1662F56CB5F005CD1BA /* BoardThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1632F56CB5F005CD1BA /* BoardThread.swift */; };
@@ -83,7 +84,6 @@
 		4CF01A922F20000100213277 /* FileInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF01A912F20000100213277 /* FileInfoSheet.swift */; };
 		4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A962F200A1100213277 /* UploadsBadge.icns */; };
 		4CF01A952F200A1100213277 /* DropBoxBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A972F200A1100213277 /* DropBoxBadge.icns */; };
-		4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4C90D0022FA1000100213277 /* SyncBadge.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -157,6 +157,7 @@
 		4C62A7752F6852F200FB42E3 /* BackgroundEdgeFade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundEdgeFade.swift; sourceTree = "<group>"; };
 		4C62A77D2F698AB500FB42E3 /* ServerTrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerTrustStore.swift; sourceTree = "<group>"; };
 		4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsSettingsView.swift; sourceTree = "<group>"; };
+		4C62A8732F7A9EB800FB42E3 /* wiredsyncd */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = wiredsyncd; sourceTree = "<group>"; };
 		4C7E10012F21000100213277 /* ServerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSettingsView.swift; sourceTree = "<group>"; };
 		4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationDetailView.swift; sourceTree = "<group>"; };
 		4C8D11112F30000100213277 /* StoredPrivateConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateConversation.swift; sourceTree = "<group>"; };
@@ -168,6 +169,7 @@
 		4C8D12122F30000200213277 /* MessageConversationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationRow.swift; sourceTree = "<group>"; };
 		4C8D12142F30000200213277 /* MessageConversationMessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationMessagesView.swift; sourceTree = "<group>"; };
 		4C8D13112F30000300213277 /* UserDragPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDragPayload.swift; sourceTree = "<group>"; };
+		4C90D0022FA1000100213277 /* SyncBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = SyncBadge.icns; sourceTree = "<group>"; };
 		4C95F1612F56CB5F005CD1BA /* Board.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Board.swift; sourceTree = "<group>"; };
 		4C95F1622F56CB5F005CD1BA /* BoardPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardPost.swift; sourceTree = "<group>"; };
 		4C95F1632F56CB5F005CD1BA /* BoardThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardThread.swift; sourceTree = "<group>"; };
@@ -183,7 +185,6 @@
 		4CF01A912F20000100213277 /* FileInfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInfoSheet.swift; sourceTree = "<group>"; };
 		4CF01A962F200A1100213277 /* UploadsBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = UploadsBadge.icns; sourceTree = "<group>"; };
 		4CF01A972F200A1100213277 /* DropBoxBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = DropBoxBadge.icns; sourceTree = "<group>"; };
-		4C90D0022FA1000100213277 /* SyncBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = SyncBadge.icns; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -390,6 +391,7 @@
 				4C0C2DD02EF4370000213277 /* Wired 3UITests */,
 				4C74285F22DCECE800D6E6F9 /* Products */,
 				4CF6736B2403F48000A8EDC2 /* Frameworks */,
+				4C62A8732F7A9EB800FB42E3 /* wiredsyncd */,
 			);
 			sourceTree = "<group>";
 		};
@@ -452,6 +454,7 @@
 			buildPhases = (
 				4C0C2DB02EF436FE00213277 /* Sources */,
 				4C0C2DB12EF436FE00213277 /* Frameworks */,
+				4C90D0102FA1000100213277 /* Embed wiredsyncd */,
 				4C0C2DB22EF436FE00213277 /* Resources */,
 			);
 			buildRules = (
@@ -569,6 +572,30 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4C90D0102FA1000100213277 /* Embed wiredsyncd */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/wiredsyncd",
+				"$(SRCROOT)/wiredsyncd/Package.swift",
+			);
+			name = "Embed wiredsyncd";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/wiredsyncd",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nDAEMON_SRC=\"${SRCROOT}/wiredsyncd\"\nif [ ! -f \"${DAEMON_SRC}/Package.swift\" ]; then\n  echo \"warning: wiredsyncd package not found at ${DAEMON_SRC}\"\n  exit 0\nfi\n\nxcrun --sdk macosx swift build --package-path \"${DAEMON_SRC}\" -c release\n\nDAEMON_BIN=\"${DAEMON_SRC}/.build/release/wiredsyncd\"\nif [ ! -x \"${DAEMON_BIN}\" ]; then\n  DAEMON_BIN=\"$(find \"${DAEMON_SRC}/.build\" -type f -name wiredsyncd -perm -111 | head -n 1)\"\nfi\n\nif [ -z \"${DAEMON_BIN:-}\" ] || [ ! -x \"${DAEMON_BIN}\" ]; then\n  echo \"error: unable to locate built wiredsyncd binary\"\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nDEST_BIN=\"${DEST_DIR}/wiredsyncd\"\nmkdir -p \"${DEST_DIR}\"\ncp \"${DAEMON_BIN}\" \"${DEST_BIN}\"\nchmod 755 \"${DEST_BIN}\"\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${DEST_BIN}\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		4C0C2DB22EF436FE00213277 /* Resources */ = {
@@ -726,7 +753,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";
@@ -786,7 +813,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";

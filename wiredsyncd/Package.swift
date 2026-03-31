@@ -7,9 +7,18 @@ let package = Package(
     products: [
         .executable(name: "wiredsyncd", targets: ["wiredsyncd"])
     ],
+    dependencies: [
+        .package(path: "../../WiredSwift")
+    ],
     targets: [
         .executableTarget(
             name: "wiredsyncd",
+            dependencies: [
+                .product(name: "WiredSwift", package: "WiredSwift")
+            ],
+            resources: [
+                .copy("Resources/wired.xml")
+            ],
             linkerSettings: [
                 .linkedLibrary("sqlite3")
             ]
