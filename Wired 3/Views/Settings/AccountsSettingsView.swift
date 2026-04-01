@@ -2,9 +2,9 @@ import SwiftUI
 import WiredSwift
 
 private func accountPrivilegesIncludingColorFromSpec() -> [String] {
-    var privileges = spec?.accountPrivileges ?? []
+    var privileges = spec.accountPrivileges ?? []
 
-    if spec?.fieldsByName["wired.account.color"] != nil,
+    if spec.fieldsByName["wired.account.color"] != nil,
        !privileges.contains("wired.account.color") {
         privileges.append("wired.account.color")
     }
@@ -168,7 +168,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         guard !isSubscribedToAccountChanges else { return }
         guard let connection = runtime?.connection as? AsyncConnection else { return }
 
-        let message = P7Message(withName: "wired.account.subscribe_accounts", spec: spec!)
+        let message = P7Message(withName: "wired.account.subscribe_accounts", spec: spec)
 
         do {
             let response = try await connection.sendAsync(message)
@@ -195,7 +195,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         guard isSubscribedToAccountChanges else { return }
         guard let connection = runtime?.connection as? AsyncConnection else { return }
 
-        let message = P7Message(withName: "wired.account.unsubscribe_accounts", spec: spec!)
+        let message = P7Message(withName: "wired.account.unsubscribe_accounts", spec: spec)
 
         do {
             let response = try await connection.sendAsync(message)
@@ -429,7 +429,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func loadUsers(connection: AsyncConnection) async throws -> [AccountSummary] {
-        let message = P7Message(withName: "wired.account.list_users", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_users", spec: spec)
 
         var values: [AccountSummary] = []
 
@@ -447,7 +447,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func loadGroups(connection: AsyncConnection) async throws -> [AccountSummary] {
-        let message = P7Message(withName: "wired.account.list_groups", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_groups", spec: spec)
 
         var values: [AccountSummary] = []
 
@@ -465,7 +465,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func readUser(name: String, connection: AsyncConnection) async throws -> AccountEditor {
-        let message = P7Message(withName: "wired.account.read_user", spec: spec!)
+        let message = P7Message(withName: "wired.account.read_user", spec: spec)
         message.addParameter(field: "wired.account.name", value: name)
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -482,7 +482,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func readGroup(name: String, connection: AsyncConnection) async throws -> AccountEditor {
-        let message = P7Message(withName: "wired.account.read_group", spec: spec!)
+        let message = P7Message(withName: "wired.account.read_group", spec: spec)
         message.addParameter(field: "wired.account.name", value: name)
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -499,7 +499,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func editUser(_ editor: AccountEditor, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.edit_user", spec: spec!)
+        let message = P7Message(withName: "wired.account.edit_user", spec: spec)
         message.addParameter(field: "wired.account.name", value: editor.originalName)
 
         if editor.name != editor.originalName {
@@ -519,7 +519,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         }
 
         for privilege in accountPrivilegesIncludingColorFromSpec() {
-            guard let field = spec?.fieldsByName[privilege] else { continue }
+            guard let field = spec.fieldsByName[privilege] else { continue }
             switch field.type {
             case .bool:
                 message.addParameter(field: privilege, value: editor.privilegesBool[privilege] ?? false)
@@ -538,7 +538,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func createUser(_ draft: AccountCreationDraft, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.create_user", spec: spec!)
+        let message = P7Message(withName: "wired.account.create_user", spec: spec)
         message.addParameter(field: "wired.account.name", value: draft.trimmedName)
         message.addParameter(field: "wired.account.full_name", value: draft.trimmedFullName)
         message.addParameter(field: "wired.account.comment", value: draft.trimmedComment)
@@ -566,7 +566,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func editGroup(_ editor: AccountEditor, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.edit_group", spec: spec!)
+        let message = P7Message(withName: "wired.account.edit_group", spec: spec)
         message.addParameter(field: "wired.account.name", value: editor.originalName)
 
         if editor.name != editor.originalName {
@@ -576,7 +576,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         message.addParameter(field: "wired.account.comment", value: editor.comment)
 
         for privilege in accountPrivilegesIncludingColorFromSpec() {
-            guard let field = spec?.fieldsByName[privilege] else { continue }
+            guard let field = spec.fieldsByName[privilege] else { continue }
             switch field.type {
             case .bool:
                 message.addParameter(field: privilege, value: editor.privilegesBool[privilege] ?? false)
@@ -595,7 +595,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func createGroup(_ draft: AccountCreationDraft, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.create_group", spec: spec!)
+        let message = P7Message(withName: "wired.account.create_group", spec: spec)
         message.addParameter(field: "wired.account.name", value: draft.trimmedName)
         message.addParameter(field: "wired.account.comment", value: draft.trimmedComment)
 
@@ -607,7 +607,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func deleteUser(named name: String, disconnectUsers: Bool, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.delete_user", spec: spec!)
+        let message = P7Message(withName: "wired.account.delete_user", spec: spec)
         message.addParameter(field: "wired.account.name", value: name)
         message.addParameter(field: "wired.account.disconnect_users", value: disconnectUsers)
 
@@ -619,7 +619,7 @@ final class AccountsSettingsViewModel: ObservableObject {
     }
 
     private func deleteGroup(named name: String, connection: AsyncConnection) async throws {
-        let message = P7Message(withName: "wired.account.delete_group", spec: spec!)
+        let message = P7Message(withName: "wired.account.delete_group", spec: spec)
         message.addParameter(field: "wired.account.name", value: name)
 
         let response = try await connection.sendAsync(message)
@@ -674,7 +674,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         var privilegesUInt32: [String: UInt32] = [:]
 
         for privilege in accountPrivilegesIncludingColorFromSpec() {
-            guard let field = spec?.fieldsByName[privilege] else { continue }
+            guard let field = spec.fieldsByName[privilege] else { continue }
             switch field.type {
             case .bool:
                 privilegesBool[privilege] = message.bool(forField: privilege) ?? false
@@ -715,7 +715,7 @@ final class AccountsSettingsViewModel: ObservableObject {
         var privilegesUInt32: [String: UInt32] = [:]
 
         for privilege in accountPrivilegesIncludingColorFromSpec() {
-            guard let field = spec?.fieldsByName[privilege] else { continue }
+            guard let field = spec.fieldsByName[privilege] else { continue }
             switch field.type {
             case .bool:
                 privilegesBool[privilege] = message.bool(forField: privilege) ?? false
@@ -1302,7 +1302,7 @@ private struct AccountPermissionsForm: View {
         var buckets: [PermissionCategory: [String]] = [:]
 
         for key in accountPrivilegesIncludingColorFromSpec() {
-            guard let field = spec?.fieldsByName[key] else { continue }
+            guard let field = spec.fieldsByName[key] else { continue }
             guard field.type == .bool || field.type == .enum32 || field.type == .uint32 else { continue }
 
             let category = PermissionCategory.category(for: key)
@@ -1339,7 +1339,7 @@ private struct AccountPermissionsForm: View {
                 ForEach(groupedPrivileges, id: \.0) { category, keys in
                     Section(category.title) {
                         ForEach(keys, id: \.self) { key in
-                            if spec?.fieldsByName[key]?.type == .bool {
+                            if spec.fieldsByName[key]?.type == .bool {
                                 HStack {
                                     Text(permissionDisplayName(key))
                                         .font(.system(size: 12))

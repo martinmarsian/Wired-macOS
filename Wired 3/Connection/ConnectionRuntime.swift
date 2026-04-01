@@ -409,7 +409,7 @@ final class ConnectionRuntime: Identifiable {
         if elapsed >= idleTimeout, !isIdle {
             isIdle = true
             
-            let message = P7Message(withName: "wired.user.set_idle", spec: spec!)
+            let message = P7Message(withName: "wired.user.set_idle", spec: spec)
             
             Task {
                 try? await connectionController.socketClient.send(message, on: id)
@@ -475,7 +475,7 @@ final class ConnectionRuntime: Identifiable {
         guard connection != nil else { return }
 
         for chatID in chatIDs {
-            let message = P7Message(withName: "wired.chat.send_typing", spec: spec!)
+            let message = P7Message(withName: "wired.chat.send_typing", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.typing", value: false)
 
@@ -503,7 +503,7 @@ final class ConnectionRuntime: Identifiable {
 
         guard connection != nil else { return }
 
-        let message = P7Message(withName: "wired.chat.send_typing", spec: spec!)
+        let message = P7Message(withName: "wired.chat.send_typing", spec: spec)
         message.addParameter(field: "wired.chat.id", value: chatID)
         message.addParameter(field: "wired.chat.typing", value: isTyping)
 
@@ -988,7 +988,7 @@ final class ConnectionRuntime: Identifiable {
             throw WiredError(withTitle: "Private Message", message: "User is offline.")
         }
 
-        let message = P7Message(withName: "wired.message.send_message", spec: spec!)
+        let message = P7Message(withName: "wired.message.send_message", spec: spec)
         message.addParameter(field: "wired.user.id", value: recipientUserID)
         message.addParameter(field: "wired.message.message", value: trimmed)
 
@@ -1003,7 +1003,7 @@ final class ConnectionRuntime: Identifiable {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let message = P7Message(withName: "wired.message.send_broadcast", spec: spec!)
+        let message = P7Message(withName: "wired.message.send_broadcast", spec: spec)
         message.addParameter(field: "wired.message.broadcast", value: trimmed)
 
         if let response = try await send(message), response.name == "wired.error" {
@@ -1436,7 +1436,7 @@ final class ConnectionRuntime: Identifiable {
     
     func getUserInfo(_ userID: UInt32) {
         Task {
-            let message = P7Message(withName: "wired.user.get_info", spec: spec!)
+            let message = P7Message(withName: "wired.user.get_info", spec: spec)
             message.addParameter(field: "wired.user.id", value: userID)
             
             showInfosUserID = userID
@@ -1455,14 +1455,14 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func disconnectUser(userID: UInt32, reason: String) async throws {
-        let message = P7Message(withName: "wired.user.disconnect_user", spec: spec!)
+        let message = P7Message(withName: "wired.user.disconnect_user", spec: spec)
         message.addParameter(field: "wired.user.id", value: userID)
         message.addParameter(field: "wired.user.disconnect_message", value: reason)
         _ = try await send(message)
     }
 
     func banUser(userID: UInt32, reason: String, expirationDate: Date?) async throws {
-        let message = P7Message(withName: "wired.user.ban_user", spec: spec!)
+        let message = P7Message(withName: "wired.user.ban_user", spec: spec)
         message.addParameter(field: "wired.user.id", value: userID)
         message.addParameter(field: "wired.user.disconnect_message", value: reason)
         if let expirationDate {
@@ -1472,7 +1472,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func kickUser(chatID: UInt32, userID: UInt32, reason: String) async throws {
-        let message = P7Message(withName: "wired.chat.kick_user", spec: spec!)
+        let message = P7Message(withName: "wired.chat.kick_user", spec: spec)
         message.addParameter(field: "wired.chat.id", value: chatID)
         message.addParameter(field: "wired.user.id", value: userID)
         message.addParameter(field: "wired.user.disconnect_message", value: reason)
@@ -1480,7 +1480,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func fetchBans() async throws -> [BanListEntry] {
-        let message = P7Message(withName: "wired.banlist.get_bans", spec: spec!)
+        let message = P7Message(withName: "wired.banlist.get_bans", spec: spec)
         let connection = try requireAsyncConnection()
 
         do {
@@ -1519,7 +1519,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func addBan(ipPattern: String, expirationDate: Date?) async throws {
-        let message = P7Message(withName: "wired.banlist.add_ban", spec: spec!)
+        let message = P7Message(withName: "wired.banlist.add_ban", spec: spec)
         message.addParameter(field: "wired.banlist.ip", value: ipPattern)
         if let expirationDate {
             message.addParameter(field: "wired.banlist.expiration_date", value: expirationDate)
@@ -1528,7 +1528,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func deleteBan(ipPattern: String, expirationDate: Date?) async throws {
-        let message = P7Message(withName: "wired.banlist.delete_ban", spec: spec!)
+        let message = P7Message(withName: "wired.banlist.delete_ban", spec: spec)
         message.addParameter(field: "wired.banlist.ip", value: ipPattern)
         if let expirationDate {
             message.addParameter(field: "wired.banlist.expiration_date", value: expirationDate)
@@ -1537,7 +1537,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func fetchFirstEventTime() async throws -> Date {
-        let message = P7Message(withName: "wired.event.get_first_time", spec: spec!)
+        let message = P7Message(withName: "wired.event.get_first_time", spec: spec)
 
         do {
             guard let response = try await send(message) else {
@@ -1555,30 +1555,30 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func fetchCurrentEvents(limit: UInt32 = 1000) async throws -> [WiredServerEventRecord] {
-        let message = P7Message(withName: "wired.event.get_events", spec: spec!)
+        let message = P7Message(withName: "wired.event.get_events", spec: spec)
         message.addParameter(field: "wired.event.last_event_count", value: limit)
         return try await fetchEvents(using: message)
     }
 
     func fetchArchivedEvents(from fromTime: Date, numberOfDays: UInt32 = 7) async throws -> [WiredServerEventRecord] {
-        let message = P7Message(withName: "wired.event.get_events", spec: spec!)
+        let message = P7Message(withName: "wired.event.get_events", spec: spec)
         message.addParameter(field: "wired.event.from_time", value: fromTime)
         message.addParameter(field: "wired.event.number_of_days", value: numberOfDays)
         return try await fetchEvents(using: message)
     }
 
     func subscribeToEvents() async throws {
-        let message = P7Message(withName: "wired.event.subscribe", spec: spec!)
+        let message = P7Message(withName: "wired.event.subscribe", spec: spec)
         _ = try await send(message)
     }
 
     func unsubscribeFromEvents() async throws {
-        let message = P7Message(withName: "wired.event.unsubscribe", spec: spec!)
+        let message = P7Message(withName: "wired.event.unsubscribe", spec: spec)
         _ = try await send(message)
     }
 
     func deleteEvents(from fromTime: Date?, to toTime: Date?) async throws {
-        let message = P7Message(withName: "wired.event.delete_events", spec: spec!)
+        let message = P7Message(withName: "wired.event.delete_events", spec: spec)
         if let fromTime {
             message.addParameter(field: "wired.event.from_time", value: fromTime)
         }
@@ -1615,7 +1615,7 @@ final class ConnectionRuntime: Identifiable {
         let connection = try requireAsyncConnection()
 
         do {
-            let request = P7Message(withName: "wired.log.get_log", spec: spec!)
+            let request = P7Message(withName: "wired.log.get_log", spec: spec)
             let stream  = try connection.sendAndWaitMany(request)
             var entries: [WiredLogEntry] = []
 
@@ -1633,13 +1633,13 @@ final class ConnectionRuntime: Identifiable {
 
     /// Subscribe to live log broadcasts (`wired.log.subscribe`).
     func subscribeToLog() async throws {
-        let message = P7Message(withName: "wired.log.subscribe", spec: spec!)
+        let message = P7Message(withName: "wired.log.subscribe", spec: spec)
         _ = try await send(message)
     }
 
     /// Unsubscribe from live log broadcasts (`wired.log.unsubscribe`).
     func unsubscribeFromLog() async throws {
-        let message = P7Message(withName: "wired.log.unsubscribe", spec: spec!)
+        let message = P7Message(withName: "wired.log.unsubscribe", spec: spec)
         _ = try await send(message)
     }
 
@@ -1652,7 +1652,7 @@ final class ConnectionRuntime: Identifiable {
                 return try await self.send(message)
             }
         } else {
-            let message = P7Message(withName: "wired.chat.send_say", spec: spec!)
+            let message = P7Message(withName: "wired.chat.send_say", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.say", value: text)
             return try await self.send(message)
@@ -1665,7 +1665,7 @@ final class ConnectionRuntime: Identifiable {
     // MARK: - Chat Messages
     
     func joinChat(_ chatID: UInt32) async throws {
-        let message = P7Message(withName: "wired.chat.join_chat", spec: spec!)
+        let message = P7Message(withName: "wired.chat.join_chat", spec: spec)
         
         message.addParameter(field: "wired.chat.id", value: chatID)
 
@@ -1673,7 +1673,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func leaveChat(_ chatID: UInt32) async throws {
-        let message = P7Message(withName: "wired.chat.leave_chat", spec: spec!)
+        let message = P7Message(withName: "wired.chat.leave_chat", spec: spec)
         
         message.addParameter(field: "wired.chat.id", value: chatID)
         
@@ -1697,7 +1697,7 @@ final class ConnectionRuntime: Identifiable {
 
     @discardableResult
     func createPrivateChat() async throws -> UInt32 {
-        let message = P7Message(withName: "wired.chat.create_chat", spec: spec!)
+        let message = P7Message(withName: "wired.chat.create_chat", spec: spec)
         guard let response = try await self.send(message) else {
             throw WiredError(withTitle: "Private Chat", message: "No response from server.")
         }
@@ -1728,7 +1728,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func inviteUserToPrivateChat(userID: UInt32, chatID: UInt32) async throws {
-        let message = P7Message(withName: "wired.chat.invite_user", spec: spec!)
+        let message = P7Message(withName: "wired.chat.invite_user", spec: spec)
         message.addParameter(field: "wired.chat.id", value: chatID)
         message.addParameter(field: "wired.user.id", value: userID)
 
@@ -1757,7 +1757,7 @@ final class ConnectionRuntime: Identifiable {
 
         Task {
             do {
-                let message = P7Message(withName: "wired.chat.decline_invitation", spec: spec!)
+                let message = P7Message(withName: "wired.chat.decline_invitation", spec: spec)
                 message.addParameter(field: "wired.chat.id", value: invitation.chatID)
                 message.addParameter(field: "wired.user.id", value: invitation.inviterUserID)
 
@@ -1798,7 +1798,7 @@ final class ConnectionRuntime: Identifiable {
     }
     
     func deletePublicChat(_ chatID: UInt32) async throws {
-        let message = P7Message(withName: "wired.chat.delete_public_chat", spec: spec!)
+        let message = P7Message(withName: "wired.chat.delete_public_chat", spec: spec)
         
         message.addParameter(field: "wired.chat.id", value: chatID)
 
@@ -1806,7 +1806,7 @@ final class ConnectionRuntime: Identifiable {
     }
 
     func setChatTopic(_ chatID: UInt32, topic: String) async throws {
-        let message = P7Message(withName: "wired.chat.set_topic", spec: spec!)
+        let message = P7Message(withName: "wired.chat.set_topic", spec: spec)
 
         message.addParameter(field: "wired.chat.id", value: chatID)
         message.addParameter(field: "wired.chat.topic.topic", value: topic)
@@ -1818,21 +1818,21 @@ final class ConnectionRuntime: Identifiable {
     // MARK: - User Status Messages
     
     func setNickMessage(_ nick:String) -> P7Message? {
-        let message = P7Message(withName: "wired.user.set_nick", spec: spec!)
+        let message = P7Message(withName: "wired.user.set_nick", spec: spec)
         message.addParameter(field: "wired.user.nick", value: nick)
 
         return message
     }
     
     func setStatusMessage(_ status:String) -> P7Message? {
-        let message = P7Message(withName: "wired.user.set_status", spec: spec!)
+        let message = P7Message(withName: "wired.user.set_status", spec: spec)
         message.addParameter(field: "wired.user.status", value: status)
 
         return message
     }
     
     func setIconMessage(_ icon:Data) -> P7Message? {
-        let message = P7Message(withName: "wired.user.set_icon", spec: spec!)
+        let message = P7Message(withName: "wired.user.set_icon", spec: spec)
         
         message.addParameter(field: "wired.user.icon", value: icon)
         
@@ -1850,7 +1850,7 @@ final class ConnectionRuntime: Identifiable {
         case .me:
             let value = command.deletingPrefix(String(comps[0]) + " ")
             guard !value.isEmpty, value != String(comps[0]) else { return nil }
-            let message = P7Message(withName: "wired.chat.send_me", spec: spec!)
+            let message = P7Message(withName: "wired.chat.send_me", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.me", value: value)
             return message
@@ -1868,7 +1868,7 @@ final class ConnectionRuntime: Identifiable {
         case .topic:
             let value = command.deletingPrefix(String(comps[0]) + " ")
             guard !value.isEmpty, value != String(comps[0]) else { return nil }
-            let message = P7Message(withName: "wired.chat.set_topic", spec: spec!)
+            let message = P7Message(withName: "wired.chat.set_topic", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.topic.topic", value: value)
             return message
@@ -1878,7 +1878,7 @@ final class ConnectionRuntime: Identifiable {
                 let h = c.hint.isEmpty ? "" : " \(c.hint)"
                 return "\(c.rawValue)\(h)\t\(c.usage)"
             }.joined(separator: "\n")
-            let message = P7Message(withName: "wired.chat.send_say", spec: spec!)
+            let message = P7Message(withName: "wired.chat.send_say", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
             message.addParameter(field: "wired.chat.say", value: "Chat commands:\n\n" + lines)
             return message
@@ -1892,14 +1892,14 @@ final class ConnectionRuntime: Identifiable {
 
     func getBoards() async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.get_boards", spec: spec!)
+            let m = P7Message(withName: "wired.board.get_boards", spec: spec)
             _ = try await send(m)
         }
     }
 
     func subscribeBoards() async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.subscribe_boards", spec: spec!)
+            let m = P7Message(withName: "wired.board.subscribe_boards", spec: spec)
             _ = try await send(m)
         }
     }
@@ -1912,7 +1912,7 @@ final class ConnectionRuntime: Identifiable {
                 board.threads.removeAll()
             }
 
-            let m = P7Message(withName: "wired.board.get_threads", spec: spec!)
+            let m = P7Message(withName: "wired.board.get_threads", spec: spec)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
@@ -1928,7 +1928,7 @@ final class ConnectionRuntime: Identifiable {
         try await withBoardNetworkActivity {
             board.threadsLoaded = false
             board.threads.removeAll()
-            let m = P7Message(withName: "wired.board.get_threads", spec: spec!)
+            let m = P7Message(withName: "wired.board.get_threads", spec: spec)
             m.addParameter(field: "wired.board.board", value: board.path)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
@@ -1946,7 +1946,7 @@ final class ConnectionRuntime: Identifiable {
         try await withBoardNetworkActivity {
             thread.postsLoaded = false
             thread.posts.removeAll()
-            let m = P7Message(withName: "wired.board.get_thread", spec: spec!)
+            let m = P7Message(withName: "wired.board.get_thread", spec: spec)
             m.addParameter(field: "wired.board.thread", value: thread.uuid)
             _ = try await send(m)
         }
@@ -1972,7 +1972,7 @@ final class ConnectionRuntime: Identifiable {
             isSearchingBoards = true
             boardSearchResults = []
 
-            let message = P7Message(withName: "wired.board.search", spec: spec!)
+            let message = P7Message(withName: "wired.board.search", spec: spec)
             message.addParameter(field: "wired.board.query", value: trimmed)
             if let scopeBoardPath, !scopeBoardPath.isEmpty {
                 message.addParameter(field: "wired.board.board", value: scopeBoardPath)
@@ -2001,7 +2001,7 @@ final class ConnectionRuntime: Identifiable {
 
     func addThread(toBoard board: Board, subject: String, text: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.add_thread", spec: spec!)
+            let m = P7Message(withName: "wired.board.add_thread", spec: spec)
             m.addParameter(field: "wired.board.board",   value: board.path)
             m.addParameter(field: "wired.board.subject", value: subject)
             m.addParameter(field: "wired.board.text",    value: text)
@@ -2013,7 +2013,7 @@ final class ConnectionRuntime: Identifiable {
 
     func addPost(toThread thread: BoardThread, text: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.add_post", spec: spec!)
+            let m = P7Message(withName: "wired.board.add_post", spec: spec)
             m.addParameter(field: "wired.board.thread",  value: thread.uuid)
             m.addParameter(field: "wired.board.subject", value: thread.subject)
             m.addParameter(field: "wired.board.text",    value: text)
@@ -2061,7 +2061,7 @@ final class ConnectionRuntime: Identifiable {
         everyoneWrite: Bool
     ) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.add_board", spec: spec!)
+            let m = P7Message(withName: "wired.board.add_board", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
             m.addParameter(field: "wired.board.owner", value: owner)
             m.addParameter(field: "wired.board.owner.read", value: ownerRead)
@@ -2087,7 +2087,7 @@ final class ConnectionRuntime: Identifiable {
             throw WiredError(withTitle: "Accounts", message: "Not connected.")
         }
 
-        let message = P7Message(withName: "wired.account.list_users", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_users", spec: spec)
         var values: [String] = []
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -2112,7 +2112,7 @@ final class ConnectionRuntime: Identifiable {
             throw WiredError(withTitle: "Accounts", message: "Not connected.")
         }
 
-        let message = P7Message(withName: "wired.account.list_groups", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_groups", spec: spec)
         var values: [String] = []
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -2134,7 +2134,7 @@ final class ConnectionRuntime: Identifiable {
 
     func getBoardInfo(path: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.get_board_info", spec: spec!)
+            let m = P7Message(withName: "wired.board.get_board_info", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
 
             guard let response = try await send(m) else {
@@ -2159,7 +2159,7 @@ final class ConnectionRuntime: Identifiable {
         everyoneWrite: Bool
     ) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.set_board_info", spec: spec!)
+            let m = P7Message(withName: "wired.board.set_board_info", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
             m.addParameter(field: "wired.board.owner", value: owner)
             m.addParameter(field: "wired.board.owner.read", value: ownerRead)
@@ -2182,7 +2182,7 @@ final class ConnectionRuntime: Identifiable {
 
     func deleteThread(uuid: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.delete_thread", spec: spec!)
+            let m = P7Message(withName: "wired.board.delete_thread", spec: spec)
             m.addParameter(field: "wired.board.thread", value: uuid)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
@@ -2192,7 +2192,7 @@ final class ConnectionRuntime: Identifiable {
 
     func deletePost(uuid: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.delete_post", spec: spec!)
+            let m = P7Message(withName: "wired.board.delete_post", spec: spec)
             m.addParameter(field: "wired.board.post", value: uuid)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
@@ -2202,7 +2202,7 @@ final class ConnectionRuntime: Identifiable {
 
     func deleteBoard(path: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.delete_board", spec: spec!)
+            let m = P7Message(withName: "wired.board.delete_board", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
@@ -2212,7 +2212,7 @@ final class ConnectionRuntime: Identifiable {
 
     func renameBoard(path: String, newPath: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.rename_board", spec: spec!)
+            let m = P7Message(withName: "wired.board.rename_board", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
             m.addParameter(field: "wired.board.new_board", value: newPath)
             if let response = try await send(m), response.name == "wired.error" {
@@ -2223,7 +2223,7 @@ final class ConnectionRuntime: Identifiable {
 
     func moveBoard(path: String, newPath: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.move_board", spec: spec!)
+            let m = P7Message(withName: "wired.board.move_board", spec: spec)
             m.addParameter(field: "wired.board.board", value: path)
             m.addParameter(field: "wired.board.new_board", value: newPath)
             if let response = try await send(m), response.name == "wired.error" {
@@ -2234,7 +2234,7 @@ final class ConnectionRuntime: Identifiable {
 
     func editThread(uuid: String, subject: String, text: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.edit_thread", spec: spec!)
+            let m = P7Message(withName: "wired.board.edit_thread", spec: spec)
             m.addParameter(field: "wired.board.thread", value: uuid)
             m.addParameter(field: "wired.board.subject", value: subject)
             m.addParameter(field: "wired.board.text", value: text)
@@ -2246,7 +2246,7 @@ final class ConnectionRuntime: Identifiable {
 
     func moveThread(uuid: String, newBoardPath: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.move_thread", spec: spec!)
+            let m = P7Message(withName: "wired.board.move_thread", spec: spec)
             m.addParameter(field: "wired.board.thread", value: uuid)
             m.addParameter(field: "wired.board.new_board", value: newBoardPath)
             if let response = try await send(m), response.name == "wired.error" {
@@ -2257,7 +2257,7 @@ final class ConnectionRuntime: Identifiable {
 
     func editPost(uuid: String, subject: String, text: String) async throws {
         try await withBoardNetworkActivity {
-            let m = P7Message(withName: "wired.board.edit_post", spec: spec!)
+            let m = P7Message(withName: "wired.board.edit_post", spec: spec)
             m.addParameter(field: "wired.board.post", value: uuid)
             m.addParameter(field: "wired.board.subject", value: subject)
             m.addParameter(field: "wired.board.text", value: text)
@@ -2290,7 +2290,7 @@ final class ConnectionRuntime: Identifiable {
     func getReactions(forPost post: BoardPost) async throws {
         let connection = try requireAsyncConnection()
 
-        let m = P7Message(withName: "wired.board.get_reactions", spec: spec!)
+        let m = P7Message(withName: "wired.board.get_reactions", spec: spec)
         m.addParameter(field: "wired.board.thread", value: post.threadUUID)
         if !post.isThreadBody {
             m.addParameter(field: "wired.board.post", value: post.uuid)
@@ -2338,7 +2338,7 @@ final class ConnectionRuntime: Identifiable {
     /// Sends an `add_reaction` toggle request. The server will reply with `reaction_added`
     /// or `reaction_removed` broadcast which `ConnectionController` handles to update state.
     func toggleReaction(emoji: String, forPost post: BoardPost) async throws {
-        let m = P7Message(withName: "wired.board.add_reaction", spec: spec!)
+        let m = P7Message(withName: "wired.board.add_reaction", spec: spec)
         m.addParameter(field: "wired.board.thread",         value: post.threadUUID)
         if !post.isThreadBody {
             m.addParameter(field: "wired.board.post",       value: post.uuid)

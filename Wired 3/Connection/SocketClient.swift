@@ -57,7 +57,7 @@ actor SocketClient {
             }
 
             let connection = WiredSwift.AsyncConnection(
-                withSpec: spec!,
+                withSpec: spec,
                 delegate: proxy
             )
 

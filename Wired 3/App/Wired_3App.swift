@@ -15,8 +15,7 @@ import AppKit
 import CoreText
 #endif
 
-let specURL = Bundle.main.url(forResource: "wired", withExtension: "xml")!
-let spec = P7Spec(withUrl: specURL)
+let spec = WiredProtocolSpec.bundledSpec()!
 let iconData = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")!.dataRepresentation
 
 let byteCountFormatter = ByteCountFormatter()
@@ -618,7 +617,7 @@ struct Wired_3App: App {
     init() {
         let socket = SocketClient()
         let cc = ConnectionController(socketClient: socket)
-        let tm = TransferManager(spec: spec!, connectionController: cc)
+        let tm = TransferManager(spec: spec, connectionController: cc)
         
         self._controller = State(initialValue: cc)
         self._transfers = State(initialValue: tm)
