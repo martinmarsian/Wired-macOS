@@ -195,7 +195,7 @@ private enum SyncPairLocalOverride: Equatable {
     case sticky(active: Bool, until: Date)
 }
 
-private struct WiredSyncPairDescriptor: Hashable {
+struct WiredSyncPairDescriptor: Hashable {
     let remotePath: String
     let serverURL: String
     let login: String
