@@ -811,7 +811,7 @@ enum WiredSyncDaemonIPC {
 
     /// Checks whether the running daemon matches the expected version.
     /// If a version mismatch is detected (stale process after an app update), the daemon
-    /// is replaced transparently via `kickstart -k`.  Safe to call at every app launch.
+    /// is replaced transparently.  Safe to call at every app launch.
     static func ensureDaemonIsCurrentVersion() {
         Task.detached(priority: .background) {
             guard let result = try? performRequest(
@@ -819,14 +819,19 @@ enum WiredSyncDaemonIPC {
                 timeoutSeconds: 3
             ),
             let data = result["result"] as? [String: Any] else {
-                // Daemon unreachable – will be installed on next IPC call.
+                // Daemon unreachable – will be installed on the first IPC call that needs it.
                 return
             }
             let runningVersion = data["version"] as? String ?? ""
             guard runningVersion != expectedDaemonVersion else { return }
 
-            // Version mismatch: reinstall plist and replace the running process.
-            try? installAndStartLaunchAgent()
+            print("[WiredSyncUI] daemon.version_mismatch running=\(runningVersion) expected=\(expectedDaemonVersion) – reinstalling")
+            do {
+                try installAndStartLaunchAgent()
+                print("[WiredSyncUI] daemon.version_update_ok version=\(expectedDaemonVersion)")
+            } catch {
+                print("[WiredSyncUI] daemon.version_update_failed error=\(error.localizedDescription)")
+            }
         }
     }
 }
