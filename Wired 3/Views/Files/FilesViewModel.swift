@@ -614,6 +614,35 @@ final class FilesViewModel: ObservableObject {
     }
 
     @MainActor
+    func renameItem(at path: String, newName: String, isSyncFolder: Bool) async throws -> String {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return path }
+
+        let parentDir = (path as NSString).deletingLastPathComponent
+        let newPath   = (parentDir as NSString).appendingPathComponent(newName)
+
+        guard normalizedRemotePath(path) != normalizedRemotePath(newPath) else { return path }
+
+        try await withFileNetworkActivity {
+            try await fileService.moveFile(from: path, to: newPath, connection: connection)
+        }
+
+        if isSyncFolder, let url = connection.url {
+            let serverURL = "\(url.hostname):\(url.port)"
+            let login     = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+            try WiredSyncDaemonIPC.renamePairForRemote(
+                oldPath: path,
+                newPath: newPath,
+                serverURL: serverURL,
+                login: login
+            )
+        }
+
+        await reloadAll()
+        return newPath
+    }
+
+    @MainActor
     func moveRemoteItem(from sourcePath: String, to targetDirectoryPath: String) async throws {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }

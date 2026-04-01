@@ -6,7 +6,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "7"
+private let kDaemonVersion = "8"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -615,6 +615,49 @@ final class DaemonState {
         }
 
         return updatedPairs.map(\.id)
+    }
+
+    func renamePairRemotePath(
+        oldPath: String,
+        newPath: String,
+        serverURL: String?,
+        login: String?
+    ) throws -> [String] {
+        lock.lock()
+        let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedLogin  = login?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var renamedPairs: [SyncPair] = []
+        for index in config.pairs.indices {
+            let pair = config.pairs[index]
+            guard pair.remotePath == oldPath else { continue }
+            if let normalizedServer, !normalizedServer.isEmpty,
+               pair.endpoint.serverURL != normalizedServer { continue }
+            if let normalizedLogin, !normalizedLogin.isEmpty,
+               pair.endpoint.login != normalizedLogin { continue }
+            config.pairs[index].remotePath = newPath
+            config.pairs[index].updatedAt = Date()
+            renamedPairs.append(config.pairs[index])
+        }
+
+        guard !renamedPairs.isEmpty else {
+            lock.unlock()
+            return []
+        }
+
+        do {
+            try saveConfigLocked()
+        } catch {
+            lock.unlock()
+            throw error
+        }
+        lock.unlock()
+
+        for pair in renamedPairs {
+            try store.upsert(pair: pair)
+            appendLog("pair.rename_remote id=\(pair.id) old=\(oldPath) new=\(newPath)")
+        }
+        return renamedPairs.map(\.id)
     }
 
     func setPaused(id: String, paused: Bool) throws -> Bool {
@@ -1708,6 +1751,32 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
             )
         } catch {
             respondError(id: req.id, code: -32000, message: "remove_pair_for_remote failed: \(error.localizedDescription)", fd: fd)
+        }
+
+    case "rename_pair_remote":
+        guard let oldPath = params["old_remote_path"],
+              let newPath = params["new_remote_path"] else {
+            respondError(id: req.id, code: -32602, message: "old_remote_path/new_remote_path required", fd: fd)
+            return
+        }
+        do {
+            let updated = try state.renamePairRemotePath(
+                oldPath: oldPath,
+                newPath: newPath,
+                serverURL: params["server_url"],
+                login: params["login"]
+            )
+            respondResult(
+                id: req.id,
+                result: [
+                    "ok": true,
+                    "updated_count": updated.count,
+                    "updated_ids": updated
+                ],
+                fd: fd
+            )
+        } catch {
+            respondError(id: req.id, code: -32000, message: "rename_pair_remote failed: \(error.localizedDescription)", fd: fd)
         }
 
     case "update_pair_policy", "update_pair_mode":

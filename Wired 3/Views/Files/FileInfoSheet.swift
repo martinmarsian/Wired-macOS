@@ -85,12 +85,14 @@ struct FileInfoSheet: View {
     @State private var syncOwnerMode: SyncAccessMode = .disabled
     @State private var syncGroupMode: SyncAccessMode = .disabled
     @State private var syncEveryoneMode: SyncAccessMode = .disabled
+    @State private var newName: String = ""
 
     init(filesViewModel: FilesViewModel, file: FileItem) {
         self.filesViewModel = filesViewModel
         self.file = file
         _info = State(initialValue: file)
         _selectedTypeRawValue = State(initialValue: file.type.rawValue)
+        _newName = State(initialValue: file.name)
     }
 
     // MARK: - Computed
@@ -126,8 +128,12 @@ struct FileInfoSheet: View {
             || syncEveryoneMode != .from(mode: info.syncEveryoneMode)
     }
 
+    private var hasRenameChange: Bool {
+        !newName.isEmpty && newName != info.name
+    }
+
     private var hasChanges: Bool {
-        selectedTypeRawValue != info.type.rawValue || hasManagedPermissionChanges || hasSyncPolicyChanges
+        hasRenameChange || selectedTypeRawValue != info.type.rawValue || hasManagedPermissionChanges || hasSyncPolicyChanges
     }
 
     private var canEditManagedPermissions: Bool {
@@ -136,7 +142,8 @@ struct FileInfoSheet: View {
     }
 
     private var canSaveChanges: Bool {
-        (canEditType && selectedTypeRawValue != info.type.rawValue)
+        hasRenameChange
+        || (canEditType && selectedTypeRawValue != info.type.rawValue)
         || (canEditManagedPermissions && hasManagedPermissionChanges)
         || (canEditManagedPermissions && hasSyncPolicyChanges)
     }
@@ -213,8 +220,9 @@ struct FileInfoSheet: View {
                 .frame(width: 44)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(info.name)
+                TextField("Name", text: $newName)
                     .font(.title3).fontWeight(.semibold)
+                    .textFieldStyle(.plain)
                     .lineLimit(1)
 
                 Text(info.path)
@@ -477,6 +485,7 @@ struct FileInfoSheet: View {
         do {
             let loadedInfo = try await filesViewModel.getFileInfo(path: file.path)
             info = loadedInfo
+            newName = loadedInfo.name
             selectedTypeRawValue = loadedInfo.type.rawValue
             if isInsideSyncSubtree && selectedTypeRawValue != FileType.directory.rawValue {
                 selectedTypeRawValue = FileType.directory.rawValue
@@ -515,6 +524,17 @@ struct FileInfoSheet: View {
         isSaving = true
         defer { isSaving = false }
         do {
+            if hasRenameChange {
+                let newPath = try await filesViewModel.renameItem(
+                    at: info.path,
+                    newName: newName,
+                    isSyncFolder: info.type == .sync
+                )
+                // Update local info so subsequent operations use the new path.
+                info.path = newPath
+                info.name = newName
+            }
+
             if selectedType != info.type, canEditType {
                 try await filesViewModel.setFileType(path: info.path, type: selectedType)
             }

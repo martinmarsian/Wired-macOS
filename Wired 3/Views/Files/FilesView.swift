@@ -204,7 +204,7 @@ private struct WiredSyncPairDescriptor: Hashable {
     let paused: Bool
 }
 
-private enum WiredSyncDaemonIPC {
+enum WiredSyncDaemonIPC {
     static let defaultRPCTimeoutSeconds: Int = 8
     static let baseSupportPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/Application Support/WiredSync")
@@ -219,7 +219,7 @@ private enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "7"
+    static let expectedDaemonVersion = "8"
 
     static func addPair(
         remotePath: String,
@@ -320,6 +320,29 @@ private enum WiredSyncDaemonIPC {
             )
         }
         return Set(descriptors)
+    }
+
+    @discardableResult
+    static func renamePairForRemote(
+        oldPath: String,
+        newPath: String,
+        serverURL: String,
+        login: String
+    ) throws -> Int {
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": UUID().uuidString,
+            "method": "rename_pair_remote",
+            "params": [
+                "old_remote_path": oldPath,
+                "new_remote_path": newPath,
+                "server_url": serverURL,
+                "login": login
+            ]
+        ]
+        let response = try sendRequest(request)
+        let result = response["result"] as? [String: Any]
+        return result?["updated_count"] as? Int ?? 0
     }
 
     static func updatePairPolicy(
@@ -485,7 +508,7 @@ private enum WiredSyncDaemonIPC {
             return 3
         case "logs_tail":
             return 4
-        case "add_pair", "remove_pair", "remove_pair_for_remote", "pause_pair", "resume_pair", "sync_now":
+        case "add_pair", "remove_pair", "remove_pair_for_remote", "rename_pair_remote", "pause_pair", "resume_pair", "sync_now":
             return 8
         default:
             return defaultRPCTimeoutSeconds
