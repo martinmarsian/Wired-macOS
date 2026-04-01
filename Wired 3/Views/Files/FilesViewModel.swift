@@ -627,6 +627,10 @@ final class FilesViewModel: ObservableObject {
             try await fileService.moveFile(from: path, to: newPath, connection: connection)
         }
 
+        // Reload before the daemon IPC so subscriptions on the old path are dropped
+        // and the UI reflects the rename regardless of what happens next.
+        await reloadAll()
+
         if isSyncFolder, let url = connection.url {
             let serverURL = "\(url.hostname):\(url.port)"
             let login     = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -638,7 +642,6 @@ final class FilesViewModel: ObservableObject {
             )
         }
 
-        await reloadAll()
         return newPath
     }
 

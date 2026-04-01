@@ -499,7 +499,13 @@ enum WiredSyncDaemonIPC {
     private static func shouldAttemptLaunchAgentRecovery(after error: Error) -> Bool {
         let nsError = error as NSError
         guard nsError.domain == "wiredsyncd.ipc" else { return false }
-        return nsError.code == 1 || nsError.code == 2
+        if nsError.code == 1 || nsError.code == 2 { return true }
+        // Code 6 means the daemon returned a JSON-level error; "method not found" indicates
+        // an outdated daemon that needs to be replaced before retrying.
+        if nsError.code == 6,
+           let msg = nsError.userInfo[NSLocalizedDescriptionKey] as? String,
+           msg == "method not found" { return true }
+        return false
     }
 
     private static func timeoutSecondsForMethod(_ method: String?) -> Int {
