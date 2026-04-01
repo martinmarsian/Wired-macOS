@@ -1,12 +1,13 @@
 import Foundation
 import Darwin
 import SQLite3
+import Security
 import WiredSwift
 
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "12"
+private let kDaemonVersion = "14"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -22,6 +23,49 @@ struct SyncEndpoint: Codable {
     var serverURL: String
     var login: String
     var password: String
+
+    enum CodingKeys: String, CodingKey {
+        case serverURL
+        case login
+    }
+
+    enum LegacyCodingKeys: String, CodingKey {
+        case serverURL = "server_url"
+        case login
+        case password
+    }
+
+    init(serverURL: String, login: String, password: String) {
+        self.serverURL = serverURL
+        self.login = login
+        self.password = password
+    }
+
+    init(from decoder: Decoder) throws {
+        if let c = try? decoder.container(keyedBy: CodingKeys.self),
+           c.contains(.serverURL) || c.contains(.login) {
+            let lc = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            serverURL = try c.decodeIfPresent(String.self, forKey: .serverURL)
+                ?? lc.decodeIfPresent(String.self, forKey: .serverURL)
+                ?? ""
+            login = try c.decodeIfPresent(String.self, forKey: .login)
+                ?? lc.decodeIfPresent(String.self, forKey: .login)
+                ?? ""
+            password = try lc.decodeIfPresent(String.self, forKey: .password) ?? ""
+            return
+        }
+
+        let lc = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        serverURL = try lc.decodeIfPresent(String.self, forKey: .serverURL) ?? ""
+        login = try lc.decodeIfPresent(String.self, forKey: .login) ?? ""
+        password = try lc.decodeIfPresent(String.self, forKey: .password) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(serverURL, forKey: .serverURL)
+        try c.encode(login, forKey: .login)
+    }
 }
 
 struct SyncPair: Codable {
@@ -374,18 +418,105 @@ final class SQLiteStore {
     }
 }
 
+final class KeychainSecretStore {
+    static let shared = KeychainSecretStore()
+
+    private let service = "fr.read-write.wiredsyncd"
+
+    private func account(for pairID: String) -> String {
+        "sync-pair.\(pairID)"
+    }
+
+    func readPassword(pairID: String) throws -> String? {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(for: pairID),
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne
+        ]
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return nil
+        }
+        guard status == errSecSuccess else {
+            throw error(status, action: "read")
+        }
+        guard let data = result as? Data else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func writePassword(_ password: String, pairID: String, endpoint: SyncEndpoint) throws {
+        let baseQuery: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(for: pairID)
+        ]
+        let updateAttributes: [CFString: Any] = [
+            kSecValueData: Data(password.utf8),
+            kSecAttrLabel: "wiredsyncd \(endpoint.login)@\(endpoint.serverURL)"
+        ]
+
+        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttributes as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return
+        }
+        if updateStatus != errSecItemNotFound {
+            throw error(updateStatus, action: "update")
+        }
+
+        var addQuery = baseQuery
+        for (key, value) in updateAttributes {
+            addQuery[key] = value
+        }
+        addQuery[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw error(addStatus, action: "add")
+        }
+    }
+
+    func deletePassword(pairID: String) throws {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(for: pairID)
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw error(status, action: "delete")
+        }
+    }
+
+    private func error(_ status: OSStatus, action: String) -> NSError {
+        let description = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+        return NSError(
+            domain: "wiredsyncd.keychain",
+            code: Int(status),
+            userInfo: [NSLocalizedDescriptionKey: "Unable to \(action) sync credentials in Keychain: \(description)"]
+        )
+    }
+}
+
 final class DaemonState {
     let paths: PathLayout
     let store: SQLiteStore
+    let secrets: KeychainSecretStore
     private var config: DaemonConfig
     private var _running: Bool = true
     private var logs: [String] = []
     private let lock = NSLock()
 
-    init(paths: PathLayout, store: SQLiteStore) throws {
+    init(paths: PathLayout, store: SQLiteStore, secrets: KeychainSecretStore = .shared) throws {
         self.paths = paths
         self.store = store
+        self.secrets = secrets
         self.config = try Self.loadConfig(path: paths.configPath)
+        try migratePersistedCredentialsIfNeeded()
         for pair in config.pairs {
             try store.upsert(pair: pair)
         }
@@ -405,6 +536,42 @@ final class DaemonState {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(config)
         try data.write(to: paths.configPath, options: .atomic)
+    }
+
+    private func migratePersistedCredentialsIfNeeded() throws {
+        var migratedPairs: [SyncPair] = []
+        var didMigrate = false
+
+        for var pair in config.pairs {
+            if !pair.endpoint.password.isEmpty {
+                try persistCredential(pair.endpoint.password, for: pair.id, endpoint: pair.endpoint)
+                pair.endpoint.password = ""
+                didMigrate = true
+                appendLog("pair.credentials_migrated id=\(pair.id)")
+            }
+            migratedPairs.append(pair)
+        }
+
+        config.pairs = migratedPairs
+
+        guard didMigrate else { return }
+
+        lock.lock()
+        do {
+            try saveConfigLocked()
+        } catch {
+            lock.unlock()
+            throw error
+        }
+        lock.unlock()
+    }
+
+    private func persistCredential(_ password: String, for pairID: String, endpoint: SyncEndpoint) throws {
+        if password.isEmpty {
+            try secrets.deletePassword(pairID: pairID)
+        } else {
+            try secrets.writePassword(password, pairID: pairID, endpoint: endpoint)
+        }
     }
 
     func appendLog(_ line: String) {
@@ -450,6 +617,7 @@ final class DaemonState {
         endpoint: SyncEndpoint
     ) throws -> SyncPair {
         let now = Date()
+        let persistableEndpoint = SyncEndpoint(serverURL: endpoint.serverURL, login: endpoint.login, password: "")
         var pair = SyncPair(
             id: UUID().uuidString,
             remotePath: remotePath,
@@ -457,7 +625,7 @@ final class DaemonState {
             mode: mode,
             deleteRemoteEnabled: deleteRemoteEnabled,
             excludePatterns: excludePatterns,
-            endpoint: endpoint,
+            endpoint: persistableEndpoint,
             paused: false,
             createdAt: now,
             updatedAt: now
@@ -470,8 +638,8 @@ final class DaemonState {
             let matchingIndexes = config.pairs.enumerated().compactMap { index, item -> Int? in
                 let sameRemote = item.remotePath == remotePath
                 let sameLocal = item.localPath == localPath
-                let sameServer = item.endpoint.serverURL == endpoint.serverURL
-                let sameLogin = item.endpoint.login == endpoint.login
+                let sameServer = item.endpoint.serverURL == persistableEndpoint.serverURL
+                let sameLogin = item.endpoint.login == persistableEndpoint.login
                 return (sameRemote && sameLocal && sameServer && sameLogin) ? index : nil
             }
 
@@ -481,7 +649,7 @@ final class DaemonState {
                 pair.mode = mode
                 pair.deleteRemoteEnabled = deleteRemoteEnabled
                 pair.excludePatterns = excludePatterns
-                pair.endpoint = endpoint
+                pair.endpoint = persistableEndpoint
                 pair.paused = false
                 pair.updatedAt = now
                 config.pairs[index] = pair
@@ -502,6 +670,7 @@ final class DaemonState {
             } else {
                 config.pairs.append(pair)
             }
+            try persistCredential(endpoint.password, for: pair.id, endpoint: persistableEndpoint)
             try saveConfigLocked()
         } catch {
             lock.unlock()
@@ -513,6 +682,7 @@ final class DaemonState {
             if staleID.hasPrefix("clear:") {
                 try store.clearUploadedSnapshots(pairID: String(staleID.dropFirst("clear:".count)))
             } else {
+                try secrets.deletePassword(pairID: staleID)
                 try store.remove(id: staleID)
             }
         }
@@ -539,6 +709,7 @@ final class DaemonState {
             throw error
         }
         lock.unlock()
+        try secrets.deletePassword(pairID: id)
         try store.remove(id: id)
         appendLog("pair.remove id=\(id)")
         return true
@@ -576,6 +747,7 @@ final class DaemonState {
         }
         lock.unlock()
         for removedID in removedIDs {
+            try secrets.deletePassword(pairID: removedID)
             try store.remove(id: removedID)
         }
         appendLog("pair.remove_by_remote remote=\(remotePath) count=\(removedIDs.count)")
@@ -704,6 +876,7 @@ final class DaemonState {
         lock.lock()
         config = loaded
         lock.unlock()
+        try migratePersistedCredentialsIfNeeded()
         appendLog("config.reload")
     }
 
@@ -736,15 +909,58 @@ private struct RemoteEntry {
     let modificationDate: Date?
 }
 
+func syncPathContainsHiddenPathComponent(_ relativePath: String) -> Bool {
+    for component in relativePath.split(separator: "/", omittingEmptySubsequences: true) {
+        if component.hasPrefix(".") {
+            return true
+        }
+    }
+    return false
+}
+
+func syncPathIsConflictArtifact(_ relativePath: String) -> Bool {
+    let fileName = (relativePath as NSString).lastPathComponent.lowercased()
+    return fileName.contains(".conflict.")
+}
+
+func syncPathIsTransientTransferArtifact(_ relativePath: String) -> Bool {
+    let fileName = (relativePath as NSString).lastPathComponent.lowercased()
+    return fileName.hasSuffix(".wiredtransfer") || fileName.hasSuffix(".wiredsync.part")
+}
+
+func syncPathIsExcluded(_ relativePath: String, excludePatterns: [String]) -> Bool {
+    guard !excludePatterns.isEmpty else { return false }
+    let fileName = (relativePath as NSString).lastPathComponent
+    for pattern in excludePatterns {
+        let pat = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pat.isEmpty, !pat.hasPrefix("#") else { continue }
+        if pat.contains("/") {
+            if fnmatch(pat, relativePath, FNM_PATHNAME) == 0 { return true }
+        } else {
+            if fnmatch(pat, fileName, 0) == 0 { return true }
+        }
+    }
+    return false
+}
+
+func shouldIgnoreSyncRelativePath(_ relativePath: String, excludePatterns: [String]) -> Bool {
+    syncPathContainsHiddenPathComponent(relativePath)
+        || syncPathIsConflictArtifact(relativePath)
+        || syncPathIsTransientTransferArtifact(relativePath)
+        || syncPathIsExcluded(relativePath, excludePatterns: excludePatterns)
+}
+
 private final class SyncPairWorker {
     private let pair: SyncPair
     private let store: SQLiteStore
+    private let secrets: KeychainSecretStore
     private let specPath: String
     private let log: (String) -> Void
 
-    init(pair: SyncPair, store: SQLiteStore, specPath: String, log: @escaping (String) -> Void) {
+    init(pair: SyncPair, store: SQLiteStore, secrets: KeychainSecretStore, specPath: String, log: @escaping (String) -> Void) {
         self.pair = pair
         self.store = store
+        self.secrets = secrets
         self.specPath = specPath
         self.log = log
     }
@@ -799,7 +1015,7 @@ private final class SyncPairWorker {
         // AsyncConnection transaction streams require interactive listener mode.
         control.interactive = true
 
-        let url = try makeURL(endpoint: pair.endpoint)
+        let url = try makeURL(endpoint: resolvedEndpoint())
         try await withTimeout(seconds: 10, label: "connect") {
             try control.connect(withUrl: url)
         }
@@ -885,6 +1101,12 @@ private final class SyncPairWorker {
         return Url(withString: final)
     }
 
+    private func resolvedEndpoint() throws -> SyncEndpoint {
+        var endpoint = pair.endpoint
+        endpoint.password = try secrets.readPassword(pairID: pair.id) ?? ""
+        return endpoint
+    }
+
     private func listRemoteTree(connection: AsyncConnection) async throws -> [String: RemoteEntry] {
         var map: [String: RemoteEntry] = [:]
         var queue: [String] = [pair.remotePath]
@@ -903,7 +1125,7 @@ private final class SyncPairWorker {
                 let absolutePath = response.string(forField: "wired.file.path") ?? ""
                 let relativePath = normalizedRelative(path: absolutePath, root: pair.remotePath)
                 if relativePath.isEmpty { continue }
-                if isConflictArtifact(relativePath: relativePath) { continue }
+                if shouldIgnore(relativePath: relativePath) { continue }
 
                 let type = response.uint32(forField: "wired.file.type") ?? 0
                 let isDirectory = type == 1 || type == 2 || type == 3 || type == 4
@@ -939,14 +1161,7 @@ private final class SyncPairWorker {
             let relativePath = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             if relativePath.isEmpty { continue }
 
-            if containsHiddenPathComponent(relativePath) {
-                enumerator.skipDescendants()
-                continue
-            }
-            if isConflictArtifact(relativePath: relativePath) {
-                continue
-            }
-            if isExcluded(relativePath: relativePath) {
+            if shouldIgnore(relativePath: relativePath) {
                 enumerator.skipDescendants()
                 continue
             }
@@ -1506,35 +1721,29 @@ private final class SyncPairWorker {
     }
 
     private func containsHiddenPathComponent(_ relativePath: String) -> Bool {
-        for component in relativePath.split(separator: "/", omittingEmptySubsequences: true) {
-            if component.hasPrefix(".") {
-                return true
-            }
-        }
-        return false
+        syncPathContainsHiddenPathComponent(relativePath)
     }
 
     private func isConflictArtifact(relativePath: String) -> Bool {
-        let fileName = (relativePath as NSString).lastPathComponent.lowercased()
-        return fileName.contains(".conflict.")
+        syncPathIsConflictArtifact(relativePath)
+    }
+
+    private func isTransientTransferArtifact(relativePath: String) -> Bool {
+        syncPathIsTransientTransferArtifact(relativePath)
     }
 
     /// Returns true if `relativePath` matches any of the pair's exclude patterns.
     /// Patterns without a "/" are matched against the last path component only (like .gitignore).
     /// Patterns containing "/" are matched against the full relative path.
     private func isExcluded(relativePath: String) -> Bool {
-        guard !pair.excludePatterns.isEmpty else { return false }
-        let fileName = (relativePath as NSString).lastPathComponent
-        for pattern in pair.excludePatterns {
-            let pat = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !pat.isEmpty, !pat.hasPrefix("#") else { continue }
-            if pat.contains("/") {
-                if fnmatch(pat, relativePath, FNM_PATHNAME) == 0 { return true }
-            } else {
-                if fnmatch(pat, fileName, 0) == 0 { return true }
-            }
-        }
-        return false
+        syncPathIsExcluded(relativePath, excludePatterns: pair.excludePatterns)
+    }
+
+    private func shouldIgnore(relativePath: String) -> Bool {
+        containsHiddenPathComponent(relativePath)
+            || isConflictArtifact(relativePath: relativePath)
+            || isTransientTransferArtifact(relativePath: relativePath)
+            || isExcluded(relativePath: relativePath)
     }
 
     private func conflictPath(for path: String) -> String {
@@ -1645,7 +1854,7 @@ private final class SyncEngine {
             defer { self.finishPair(id: pair.id) }
             do {
                 self.state.appendLog("sync.start pair=\(pair.id) mode=\(pair.mode.rawValue)")
-                let worker = SyncPairWorker(pair: pair, store: self.state.store, specPath: self.specPath) { line in
+                let worker = SyncPairWorker(pair: pair, store: self.state.store, secrets: self.state.secrets, specPath: self.specPath) { line in
                     self.state.appendLog(line)
                 }
                 try await worker.runOnce()
@@ -2008,9 +2217,8 @@ private func resolveEmbeddedSpecURL(paths: PathLayout) throws -> URL {
     let executableDir = executableURL.deletingLastPathComponent()
 
     let candidates: [URL?] = [
+        WiredProtocolSpec.bundledSpecURL(),
         env["WIRED_SYNCD_RESOURCE_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("wired.xml", isDirectory: false) },
-        Bundle.module.url(forResource: "wired", withExtension: "xml"),
-        Bundle.module.url(forResource: "wired", withExtension: "xml", subdirectory: "Resources"),
         Bundle.main.resourceURL?.appendingPathComponent("wired.xml", isDirectory: false),
         executableDir.appendingPathComponent("Resources/wired.xml", isDirectory: false),
         executableDir.appendingPathComponent("wired.xml", isDirectory: false),

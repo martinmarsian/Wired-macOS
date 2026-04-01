@@ -219,7 +219,7 @@ enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "12"
+    static let expectedDaemonVersion = "14"
 
     static func addPair(
         remotePath: String,
@@ -707,9 +707,9 @@ enum WiredSyncDaemonIPC {
     private static func resolveBundledDaemonResourcePath() -> String? {
         let fm = FileManager.default
         let candidates: [String?] = [
-            Bundle.main.url(forResource: "wired", withExtension: "xml")?.path,
+            WiredProtocolSpec.bundledSpecURL()?.path,
             (Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/Resources/wired.xml"),
-            (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("wiredsyncd/Sources/wiredsyncd/Resources/wired.xml")
+            (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("WiredSwift/Sources/WiredSwift/Resources/wired.xml")
         ]
 
         for candidate in candidates.compactMap({ $0 }) {

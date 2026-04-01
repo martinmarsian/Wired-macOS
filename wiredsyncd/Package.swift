@@ -16,11 +16,9 @@ let package = Package(
             dependencies: [
                 .product(name: "WiredSwift", package: "WiredSwift")
             ],
-            resources: [
-                .copy("Resources/wired.xml")
-            ],
             linkerSettings: [
-                .linkedLibrary("sqlite3")
+                .linkedLibrary("sqlite3"),
+                .linkedFramework("Security")
             ]
         ),
         .testTarget(name: "wiredsyncdTests", dependencies: ["wiredsyncd"])
