@@ -90,6 +90,9 @@ public struct FileItem: Identifiable, Hashable {
     var syncGroupMode: SyncModeValue = .disabled
     var syncEveryoneMode: SyncModeValue = .disabled
     var syncEffectiveMode: SyncModeValue = .disabled
+    var syncMaxFileSizeBytes: UInt64 = 0
+    var syncMaxTreeSizeBytes: UInt64 = 0
+    var syncExcludePatterns: String = ""
     var uploadDataSize:UInt64 = 0
     var uploadRsrcSize:UInt64 = 0
     var dataTransferred:UInt64 = 0
@@ -176,6 +179,15 @@ public struct FileItem: Identifiable, Hashable {
         if let value = message.string(forField: "wired.file.sync.mode_effective"),
            let mode = SyncModeValue(rawValue: value) {
             self.syncEffectiveMode = mode
+        }
+        if let v = message.uint64(forField: "wired.file.sync.max_file_size_bytes") {
+            self.syncMaxFileSizeBytes = v
+        }
+        if let v = message.uint64(forField: "wired.file.sync.max_tree_size_bytes") {
+            self.syncMaxTreeSizeBytes = v
+        }
+        if let v = message.string(forField: "wired.file.sync.exclude_patterns") {
+            self.syncExcludePatterns = v
         }
     }
 }

@@ -85,6 +85,9 @@ struct FileInfoSheet: View {
     @State private var syncOwnerMode: SyncAccessMode = .disabled
     @State private var syncGroupMode: SyncAccessMode = .disabled
     @State private var syncEveryoneMode: SyncAccessMode = .disabled
+    @State private var syncMaxFileSizeBytes: UInt64 = 0
+    @State private var syncMaxTreeSizeBytes: UInt64 = 0
+    @State private var syncExcludePatterns: String = ""
     @State private var newName: String = ""
 
     init(filesViewModel: FilesViewModel, file: FileItem) {
@@ -123,9 +126,12 @@ struct FileInfoSheet: View {
 
     private var hasSyncPolicyChanges: Bool {
         guard info.type == .sync else { return false }
-        return syncOwnerMode    != .from(mode: info.syncUserMode)
-            || syncGroupMode    != .from(mode: info.syncGroupMode)
-            || syncEveryoneMode != .from(mode: info.syncEveryoneMode)
+        return syncOwnerMode         != .from(mode: info.syncUserMode)
+            || syncGroupMode         != .from(mode: info.syncGroupMode)
+            || syncEveryoneMode      != .from(mode: info.syncEveryoneMode)
+            || syncMaxFileSizeBytes  != info.syncMaxFileSizeBytes
+            || syncMaxTreeSizeBytes  != info.syncMaxTreeSizeBytes
+            || syncExcludePatterns   != info.syncExcludePatterns
     }
 
     private var hasRenameChange: Bool {
@@ -397,27 +403,71 @@ struct FileInfoSheet: View {
     // MARK: - Sync Policy Card
 
     private var syncPolicyCard: some View {
-        infoCard(title: "Sync Policy", systemImage: "arrow.2.circlepath") {
-            syncModeRow("Owner",    $syncOwnerMode)
-            cardDivider
-            syncModeRow("Group",    $syncGroupMode)
-            cardDivider
-            syncModeRow("Everyone", $syncEveryoneMode)
-            cardDivider
+        VStack(spacing: 10) {
+            infoCard(title: "Sync Policy", systemImage: "arrow.2.circlepath") {
+                syncModeRow("Owner",    $syncOwnerMode)
+                cardDivider
+                syncModeRow("Group",    $syncGroupMode)
+                cardDivider
+                syncModeRow("Everyone", $syncEveryoneMode)
+                cardDivider
 
-            HStack {
-                Text("Effective Mode")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Spacer()
-                Text(SyncAccessMode.from(mode: info.syncEffectiveMode).title)
-                    .font(.subheadline).fontWeight(.medium)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color.accentColor.opacity(0.12))
-                    .foregroundStyle(Color.accentColor)
-                    .clipShape(Capsule())
+                HStack {
+                    Text("Effective Mode")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(SyncAccessMode.from(mode: info.syncEffectiveMode).title)
+                        .font(.subheadline).fontWeight(.medium)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.accentColor.opacity(0.12))
+                        .foregroundStyle(Color.accentColor)
+                        .clipShape(Capsule())
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
             }
-            .padding(.horizontal, 14).padding(.vertical, 8)
+
+            infoCard(title: "Quota", systemImage: "gauge.with.needle") {
+                quotaByteRow("Max File Size", bytes: $syncMaxFileSizeBytes)
+                cardDivider
+                quotaByteRow("Max Tree Size", bytes: $syncMaxTreeSizeBytes)
+                cardDivider
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Exclude Patterns")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    TextEditor(text: $syncExcludePatterns)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(minHeight: 56)
+                        .scrollContentBackground(.hidden)
+                        .disabled(!canEditManagedPermissions)
+                        .foregroundStyle(canEditManagedPermissions ? .primary : .secondary)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+            }
         }
+    }
+
+    /// Row for a byte-size quota field. Shows a TextField (numeric) + unit label.
+    private func quotaByteRow(_ label: String, bytes: Binding<UInt64>) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .frame(width: 100, alignment: .leading)
+            Spacer()
+            if canEditManagedPermissions {
+                TextField("0 = unlimited",
+                          value: bytes,
+                          format: .number)
+                    .multilineTextAlignment(.trailing)
+                    .font(.subheadline)
+                    .frame(width: 120)
+                Text("bytes")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Text(bytes.wrappedValue == 0 ? "Unlimited" : ByteCountFormatter.string(fromByteCount: Int64(bytes.wrappedValue), countStyle: .file))
+                    .font(.subheadline)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
     }
 
     private func syncModeRow(_ label: String, _ binding: Binding<SyncAccessMode>) -> some View {
@@ -495,9 +545,12 @@ struct FileInfoSheet: View {
             ownerAccess      = .from(read: loadedInfo.ownerRead,    write: loadedInfo.ownerWrite)
             groupAccess      = .from(read: loadedInfo.groupRead,    write: loadedInfo.groupWrite)
             everyoneAccess   = .from(read: loadedInfo.everyoneRead, write: loadedInfo.everyoneWrite)
-            syncOwnerMode    = .from(mode: loadedInfo.syncUserMode)
-            syncGroupMode    = .from(mode: loadedInfo.syncGroupMode)
-            syncEveryoneMode = .from(mode: loadedInfo.syncEveryoneMode)
+            syncOwnerMode        = .from(mode: loadedInfo.syncUserMode)
+            syncGroupMode        = .from(mode: loadedInfo.syncGroupMode)
+            syncEveryoneMode     = .from(mode: loadedInfo.syncEveryoneMode)
+            syncMaxFileSizeBytes = loadedInfo.syncMaxFileSizeBytes
+            syncMaxTreeSizeBytes = loadedInfo.syncMaxTreeSizeBytes
+            syncExcludePatterns  = loadedInfo.syncExcludePatterns
         } catch {
             filesViewModel.error = error
         }
@@ -553,9 +606,12 @@ struct FileInfoSheet: View {
             }
             if info.type == .sync, hasSyncPolicyChanges, canEditManagedPermissions {
                 let policy = SyncPolicyPayload(
-                    userMode:     syncOwnerMode.value,
-                    groupMode:    syncGroupMode.value,
-                    everyoneMode: syncEveryoneMode.value
+                    userMode:          syncOwnerMode.value,
+                    groupMode:         syncGroupMode.value,
+                    everyoneMode:      syncEveryoneMode.value,
+                    maxFileSizeBytes:  syncMaxFileSizeBytes,
+                    maxTreeSizeBytes:  syncMaxTreeSizeBytes,
+                    excludePatterns:   syncExcludePatterns
                 )
                 try await filesViewModel.setFileSyncPolicy(path: info.path, policy: policy)
             }

@@ -6,7 +6,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "11"
+private let kDaemonVersion = "12"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -30,6 +30,8 @@ struct SyncPair: Codable {
     var localPath: String
     var mode: SyncMode
     var deleteRemoteEnabled: Bool
+    /// Newline-separated glob patterns for files to exclude from sync.
+    var excludePatterns: [String]
     var endpoint: SyncEndpoint
     var paused: Bool
     var createdAt: Date
@@ -41,6 +43,7 @@ struct SyncPair: Codable {
         case localPath
         case mode
         case deleteRemoteEnabled
+        case excludePatterns
         case endpoint
         case paused
         case createdAt
@@ -59,6 +62,7 @@ struct SyncPair: Codable {
         localPath: String,
         mode: SyncMode,
         deleteRemoteEnabled: Bool,
+        excludePatterns: [String] = [],
         endpoint: SyncEndpoint,
         paused: Bool,
         createdAt: Date,
@@ -69,6 +73,7 @@ struct SyncPair: Codable {
         self.localPath = localPath
         self.mode = mode
         self.deleteRemoteEnabled = deleteRemoteEnabled
+        self.excludePatterns = excludePatterns
         self.endpoint = endpoint
         self.paused = paused
         self.createdAt = createdAt
@@ -82,6 +87,7 @@ struct SyncPair: Codable {
         localPath = try c.decode(String.self, forKey: .localPath)
         mode = try c.decodeIfPresent(SyncMode.self, forKey: .mode) ?? .bidirectional
         deleteRemoteEnabled = try c.decodeIfPresent(Bool.self, forKey: .deleteRemoteEnabled) ?? false
+        excludePatterns = try c.decodeIfPresent([String].self, forKey: .excludePatterns) ?? []
         paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? false
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
@@ -104,6 +110,7 @@ struct SyncPair: Codable {
         try c.encode(localPath, forKey: .localPath)
         try c.encode(mode, forKey: .mode)
         try c.encode(deleteRemoteEnabled, forKey: .deleteRemoteEnabled)
+        try c.encode(excludePatterns, forKey: .excludePatterns)
         try c.encode(endpoint, forKey: .endpoint)
         try c.encode(paused, forKey: .paused)
         try c.encode(createdAt, forKey: .createdAt)
@@ -164,6 +171,7 @@ final class SQLiteStore {
           local_path TEXT NOT NULL,
           mode TEXT NOT NULL,
           delete_remote_enabled INTEGER NOT NULL DEFAULT 0,
+          exclude_patterns TEXT NOT NULL DEFAULT '',
           endpoint_json TEXT NOT NULL,
           paused INTEGER NOT NULL,
           created_at REAL NOT NULL,
@@ -190,6 +198,7 @@ final class SQLiteStore {
         );
         """)
         try execute("ALTER TABLE sync_pairs ADD COLUMN delete_remote_enabled INTEGER NOT NULL DEFAULT 0;")
+        try execute("ALTER TABLE sync_pairs ADD COLUMN exclude_patterns TEXT NOT NULL DEFAULT '';")
         try execute("ALTER TABLE sync_pairs ADD COLUMN endpoint_json TEXT;")
     }
 
@@ -214,13 +223,14 @@ final class SQLiteStore {
     func upsert(pair: SyncPair) throws {
         guard let db else { return }
         let sql = """
-        INSERT INTO sync_pairs(id, remote_path, local_path, mode, delete_remote_enabled, endpoint_json, paused, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sync_pairs(id, remote_path, local_path, mode, delete_remote_enabled, exclude_patterns, endpoint_json, paused, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           remote_path=excluded.remote_path,
           local_path=excluded.local_path,
           mode=excluded.mode,
           delete_remote_enabled=excluded.delete_remote_enabled,
+          exclude_patterns=excluded.exclude_patterns,
           endpoint_json=excluded.endpoint_json,
           paused=excluded.paused,
           updated_at=excluded.updated_at;
@@ -232,15 +242,18 @@ final class SQLiteStore {
         let endpointData = try JSONEncoder().encode(pair.endpoint)
         let endpointJSON = String(decoding: endpointData, as: UTF8.self)
 
+        let excludePatternsJSON = pair.excludePatterns.joined(separator: "\n")
+
         sqlite3_bind_text(stmt, 1, pair.id, -1, SQLiteBindings.transient)
         sqlite3_bind_text(stmt, 2, pair.remotePath, -1, SQLiteBindings.transient)
         sqlite3_bind_text(stmt, 3, pair.localPath, -1, SQLiteBindings.transient)
         sqlite3_bind_text(stmt, 4, pair.mode.rawValue, -1, SQLiteBindings.transient)
         sqlite3_bind_int(stmt, 5, pair.deleteRemoteEnabled ? 1 : 0)
-        sqlite3_bind_text(stmt, 6, endpointJSON, -1, SQLiteBindings.transient)
-        sqlite3_bind_int(stmt, 7, pair.paused ? 1 : 0)
-        sqlite3_bind_double(stmt, 8, pair.createdAt.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 9, pair.updatedAt.timeIntervalSince1970)
+        sqlite3_bind_text(stmt, 6, excludePatternsJSON, -1, SQLiteBindings.transient)
+        sqlite3_bind_text(stmt, 7, endpointJSON, -1, SQLiteBindings.transient)
+        sqlite3_bind_int(stmt, 8, pair.paused ? 1 : 0)
+        sqlite3_bind_double(stmt, 9, pair.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 10, pair.updatedAt.timeIntervalSince1970)
 
         _ = sqlite3_step(stmt)
     }
@@ -433,6 +446,7 @@ final class DaemonState {
         localPath: String,
         mode: SyncMode,
         deleteRemoteEnabled: Bool,
+        excludePatterns: [String] = [],
         endpoint: SyncEndpoint
     ) throws -> SyncPair {
         let now = Date()
@@ -442,6 +456,7 @@ final class DaemonState {
             localPath: localPath,
             mode: mode,
             deleteRemoteEnabled: deleteRemoteEnabled,
+            excludePatterns: excludePatterns,
             endpoint: endpoint,
             paused: false,
             createdAt: now,
@@ -462,9 +477,10 @@ final class DaemonState {
 
             if let index = matchingIndexes.first {
                 pair = config.pairs[index]
-                let policyChanged = pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled
+                let policyChanged = pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled || pair.excludePatterns != excludePatterns
                 pair.mode = mode
                 pair.deleteRemoteEnabled = deleteRemoteEnabled
+                pair.excludePatterns = excludePatterns
                 pair.endpoint = endpoint
                 pair.paused = false
                 pair.updatedAt = now
@@ -571,7 +587,8 @@ final class DaemonState {
         serverURL: String?,
         login: String?,
         mode: SyncMode,
-        deleteRemoteEnabled: Bool
+        deleteRemoteEnabled: Bool,
+        excludePatterns: [String] = []
     ) throws -> [String] {
         lock.lock()
         let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -587,9 +604,10 @@ final class DaemonState {
             if let normalizedLogin, !normalizedLogin.isEmpty, pair.endpoint.login != normalizedLogin {
                 continue
             }
-            guard pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled else { continue }
+            guard pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled || pair.excludePatterns != excludePatterns else { continue }
             config.pairs[index].mode = mode
             config.pairs[index].deleteRemoteEnabled = deleteRemoteEnabled
+            config.pairs[index].excludePatterns = excludePatterns
             config.pairs[index].updatedAt = Date()
             updatedPairs.append(config.pairs[index])
         }
@@ -926,6 +944,10 @@ private final class SyncPairWorker {
                 continue
             }
             if isConflictArtifact(relativePath: relativePath) {
+                continue
+            }
+            if isExcluded(relativePath: relativePath) {
+                enumerator.skipDescendants()
                 continue
             }
 
@@ -1497,6 +1519,24 @@ private final class SyncPairWorker {
         return fileName.contains(".conflict.")
     }
 
+    /// Returns true if `relativePath` matches any of the pair's exclude patterns.
+    /// Patterns without a "/" are matched against the last path component only (like .gitignore).
+    /// Patterns containing "/" are matched against the full relative path.
+    private func isExcluded(relativePath: String) -> Bool {
+        guard !pair.excludePatterns.isEmpty else { return false }
+        let fileName = (relativePath as NSString).lastPathComponent
+        for pattern in pair.excludePatterns {
+            let pat = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pat.isEmpty, !pat.hasPrefix("#") else { continue }
+            if pat.contains("/") {
+                if fnmatch(pat, relativePath, FNM_PATHNAME) == 0 { return true }
+            } else {
+                if fnmatch(pat, fileName, 0) == 0 { return true }
+            }
+        }
+        return false
+    }
+
     private func conflictPath(for path: String) -> String {
         let timestamp = Int(Date().timeIntervalSince1970)
         let username = pair.endpoint.login.isEmpty ? "user" : pair.endpoint.login
@@ -1767,6 +1807,10 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         let mode = SyncMode(rawValue: params["mode"] ?? "bidirectional") ?? .bidirectional
         let deleteRemoteEnabledRaw = (params["delete_remote_enabled"] ?? "false").lowercased()
         let deleteRemoteEnabled = deleteRemoteEnabledRaw == "true" || deleteRemoteEnabledRaw == "1"
+        let excludePatterns = (params["exclude_patterns"] ?? "")
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         let endpoint = SyncEndpoint(
             serverURL: params["server_url"] ?? "",
             login: params["login"] ?? "",
@@ -1783,6 +1827,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 localPath: localPath,
                 mode: mode,
                 deleteRemoteEnabled: deleteRemoteEnabled,
+                excludePatterns: excludePatterns,
                 endpoint: endpoint
             )
             respondResult(id: req.id, result: ["ok": true, "pair_id": pair.id], fd: fd)
@@ -1860,13 +1905,18 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
         let deleteRemoteEnabledRaw = (params["delete_remote_enabled"] ?? "false").lowercased()
         let deleteRemoteEnabled = deleteRemoteEnabledRaw == "true" || deleteRemoteEnabledRaw == "1"
+        let updateExcludePatterns = (params["exclude_patterns"] ?? "")
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         do {
             let updated = try state.updatePairPolicy(
                 remotePath: remotePath,
                 serverURL: params["server_url"],
                 login: params["login"],
                 mode: mode,
-                deleteRemoteEnabled: deleteRemoteEnabled
+                deleteRemoteEnabled: deleteRemoteEnabled,
+                excludePatterns: updateExcludePatterns
             )
             respondResult(
                 id: req.id,

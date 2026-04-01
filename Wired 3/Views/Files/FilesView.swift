@@ -219,13 +219,14 @@ enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "11"
+    static let expectedDaemonVersion = "12"
 
     static func addPair(
         remotePath: String,
         localPath: String,
         mode: String = "bidirectional",
         deleteRemoteEnabled: Bool = false,
+        excludePatterns: String = "",
         serverURL: String,
         login: String,
         password: String
@@ -239,6 +240,7 @@ enum WiredSyncDaemonIPC {
                 "local_path": localPath,
                 "mode": mode,
                 "delete_remote_enabled": deleteRemoteEnabled ? "true" : "false",
+                "exclude_patterns": excludePatterns,
                 "server_url": serverURL,
                 "login": login,
                 "password": password
@@ -349,6 +351,7 @@ enum WiredSyncDaemonIPC {
         remotePath: String,
         mode: String,
         deleteRemoteEnabled: Bool,
+        excludePatterns: String = "",
         serverURL: String,
         login: String
     ) throws -> Int {
@@ -360,6 +363,7 @@ enum WiredSyncDaemonIPC {
                 "remote_path": remotePath,
                 "mode": mode,
                 "delete_remote_enabled": deleteRemoteEnabled ? "true" : "false",
+                "exclude_patterns": excludePatterns,
                 "server_url": serverURL,
                 "login": login
             ]
@@ -1193,6 +1197,7 @@ struct FilesView: View {
                 $0.remotePath == path && $0.serverURL == serverURL && $0.login == login
             }) else { continue }
             let expectedDeleteRemote = shouldEnableRemoteDelete(for: item)
+            let expectedExcludePatterns = item.syncExcludePatterns
             guard descriptor.mode != expectedMode || descriptor.deleteRemoteEnabled != expectedDeleteRemote else { continue }
             guard !syncPairModeReconciliationInFlight.contains(path) else { continue }
 
@@ -1205,6 +1210,7 @@ struct FilesView: View {
                         remotePath: path,
                         mode: expectedMode,
                         deleteRemoteEnabled: expectedDeleteRemote,
+                        excludePatterns: expectedExcludePatterns,
                         serverURL: serverURL,
                         login: login
                     )
@@ -1427,6 +1433,7 @@ struct FilesView: View {
                     localPath: localURL.path,
                     mode: mode,
                     deleteRemoteEnabled: deleteRemoteEnabled,
+                    excludePatterns: directory.syncExcludePatterns,
                     serverURL: serverURL,
                     login: login,
                     password: url.password

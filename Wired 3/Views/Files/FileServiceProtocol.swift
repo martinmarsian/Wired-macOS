@@ -24,6 +24,9 @@ struct SyncPolicyPayload {
     let userMode: SyncModeValue
     let groupMode: SyncModeValue
     let everyoneMode: SyncModeValue
+    let maxFileSizeBytes: UInt64
+    let maxTreeSizeBytes: UInt64
+    let excludePatterns: String
 }
 
 protocol FileServiceProtocol {
@@ -245,6 +248,11 @@ final class FileService: FileServiceProtocol {
         message.addParameter(field: "wired.file.sync.user_mode", value: policy.userMode.rawValue)
         message.addParameter(field: "wired.file.sync.group_mode", value: policy.groupMode.rawValue)
         message.addParameter(field: "wired.file.sync.everyone_mode", value: policy.everyoneMode.rawValue)
+        message.addParameter(field: "wired.file.sync.max_file_size_bytes", value: policy.maxFileSizeBytes)
+        message.addParameter(field: "wired.file.sync.max_tree_size_bytes", value: policy.maxTreeSizeBytes)
+        if !policy.excludePatterns.isEmpty {
+            message.addParameter(field: "wired.file.sync.exclude_patterns", value: policy.excludePatterns)
+        }
 
         let response = try await connection.sendAsync(message)
 
