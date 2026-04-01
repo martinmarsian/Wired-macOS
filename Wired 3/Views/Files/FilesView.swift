@@ -186,7 +186,12 @@ private struct SyncActivationNotice: Identifiable {
 enum SyncPairStatusDisplay: Equatable {
     case hidden
     case checking
-    case active
+    case paused
+    case connecting
+    case connected
+    case syncing
+    case reconnecting
+    case error(message: String?)
     case inactive
 }
 
@@ -196,12 +201,29 @@ private enum SyncPairLocalOverride: Equatable {
 }
 
 struct WiredSyncPairDescriptor: Hashable {
+    enum RuntimeState: String, Hashable {
+        case disconnected
+        case connecting
+        case connected
+        case syncing
+        case reconnecting
+        case error
+        case paused
+    }
+
     let remotePath: String
     let serverURL: String
     let login: String
     let mode: String
     let deleteRemoteEnabled: Bool
     let paused: Bool
+    let runtimeState: RuntimeState?
+    let runtimeLastError: String?
+    let runtimeRetryCount: Int
+    let runtimeNextRetryAt: String?
+    let runtimeLastConnectedAt: String?
+    let runtimeLastSyncStartedAt: String?
+    let runtimeLastSyncCompletedAt: String?
 }
 
 enum WiredSyncDaemonIPC {
@@ -227,7 +249,7 @@ enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "15"
+    static let expectedDaemonVersion = "18"
 
     static func addPair(
         remotePath: String,
@@ -320,13 +342,21 @@ enum WiredSyncDaemonIPC {
             let paused = pausedRaw == "true" || pausedRaw == "1"
             let deleteRemoteRaw = (pair["delete_remote_enabled"] as? String)?.lowercased() ?? "false"
             let deleteRemoteEnabled = deleteRemoteRaw == "true" || deleteRemoteRaw == "1"
+            let runtimeState = (pair["runtime_state"] as? String).flatMap(WiredSyncPairDescriptor.RuntimeState.init(rawValue:))
             return WiredSyncPairDescriptor(
                 remotePath: normalizeSyncRemotePath(remotePath),
                 serverURL: pairServer,
                 login: pairLogin,
                 mode: (pair["mode"] as? String) ?? "bidirectional",
                 deleteRemoteEnabled: deleteRemoteEnabled,
-                paused: paused
+                paused: paused,
+                runtimeState: runtimeState,
+                runtimeLastError: pair["runtime_last_error"] as? String,
+                runtimeRetryCount: pair["runtime_retry_count"] as? Int ?? 0,
+                runtimeNextRetryAt: pair["runtime_next_retry_at"] as? String,
+                runtimeLastConnectedAt: pair["runtime_last_connected_at"] as? String,
+                runtimeLastSyncStartedAt: pair["runtime_last_sync_started_at"] as? String,
+                runtimeLastSyncCompletedAt: pair["runtime_last_sync_completed_at"] as? String
             )
         }
         return Set(descriptors)
@@ -1288,6 +1318,17 @@ struct FilesView: View {
         bumpSyncPairStatusVersion()
     }
 
+    private func syncPairDescriptor(for path: String) -> WiredSyncPairDescriptor? {
+        let normalizedPath = normalizeSyncRemotePath(path)
+        let serverURL = currentSyncServerURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let login = currentSyncLogin?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return pairedSyncDescriptors.first(where: { descriptor in
+            descriptor.remotePath == normalizedPath &&
+                (serverURL == nil || serverURL?.isEmpty == true || descriptor.serverURL == serverURL) &&
+                (login == nil || login?.isEmpty == true || descriptor.login == login)
+        })
+    }
+
     private func syncPairStatus(for item: FileItem) -> SyncPairStatusDisplay {
         guard item.type == .sync else { return .hidden }
         let path = normalizeSyncRemotePath(item.path)
@@ -1297,11 +1338,29 @@ struct FilesView: View {
                 return .checking
             case .sticky(let active, let until):
                 if until > Date() {
-                    return active ? .active : .inactive
+                    return active ? .connected : .inactive
                 }
             }
         }
-        return pairedSyncRemotePaths.contains(path) ? .active : .inactive
+        guard pairedSyncRemotePaths.contains(path) else { return .inactive }
+        guard let descriptor = syncPairDescriptor(for: path) else { return .connected }
+        if descriptor.paused || descriptor.runtimeState == .paused {
+            return .paused
+        }
+        switch descriptor.runtimeState {
+        case .connecting:
+            return .connecting
+        case .connected, .disconnected, nil:
+            return .connected
+        case .syncing:
+            return .syncing
+        case .reconnecting:
+            return .reconnecting
+        case .error:
+            return .error(message: descriptor.runtimeLastError)
+        case .paused:
+            return .paused
+        }
     }
 
     private func syncPairExists(for item: FileItem) -> Bool {
@@ -3151,20 +3210,41 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
             case .hidden:
                 statusIcon?.isHidden = true
                 statusSpinner?.stopAnimation(nil)
+                cell.toolTip = nil
             case .checking:
                 statusIcon?.isHidden = true
                 statusSpinner?.isHidden = false
                 statusSpinner?.startAnimation(nil)
-            case .active:
+                cell.toolTip = "Sync status pending"
+            case .paused:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "Pair paused")
+                cell.toolTip = "Sync paused"
+            case .connecting, .syncing, .reconnecting:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+                cell.toolTip = syncStatus == .reconnecting ? "Sync reconnecting" : "Sync in progress"
+            case .connected:
                 statusSpinner?.stopAnimation(nil)
                 statusIcon?.isHidden = false
                 statusIcon?.contentTintColor = .systemGreen
-                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair active")
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair connected")
+                cell.toolTip = "Sync connected"
+            case .error(let message):
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemOrange
+                statusIcon?.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Pair error")
+                cell.toolTip = message ?? "Sync error"
             case .inactive:
                 statusSpinner?.stopAnimation(nil)
                 statusIcon?.isHidden = false
                 statusIcon?.contentTintColor = .secondaryLabelColor
                 statusIcon?.image = NSImage(systemSymbolName: "link.circle", accessibilityDescription: "Pair inactive")
+                cell.toolTip = "Sync inactive"
             }
             return cell
         }
@@ -3380,8 +3460,18 @@ private struct AppKitFilesTreeView: NSViewRepresentable {
 
             if let syncStatusItem = menu.item(withTag: SyncContextMenuItemTag.status) {
                 switch syncState {
-                case .active:
-                    syncStatusItem.title = "Sync Status: Pair active"
+                case .paused:
+                    syncStatusItem.title = "Sync Status: Paused"
+                case .connecting:
+                    syncStatusItem.title = "Sync Status: Connecting…"
+                case .connected:
+                    syncStatusItem.title = "Sync Status: Connected"
+                case .syncing:
+                    syncStatusItem.title = "Sync Status: Syncing…"
+                case .reconnecting:
+                    syncStatusItem.title = "Sync Status: Reconnecting…"
+                case .error(let message):
+                    syncStatusItem.title = "Sync Status: Error\(message.map { " - \($0)" } ?? "")"
                 case .inactive:
                     syncStatusItem.title = "Sync Status: Pair inactive"
                 case .checking:
@@ -4130,20 +4220,41 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             case .hidden:
                 statusIcon?.isHidden = true
                 statusSpinner?.stopAnimation(nil)
+                cell.toolTip = nil
             case .checking:
                 statusIcon?.isHidden = true
                 statusSpinner?.isHidden = false
                 statusSpinner?.startAnimation(nil)
-            case .active:
+                cell.toolTip = "Sync status pending"
+            case .paused:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "Pair paused")
+                cell.toolTip = "Sync paused"
+            case .connecting, .syncing, .reconnecting:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+                cell.toolTip = parent.syncPairStatusForItem(item) == .reconnecting ? "Sync reconnecting" : "Sync in progress"
+            case .connected:
                 statusSpinner?.stopAnimation(nil)
                 statusIcon?.isHidden = false
                 statusIcon?.contentTintColor = .systemGreen
-                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair active")
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair connected")
+                cell.toolTip = "Sync connected"
+            case .error(let message):
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemOrange
+                statusIcon?.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Pair error")
+                cell.toolTip = message ?? "Sync error"
             case .inactive:
                 statusSpinner?.stopAnimation(nil)
                 statusIcon?.isHidden = false
                 statusIcon?.contentTintColor = .secondaryLabelColor
                 statusIcon?.image = NSImage(systemSymbolName: "link.circle", accessibilityDescription: "Pair inactive")
+                cell.toolTip = "Sync inactive"
             }
             return cell
         }
@@ -4359,8 +4470,18 @@ private struct AppKitFileColumnTableView: NSViewRepresentable {
             let pairExists = selectedSyncItem.map { parent.syncPairExistsForItem($0) } ?? false
             if let syncStatusItem = menu.item(withTag: SyncContextMenuItemTag.status) {
                 switch syncState {
-                case .active:
-                    syncStatusItem.title = "Sync Status: Pair active"
+                case .paused:
+                    syncStatusItem.title = "Sync Status: Paused"
+                case .connecting:
+                    syncStatusItem.title = "Sync Status: Connecting…"
+                case .connected:
+                    syncStatusItem.title = "Sync Status: Connected"
+                case .syncing:
+                    syncStatusItem.title = "Sync Status: Syncing…"
+                case .reconnecting:
+                    syncStatusItem.title = "Sync Status: Reconnecting…"
+                case .error(let message):
+                    syncStatusItem.title = "Sync Status: Error\(message.map { " - \($0)" } ?? "")"
                 case .inactive:
                     syncStatusItem.title = "Sync Status: Pair inactive"
                 case .checking:

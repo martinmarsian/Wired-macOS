@@ -1,5 +1,7 @@
 import Foundation
 import Darwin
+import AppKit
+import Network
 import SQLite3
 import Security
 import WiredSwift
@@ -7,7 +9,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "15"
+private let kDaemonVersion = "18"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -175,6 +177,50 @@ struct SyncPair: Codable {
         try c.encode(paused, forKey: .paused)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+enum PairConnectionState: String {
+    case disconnected
+    case connecting
+    case connected
+    case syncing
+    case reconnecting
+    case error
+    case paused
+}
+
+struct PairRuntimeStatus {
+    let pairID: String
+    var state: PairConnectionState
+    var lastError: String?
+    var retryCount: Int
+    var nextRetryAt: Date?
+    var lastConnectedAt: Date?
+    var lastSyncStartedAt: Date?
+    var lastSyncCompletedAt: Date?
+    var remoteInventoryAvailable: Bool?
+
+    init(
+        pairID: String,
+        state: PairConnectionState = .disconnected,
+        lastError: String? = nil,
+        retryCount: Int = 0,
+        nextRetryAt: Date? = nil,
+        lastConnectedAt: Date? = nil,
+        lastSyncStartedAt: Date? = nil,
+        lastSyncCompletedAt: Date? = nil,
+        remoteInventoryAvailable: Bool? = nil
+    ) {
+        self.pairID = pairID
+        self.state = state
+        self.lastError = lastError
+        self.retryCount = retryCount
+        self.nextRetryAt = nextRetryAt
+        self.lastConnectedAt = lastConnectedAt
+        self.lastSyncStartedAt = lastSyncStartedAt
+        self.lastSyncCompletedAt = lastSyncCompletedAt
+        self.remoteInventoryAvailable = remoteInventoryAvailable
     }
 }
 
@@ -525,6 +571,7 @@ final class DaemonState {
     private var config: DaemonConfig
     private var _running: Bool = true
     private var logs: [String] = []
+    private var runtimeStatuses: [String: PairRuntimeStatus] = [:]
     private let lock = NSLock()
 
     init(paths: PathLayout, store: SQLiteStore, secrets: KeychainSecretStore = .shared) throws {
@@ -535,6 +582,7 @@ final class DaemonState {
         try migratePersistedCredentialsIfNeeded()
         for pair in config.pairs {
             try store.upsert(pair: pair)
+            runtimeStatuses[pair.id] = PairRuntimeStatus(pairID: pair.id, state: pair.paused ? .paused : .disconnected)
         }
     }
 
@@ -603,13 +651,20 @@ final class DaemonState {
         return Array(logs.suffix(max(0, count)))
     }
 
-    func status(activePairs: Int) -> [String: Any] {
+    func status() -> [String: Any] {
         lock.lock()
         defer { lock.unlock() }
+        let connectedStates: Set<PairConnectionState> = [.connected, .syncing]
+        let connectedPairs = runtimeStatuses.values.filter { connectedStates.contains($0.state) }.count
+        let reconnectingPairs = runtimeStatuses.values.filter { $0.state == .reconnecting }.count
+        let errorPairs = runtimeStatuses.values.filter { $0.state == .error }.count
         return [
             "version": kDaemonVersion,
             "pairs_count": config.pairs.count,
-            "active_pairs": activePairs,
+            "active_pairs": runtimeStatuses.values.filter { $0.state != .paused }.count,
+            "connected_pairs": connectedPairs,
+            "reconnecting_pairs": reconnectingPairs,
+            "error_pairs": errorPairs,
             "queue_depth": store.queueDepth(),
             "socket_path": paths.socketPath.path,
             "config_path": paths.configPath.path,
@@ -622,6 +677,71 @@ final class DaemonState {
         lock.lock()
         defer { lock.unlock() }
         return config.pairs
+    }
+
+    func pair(id: String) -> SyncPair? {
+        lock.lock()
+        defer { lock.unlock() }
+        return config.pairs.first(where: { $0.id == id })
+    }
+
+    func runtimeStatus(pairID: String) -> PairRuntimeStatus? {
+        lock.lock()
+        defer { lock.unlock() }
+        return runtimeStatuses[pairID]
+    }
+
+    func runtimeStatusesSnapshot() -> [String: PairRuntimeStatus] {
+        lock.lock()
+        defer { lock.unlock() }
+        return runtimeStatuses
+    }
+
+    func setRuntimeStatus(
+        pairID: String,
+        state: PairConnectionState? = nil,
+        lastError: String?? = nil,
+        retryCount: Int? = nil,
+        nextRetryAt: Date?? = nil,
+        lastConnectedAt: Date?? = nil,
+        lastSyncStartedAt: Date?? = nil,
+        lastSyncCompletedAt: Date?? = nil,
+        remoteInventoryAvailable: Bool?? = nil
+    ) {
+        lock.lock()
+        var runtime = runtimeStatuses[pairID] ?? PairRuntimeStatus(pairID: pairID)
+        if let state {
+            runtime.state = state
+        }
+        if let lastError {
+            runtime.lastError = lastError
+        }
+        if let retryCount {
+            runtime.retryCount = retryCount
+        }
+        if let nextRetryAt {
+            runtime.nextRetryAt = nextRetryAt
+        }
+        if let lastConnectedAt {
+            runtime.lastConnectedAt = lastConnectedAt
+        }
+        if let lastSyncStartedAt {
+            runtime.lastSyncStartedAt = lastSyncStartedAt
+        }
+        if let lastSyncCompletedAt {
+            runtime.lastSyncCompletedAt = lastSyncCompletedAt
+        }
+        if let remoteInventoryAvailable {
+            runtime.remoteInventoryAvailable = remoteInventoryAvailable
+        }
+        runtimeStatuses[pairID] = runtime
+        lock.unlock()
+    }
+
+    func clearRuntimeStatus(pairID: String) {
+        lock.lock()
+        runtimeStatuses.removeValue(forKey: pairID)
+        lock.unlock()
     }
 
     func addPair(
@@ -700,10 +820,12 @@ final class DaemonState {
             } else {
                 try secrets.deletePassword(pairID: staleID)
                 try store.remove(id: staleID)
+                clearRuntimeStatus(pairID: staleID)
             }
         }
         try store.upsert(pair: pair)
         try store.enqueue(pairID: pair.id, opKind: "rescan", payload: "{}")
+        setRuntimeStatus(pairID: pair.id, state: .disconnected, lastError: .some(nil), retryCount: 0, nextRetryAt: .some(nil), remoteInventoryAvailable: .some(nil))
         for line in dedupLogLines {
             appendLog(line)
         }
@@ -727,6 +849,7 @@ final class DaemonState {
         lock.unlock()
         try secrets.deletePassword(pairID: id)
         try store.remove(id: id)
+        clearRuntimeStatus(pairID: id)
         appendLog("pair.remove id=\(id)")
         return true
     }
@@ -765,6 +888,7 @@ final class DaemonState {
         for removedID in removedIDs {
             try secrets.deletePassword(pairID: removedID)
             try store.remove(id: removedID)
+            clearRuntimeStatus(pairID: removedID)
         }
         appendLog("pair.remove_by_remote remote=\(remotePath) count=\(removedIDs.count)")
         return removedIDs
@@ -883,6 +1007,7 @@ final class DaemonState {
         }
         lock.unlock()
         try store.upsert(pair: pair)
+        setRuntimeStatus(pairID: id, state: paused ? .paused : .disconnected, lastError: .some(nil), retryCount: 0, nextRetryAt: .some(nil))
         appendLog("pair.\(paused ? "pause" : "resume") id=\(id)")
         return true
     }
@@ -891,6 +1016,14 @@ final class DaemonState {
         let loaded = try Self.loadConfig(path: paths.configPath)
         lock.lock()
         config = loaded
+        let loadedPairs = config.pairs
+        runtimeStatuses = Dictionary(uniqueKeysWithValues: loadedPairs.map { pair in
+            let previous = runtimeStatuses[pair.id]
+            let state: PairConnectionState = pair.paused ? .paused : (previous?.state == .paused ? .disconnected : (previous?.state ?? .disconnected))
+            var runtime = previous ?? PairRuntimeStatus(pairID: pair.id)
+            runtime.state = state
+            return (pair.id, runtime)
+        })
         lock.unlock()
         try migratePersistedCredentialsIfNeeded()
         appendLog("config.reload")
@@ -1005,6 +1138,32 @@ private final class SyncPairWorker {
     }
 
     func runOnce() async throws {
+        let spec = P7Spec(withPath: specPath)
+        let control = AsyncConnection(withSpec: spec)
+        control.clientInfoDelegate = clientInfoDelegate
+        control.interactive = true
+        let url = try await connectControlIfNeeded(connection: control)
+        defer { disconnectControl(connection: control) }
+
+        _ = try await runCycle(connection: control, spec: spec, url: url)
+    }
+
+    func runCycle(connection control: AsyncConnection, spec: P7Spec, url: Url) async throws -> Bool {
+        try prepareLocalRoot()
+        let remoteResult = try await fetchRemoteInventory(connection: control)
+        let local = try await fetchLocalInventory()
+        try await performReconcile(
+            connection: control,
+            spec: spec,
+            url: url,
+            remote: remoteResult.remote,
+            local: local,
+            allowRemotePrune: remoteResult.remoteInventoryAvailable && pair.deleteRemoteEnabled
+        )
+        return remoteResult.remoteInventoryAvailable
+    }
+
+    func prepareLocalRoot() throws {
         var isDirectory: ObjCBool = false
         let localExists = FileManager.default.fileExists(atPath: pair.localPath, isDirectory: &isDirectory)
         if localExists && !isDirectory.boolValue {
@@ -1025,21 +1184,24 @@ private final class SyncPairWorker {
             try FileManager.default.createDirectory(atPath: pair.localPath, withIntermediateDirectories: true)
             log("sync.local_recreated pair=\(pair.id) path=\(pair.localPath)")
         }
-        log("sync.connect pair=\(pair.id) endpoint=\(pair.endpoint.serverURL)")
+    }
 
-        let spec = P7Spec(withPath: specPath)
-        let control = AsyncConnection(withSpec: spec)
-        control.clientInfoDelegate = clientInfoDelegate
-        // AsyncConnection transaction streams require interactive listener mode.
-        control.interactive = true
+    func connectControlIfNeeded(connection control: AsyncConnection) async throws -> Url {
+        log("sync.connect pair=\(pair.id) endpoint=\(pair.endpoint.serverURL)")
 
         let url = try makeURL(endpoint: resolvedEndpoint())
         try await withTimeout(seconds: 10, label: "connect") {
             try control.connect(withUrl: url)
         }
         log("sync.connected pair=\(pair.id)")
-        defer { control.disconnect() }
+        return url
+    }
 
+    func disconnectControl(connection control: AsyncConnection) {
+        control.disconnect()
+    }
+
+    func fetchRemoteInventory(connection control: AsyncConnection) async throws -> (remote: [String: RemoteEntry], remoteInventoryAvailable: Bool) {
         log("sync.list_remote pair=\(pair.id) path=\(pair.remotePath)")
         let remote: [String: RemoteEntry]
         var remoteInventoryAvailable = true
@@ -1060,17 +1222,33 @@ private final class SyncPairWorker {
                 throw NSError(
                     domain: "wiredsyncd.sync",
                     code: 903,
-                    userInfo: [NSLocalizedDescriptionKey: "Remote listing failed; skipping sync cycle to avoid conflict amplification"]
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Remote listing failed; skipping sync cycle to avoid conflict amplification",
+                        NSUnderlyingErrorKey: error
+                    ]
                 )
             }
         }
+        return (remote, remoteInventoryAvailable)
+    }
 
+    func fetchLocalInventory() async throws -> [String: LocalEntry] {
         log("sync.scan_local_start pair=\(pair.id) path=\(pair.localPath)")
         let local = try await withTimeout(seconds: 20, label: "scan_local") {
             try self.scanLocalTree()
         }
         log("sync.scan_local_done pair=\(pair.id) items=\(local.count)")
+        return local
+    }
 
+    func performReconcile(
+        connection control: AsyncConnection,
+        spec: P7Spec,
+        url: Url,
+        remote: [String: RemoteEntry],
+        local: [String: LocalEntry],
+        allowRemotePrune: Bool
+    ) async throws {
         log("sync.reconcile_start pair=\(pair.id) mode=\(pair.mode.rawValue)")
         switch pair.mode {
         case .serverToClient:
@@ -1085,7 +1263,7 @@ private final class SyncPairWorker {
                     remote: remote,
                     local: local,
                     url: url,
-                    allowRemotePrune: remoteInventoryAvailable && self.pair.deleteRemoteEnabled
+                    allowRemotePrune: allowRemotePrune
                 )
             }
         case .bidirectional:
@@ -1778,13 +1956,360 @@ private final class SyncPairWorker {
     }
 }
 
+private final class PairSession {
+    private let state: DaemonState
+    private let specPath: String
+    private let pairID: String
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+    private var shouldStop = false
+    private var pendingSyncNow = false
+    private var pendingReconnect = false
+    private var loopSignal: CheckedContinuation<Void, Never>?
+    private var currentConnection: AsyncConnection?
+    private var scheduledWakeTask: Task<Void, Never>?
+    private var wakeTimedOut = false
+    private var retryCount = 0
+    private let reconnectSchedule: [TimeInterval] = [1, 2, 4, 8, 15, 30, 60]
+    private let steadyStateSyncInterval: TimeInterval = 30
+
+    init(pairID: String, state: DaemonState, specPath: String) {
+        self.pairID = pairID
+        self.state = state
+        self.specPath = specPath
+    }
+
+    func start() {
+        lock.lock()
+        guard task == nil else {
+            lock.unlock()
+            signalSyncNow()
+            return
+        }
+        shouldStop = false
+        task = Task.detached(priority: .utility) { [weak self] in
+            await self?.run()
+        }
+        lock.unlock()
+    }
+
+    func stop() {
+        let taskToCancel: Task<Void, Never>?
+        let connection: AsyncConnection?
+        let continuation: CheckedContinuation<Void, Never>?
+        lock.lock()
+        shouldStop = true
+        taskToCancel = task
+        connection = currentConnection
+        currentConnection = nil
+        continuation = loopSignal
+        loopSignal = nil
+        scheduledWakeTask?.cancel()
+        scheduledWakeTask = nil
+        task = nil
+        pendingReconnect = false
+        pendingSyncNow = false
+        lock.unlock()
+        connection?.disconnect()
+        continuation?.resume()
+        taskToCancel?.cancel()
+        state.setRuntimeStatus(pairID: pairID, state: .disconnected, retryCount: 0, nextRetryAt: .some(nil))
+        state.appendLog("pair.session_stop id=\(pairID)")
+    }
+
+    func signalSyncNow() {
+        resumeLoop(syncNow: true, reconnect: false, dueToTimeout: false)
+    }
+
+    func signalReconnectNow() {
+        resumeLoop(syncNow: true, reconnect: true, dueToTimeout: false)
+    }
+
+    private func resumeLoop(syncNow: Bool, reconnect: Bool, dueToTimeout: Bool) {
+        let continuation: CheckedContinuation<Void, Never>?
+        let connection: AsyncConnection?
+        lock.lock()
+        if syncNow {
+            pendingSyncNow = true
+        }
+        if reconnect {
+            pendingReconnect = true
+        }
+        if dueToTimeout {
+            wakeTimedOut = true
+        }
+        continuation = loopSignal
+        loopSignal = nil
+        scheduledWakeTask?.cancel()
+        scheduledWakeTask = nil
+        connection = reconnect ? currentConnection : nil
+        if reconnect {
+            currentConnection = nil
+        }
+        lock.unlock()
+        connection?.disconnect()
+        continuation?.resume()
+    }
+
+    private func run() async {
+        state.appendLog("pair.session_start id=\(pairID)")
+        while state.isRunning() && !isStopped {
+            guard let pair = state.pair(id: pairID) else {
+                state.clearRuntimeStatus(pairID: pairID)
+                break
+            }
+            if pair.paused {
+                state.setRuntimeStatus(pairID: pairID, state: .paused, retryCount: 0, nextRetryAt: .some(nil))
+                break
+            }
+
+            let spec = P7Spec(withPath: specPath)
+            let worker = SyncPairWorker(pair: pair, store: state.store, secrets: state.secrets, specPath: specPath) { [weak state] line in
+                state?.appendLog(line)
+            }
+            let control = AsyncConnection(withSpec: spec)
+            control.clientInfoDelegate = DaemonClientInfoDelegate()
+            control.interactive = true
+            setConnection(control)
+
+            do {
+                state.setRuntimeStatus(
+                    pairID: pairID,
+                    state: retryCount == 0 ? .connecting : .reconnecting,
+                    lastError: retryCount == 0 ? .some(nil) : nil,
+                    nextRetryAt: .some(nil)
+                )
+                state.appendLog("pair.connecting id=\(pairID)")
+                let url = try await worker.connectControlIfNeeded(connection: control)
+                let now = Date()
+                retryCount = 0
+                state.setRuntimeStatus(
+                    pairID: pairID,
+                    state: .connected,
+                    lastError: .some(nil),
+                    retryCount: 0,
+                    nextRetryAt: .some(nil),
+                    lastConnectedAt: .some(now)
+                )
+                state.appendLog("pair.connected id=\(pairID)")
+                let shouldReconnect = await runConnectedLoop(pair: pair, worker: worker, control: control, spec: spec, url: url)
+                worker.disconnectControl(connection: control)
+                clearConnection(control)
+                if shouldReconnect {
+                    continue
+                }
+                break
+            } catch {
+                worker.disconnectControl(connection: control)
+                clearConnection(control)
+                if handleCycleError(error, pair: pair, duringConnect: true) {
+                    let delay = state.runtimeStatus(pairID: pairID)?.nextRetryAt?.timeIntervalSinceNow ?? jitteredBackoff()
+                    await sleepBeforeReconnect(delay: max(0.1, delay))
+                    continue
+                }
+                break
+            }
+        }
+        if let pair = state.pair(id: pairID), !pair.paused, state.runtimeStatus(pairID: pairID)?.state != .paused {
+            state.setRuntimeStatus(pairID: pairID, state: .disconnected, retryCount: 0, nextRetryAt: .some(nil))
+        }
+    }
+
+    private func runConnectedLoop(
+        pair: SyncPair,
+        worker: SyncPairWorker,
+        control: AsyncConnection,
+        spec: P7Spec,
+        url: Url
+    ) async -> Bool {
+        var runImmediateCycle = true
+        while state.isRunning() && !isStopped {
+            let decision = consumeSignals()
+            if decision.forceReconnect {
+                state.appendLog("pair.reconnect_aborted id=\(pairID) reason=signal")
+                return true
+            }
+
+            if runImmediateCycle || decision.runSyncNow {
+                do {
+                    state.setRuntimeStatus(pairID: pairID, state: .syncing, lastSyncStartedAt: .some(Date()))
+                    state.appendLog("pair.sync_cycle_start id=\(pairID)")
+                    let remoteInventoryAvailable = try await worker.runCycle(connection: control, spec: spec, url: url)
+                    state.setRuntimeStatus(
+                        pairID: pairID,
+                        state: .connected,
+                        lastError: .some(nil),
+                        lastSyncCompletedAt: .some(Date()),
+                        remoteInventoryAvailable: .some(remoteInventoryAvailable)
+                    )
+                    state.appendLog("pair.sync_cycle_done id=\(pairID)")
+                    runImmediateCycle = false
+                } catch {
+                    let shouldReconnect = handleCycleError(error, pair: pair, duringConnect: false)
+                    if shouldReconnect {
+                        return true
+                    }
+                    runImmediateCycle = false
+                }
+            }
+
+            runImmediateCycle = await waitForNextEvent()
+        }
+        return false
+    }
+
+    private func handleCycleError(_ error: Error, pair: SyncPair, duringConnect: Bool) -> Bool {
+        let errorText = describeSyncError(error)
+        state.appendLog("pair.sync_cycle_error id=\(pairID) error=\(errorText)")
+
+        let nsError = error as NSError
+        if nsError.domain == "wiredsyncd.sync", nsError.code == 950 {
+            if (try? state.setPaused(id: pair.id, paused: true)) == true {
+                state.appendLog("pair.paused id=\(pair.id) reason=local_path_missing_client_to_server")
+                state.setRuntimeStatus(pairID: pairID, state: .paused, lastError: .some(errorText))
+                return false
+            }
+        }
+
+        let reconnect = duringConnect || shouldReconnect(for: error)
+        if reconnect {
+            retryCount += 1
+            let nextRetryAt = Date().addingTimeInterval(jitteredBackoff())
+            state.setRuntimeStatus(
+                pairID: pairID,
+                state: .reconnecting,
+                lastError: .some(errorText),
+                retryCount: retryCount,
+                nextRetryAt: .some(nextRetryAt)
+            )
+            state.appendLog("pair.reconnecting id=\(pairID) error=\(errorText)")
+            state.appendLog("pair.reconnect_scheduled id=\(pairID) retry=\(retryCount) at=\(ISO8601DateFormatter().string(from: nextRetryAt))")
+            return true
+        }
+
+        state.setRuntimeStatus(pairID: pairID, state: .error, lastError: .some(errorText), nextRetryAt: .some(nil))
+        return false
+    }
+
+    private func waitForNextEvent() async -> Bool {
+        let decision = consumeSignals()
+        if decision.forceReconnect || decision.runSyncNow {
+            return decision.runSyncNow
+        }
+        let timedOut = await waitForSignalOrTimeout(seconds: steadyStateSyncInterval)
+        return timedOut
+    }
+
+    private func sleepBeforeReconnect(delay: TimeInterval) async {
+        _ = await waitForSignalOrTimeout(seconds: delay)
+    }
+
+    private func waitForSignalOrTimeout(seconds: TimeInterval) async -> Bool {
+        await withCheckedContinuation { continuation in
+            var shouldResumeImmediately = false
+            lock.lock()
+            if pendingSyncNow || pendingReconnect || shouldStop {
+                shouldResumeImmediately = true
+            } else {
+                loopSignal = continuation
+                let timeoutTask = Task.detached(priority: .utility) { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(max(0.05, seconds) * 1_000_000_000))
+                    } catch {
+                        return
+                    }
+                    self.resumeLoop(syncNow: true, reconnect: false, dueToTimeout: true)
+                }
+                scheduledWakeTask = timeoutTask
+            }
+            lock.unlock()
+            if shouldResumeImmediately {
+                continuation.resume()
+            }
+        }
+        return consumeWakeTimeoutState()
+    }
+
+    private func jitteredBackoff() -> TimeInterval {
+        let index = min(max(retryCount - 1, 0), reconnectSchedule.count - 1)
+        let base = reconnectSchedule[index]
+        let jitter = base * 0.2
+        return max(0.5, base + Double.random(in: -jitter...jitter))
+    }
+
+    private func shouldReconnect(for error: Error) -> Bool {
+        let nsError = error as NSError
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error,
+           shouldReconnect(for: underlying) {
+            return true
+        }
+        if let asyncError = error as? AsyncConnectionError {
+            switch asyncError {
+            case .notConnected, .writeFailed:
+                return true
+            case .serverError(let message):
+                let code = message.enumeration(forField: "wired.error") ?? 0
+                return code == 0
+            }
+        }
+        if nsError.domain == "wiredsyncd.sync" {
+            return [200, 201, 202, 203, 204, 902, 903].contains(nsError.code)
+        }
+        return false
+    }
+
+    private var isStopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return shouldStop
+    }
+
+    private func consumeSignals() -> (runSyncNow: Bool, forceReconnect: Bool) {
+        lock.lock()
+        let decision = (pendingSyncNow, pendingReconnect)
+        pendingSyncNow = false
+        pendingReconnect = false
+        lock.unlock()
+        return decision
+    }
+
+    private func setConnection(_ connection: AsyncConnection) {
+        lock.lock()
+        currentConnection = connection
+        lock.unlock()
+    }
+
+    private func clearConnection(_ connection: AsyncConnection) {
+        lock.lock()
+        if currentConnection === connection {
+            currentConnection = nil
+        }
+        lock.unlock()
+    }
+
+    private func consumeWakeTimeoutState() -> Bool {
+        lock.lock()
+        let timedOut = wakeTimedOut
+        wakeTimedOut = false
+        scheduledWakeTask?.cancel()
+        scheduledWakeTask = nil
+        loopSignal = nil
+        lock.unlock()
+        return timedOut
+    }
+}
+
 private final class SyncEngine {
     private let state: DaemonState
     private let specPath: String
     private let lock = NSLock()
-    private var activePairs: Set<String> = []
-    private var pendingPairs: Set<String> = []
-    private var loopTask: Task<Void, Never>?
+    private var sessionsByPairID: [String: PairSession] = [:]
+    private var networkMonitor: NWPathMonitor?
+    private var wakeMonitorTask: Task<Void, Never>?
+    private var wakeObserver: NSObjectProtocol?
+    private var lastNetworkStatus: NWPath.Status?
+    private var lastGlobalReconnectSignalAt: Date?
 
     init(state: DaemonState, specPath: String) {
         self.state = state
@@ -1792,24 +2317,92 @@ private final class SyncEngine {
     }
 
     func start() {
-        loopTask = Task.detached(priority: .background) { [weak self] in
-            guard let self else { return }
-            while self.state.isRunning() {
-                await self.tick()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-            }
+        for pair in state.snapshotPairs().filter({ !$0.paused }) {
+            startOrReplaceSession(for: pair.id)
         }
+        installNetworkMonitor()
+        installWakeMonitor()
     }
 
     func stop() {
-        loopTask?.cancel()
-        loopTask = nil
+        networkMonitor?.cancel()
+        networkMonitor = nil
+        wakeMonitorTask?.cancel()
+        wakeMonitorTask = nil
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+            self.wakeObserver = nil
+        }
+
+        let sessions: [PairSession]
+        lock.lock()
+        sessions = Array(sessionsByPairID.values)
+        sessionsByPairID.removeAll()
+        lock.unlock()
+        for session in sessions {
+            session.stop()
+        }
     }
 
     func activeCount() -> Int {
         lock.lock()
         defer { lock.unlock() }
-        return activePairs.count
+        return sessionsByPairID.count
+    }
+
+    func handlePairAdded(_ pairID: String) {
+        startOrReplaceSession(for: pairID)
+    }
+
+    func handlePairRemoved(_ pairID: String) {
+        let session: PairSession?
+        lock.lock()
+        session = sessionsByPairID.removeValue(forKey: pairID)
+        lock.unlock()
+        session?.stop()
+        state.clearRuntimeStatus(pairID: pairID)
+    }
+
+    func handlePairsRemoved(_ pairIDs: [String]) {
+        for pairID in pairIDs {
+            handlePairRemoved(pairID)
+        }
+    }
+
+    func handlePairUpdated(_ pairID: String) {
+        startOrReplaceSession(for: pairID)
+    }
+
+    func handlePairPaused(_ pairID: String) {
+        let session: PairSession?
+        lock.lock()
+        session = sessionsByPairID.removeValue(forKey: pairID)
+        lock.unlock()
+        session?.stop()
+        state.setRuntimeStatus(pairID: pairID, state: .paused, lastError: .some(nil), retryCount: 0, nextRetryAt: .some(nil))
+    }
+
+    func handlePairResumed(_ pairID: String) {
+        startOrReplaceSession(for: pairID)
+    }
+
+    func handleReload() {
+        let pairs = state.snapshotPairs()
+        let desired = Set(pairs.filter { !$0.paused }.map(\.id))
+        let current = Set(state.runtimeStatusesSnapshot().keys)
+        for pairID in current.subtracting(Set(pairs.map(\.id))) {
+            handlePairRemoved(pairID)
+        }
+        for pair in pairs {
+            if pair.paused {
+                handlePairPaused(pair.id)
+            } else {
+                startOrReplaceSession(for: pair.id)
+            }
+        }
+        for stale in current.subtracting(desired) {
+            handlePairPaused(stale)
+        }
     }
 
     func triggerNow(remotePath: String?, serverURL: String?, login: String?) -> (matched: Int, launched: Int) {
@@ -1830,77 +2423,109 @@ private final class SyncEngine {
 
         var launched = 0
         for pair in pairs {
-            guard startPair(id: pair.id) else { continue }
-            launched += 1
-            runPair(pair)
+            let existingSession = session(for: pair.id)
+            if existingSession == nil {
+                startOrReplaceSession(for: pair.id)
+                launched += 1
+            }
+            session(for: pair.id)?.signalSyncNow()
         }
         return (pairs.count, launched)
     }
 
-    private func startPair(id: String) -> Bool {
+    private func startOrReplaceSession(for pairID: String) {
+        guard let pair = state.pair(id: pairID), !pair.paused else {
+            handlePairPaused(pairID)
+            return
+        }
+
+        let previous: PairSession?
+        let session = PairSession(pairID: pairID, state: state, specPath: specPath)
+        lock.lock()
+        previous = sessionsByPairID.updateValue(session, forKey: pairID)
+        lock.unlock()
+        previous?.stop()
+        state.setRuntimeStatus(pairID: pairID, state: .disconnected, lastError: .some(nil), retryCount: 0, nextRetryAt: .some(nil))
+        session.start()
+    }
+
+    private func session(for pairID: String) -> PairSession? {
         lock.lock()
         defer { lock.unlock() }
-        if activePairs.contains(id) {
-            pendingPairs.insert(id)
-            return false
-        }
-        activePairs.insert(id)
-        return true
+        return sessionsByPairID[pairID]
     }
 
-    private func finishPair(id: String) {
+    private func signalReconnectAll(reason: String, force: Bool = false) {
         lock.lock()
-        let hasPending = pendingPairs.remove(id) != nil
-        if !hasPending {
-            activePairs.remove(id)
+        let now = Date()
+        if !force, let last = lastGlobalReconnectSignalAt, now.timeIntervalSince(last) < 5 {
+            lock.unlock()
+            state.appendLog("daemon.reconnect_all_skipped reason=\(reason) debounce=true")
+            return
         }
+        lastGlobalReconnectSignalAt = now
+        let sessions: [PairSession]
+        sessions = Array(sessionsByPairID.values)
         lock.unlock()
-
-        if hasPending {
-            // A sync was requested while this pair was running — relaunch immediately.
-            if let pair = state.snapshotPairs().first(where: { $0.id == id && !$0.paused }) {
-                runPair(pair)
-            } else {
-                lock.lock()
-                activePairs.remove(id)
-                lock.unlock()
-            }
+        state.appendLog("daemon.reconnect_all reason=\(reason) sessions=\(sessions.count)")
+        for session in sessions {
+            session.signalReconnectNow()
         }
     }
 
-    private func runPair(_ pair: SyncPair) {
-        Task.detached(priority: .utility) { [weak self] in
+    private func installNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            defer { self.finishPair(id: pair.id) }
-            do {
-                self.state.appendLog("sync.start pair=\(pair.id) mode=\(pair.mode.rawValue)")
-                let worker = SyncPairWorker(pair: pair, store: self.state.store, secrets: self.state.secrets, specPath: self.specPath) { line in
-                    self.state.appendLog(line)
-                }
-                try await worker.runOnce()
-                self.state.appendLog("sync.done pair=\(pair.id)")
-            } catch {
-                let nsError = error as NSError
-                if nsError.domain == "wiredsyncd.sync", nsError.code == 950 {
-                    if (try? self.state.setPaused(id: pair.id, paused: true)) == true {
-                        self.state.appendLog("pair.paused id=\(pair.id) reason=local_path_missing_client_to_server")
-                    }
-                }
-                self.state.appendLog("sync.error pair=\(pair.id) error=\(describeSyncError(error))")
+            self.lock.lock()
+            let previous = self.lastNetworkStatus
+            let current = path.status
+            self.lastNetworkStatus = current
+            self.lock.unlock()
+
+            guard let previous else {
+                self.state.appendLog("daemon.network_path_initial status=\(current)")
+                return
             }
+            guard previous != current else { return }
+
+            self.state.appendLog("daemon.network_path_changed from=\(previous) to=\(current)")
+            self.signalReconnectAll(reason: "network_path_changed", force: false)
         }
+        monitor.start(queue: DispatchQueue(label: "wiredsyncd.network-monitor"))
+        networkMonitor = monitor
     }
 
-    private func tick() async {
-        let pairs = state.snapshotPairs().filter { !$0.paused }
-        for pair in pairs {
-            guard startPair(id: pair.id) else { continue }
-            runPair(pair)
+    private func installWakeMonitor() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.state.appendLog("daemon.did_wake")
+            self?.signalReconnectAll(reason: "did_wake", force: true)
+        }
+
+        wakeMonitorTask = Task.detached(priority: .background) { [weak self] in
+            var previous = Date()
+            while let self, self.state.isRunning() {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                let now = Date()
+                if now.timeIntervalSince(previous) > 45 {
+                    self.state.appendLog("daemon.sleep_wake_detected")
+                    self.signalReconnectAll(reason: "sleep_wake_detected", force: true)
+                }
+                previous = now
+            }
         }
     }
 }
 
 private func describeSyncError(_ error: Error) -> String {
+    let nsError = error as NSError
+    if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+        return describeSyncError(underlying)
+    }
     if let wired = error as? WiredError {
         return wired.description
     }
@@ -1915,6 +2540,9 @@ private func describeSyncError(_ error: Error) -> String {
             let text = message.string(forField: "wired.error.string") ?? "No server message"
             return "AsyncConnectionError.serverError(code=\(code), message=\(text))"
         }
+    }
+    if !nsError.localizedDescription.isEmpty {
+        return nsError.localizedDescription
     }
     return String(describing: error)
 }
@@ -2010,11 +2638,12 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
     let params = req.params ?? [:]
     switch req.method {
     case "status":
-        respondResult(id: req.id, result: state.status(activePairs: engine.activeCount()), fd: fd)
+        respondResult(id: req.id, result: state.status(), fd: fd)
 
     case "list_pairs":
         let rows = state.snapshotPairs().map { pair in
-            [
+            let runtime = state.runtimeStatus(pairID: pair.id)
+            return [
                 "id": pair.id,
                 "remote_path": pair.remotePath,
                 "local_path": pair.localPath,
@@ -2022,7 +2651,14 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 "delete_remote_enabled": pair.deleteRemoteEnabled ? "true" : "false",
                 "server_url": pair.endpoint.serverURL,
                 "login": pair.endpoint.login,
-                "paused": pair.paused ? "true" : "false"
+                "paused": pair.paused ? "true" : "false",
+                "runtime_state": runtime?.state.rawValue ?? (pair.paused ? PairConnectionState.paused.rawValue : PairConnectionState.disconnected.rawValue),
+                "runtime_last_error": runtime?.lastError as Any,
+                "runtime_retry_count": runtime?.retryCount ?? 0,
+                "runtime_next_retry_at": runtime?.nextRetryAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "runtime_last_connected_at": runtime?.lastConnectedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "runtime_last_sync_started_at": runtime?.lastSyncStartedAt.map { ISO8601DateFormatter().string(from: $0) } as Any,
+                "runtime_last_sync_completed_at": runtime?.lastSyncCompletedAt.map { ISO8601DateFormatter().string(from: $0) } as Any
             ]
         }
         respondResult(id: req.id, result: ["ok": true, "pairs": rows], fd: fd)
@@ -2059,6 +2695,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 excludePatterns: excludePatterns,
                 endpoint: endpoint
             )
+            engine.handlePairAdded(pair.id)
             respondResult(id: req.id, result: ["ok": true, "pair_id": pair.id], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "add_pair failed: \(error.localizedDescription)", fd: fd)
@@ -2071,6 +2708,9 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
         do {
             let ok = try state.removePair(id: pairID)
+            if ok {
+                engine.handlePairRemoved(pairID)
+            }
             respondResult(id: req.id, result: ["ok": ok], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "remove_pair failed: \(error.localizedDescription)", fd: fd)
@@ -2083,6 +2723,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
         do {
             let removed = try state.removePairs(remotePath: remotePath, serverURL: params["server_url"], login: params["login"])
+            engine.handlePairsRemoved(removed)
             respondResult(
                 id: req.id,
                 result: [
@@ -2109,6 +2750,9 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 serverURL: params["server_url"],
                 login: params["login"]
             )
+            for pairID in updated {
+                engine.handlePairUpdated(pairID)
+            }
             respondResult(
                 id: req.id,
                 result: [
@@ -2147,6 +2791,9 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 deleteRemoteEnabled: deleteRemoteEnabled,
                 excludePatterns: updateExcludePatterns
             )
+            for pairID in updated {
+                engine.handlePairUpdated(pairID)
+            }
             respondResult(
                 id: req.id,
                 result: [
@@ -2167,6 +2814,9 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
         do {
             let ok = try state.setPaused(id: pairID, paused: true)
+            if ok {
+                engine.handlePairPaused(pairID)
+            }
             respondResult(id: req.id, result: ["ok": ok], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "pause_pair failed: \(error.localizedDescription)", fd: fd)
@@ -2179,6 +2829,9 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
         do {
             let ok = try state.setPaused(id: pairID, paused: false)
+            if ok {
+                engine.handlePairResumed(pairID)
+            }
             respondResult(id: req.id, result: ["ok": ok], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "resume_pair failed: \(error.localizedDescription)", fd: fd)
@@ -2187,6 +2840,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
     case "reload":
         do {
             try state.reload()
+            engine.handleReload()
             respondResult(id: req.id, result: ["ok": true], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "reload failed: \(error.localizedDescription)", fd: fd)
