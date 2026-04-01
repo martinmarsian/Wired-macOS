@@ -6,7 +6,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "8"
+private let kDaemonVersion = "11"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -1069,32 +1069,85 @@ private final class SyncPairWorker {
             switch (remoteEntry, localEntry) {
             case let (r?, nil):
                 if !r.isDirectory {
-                    try await downloadFile(
-                        spec: spec,
-                        url: url,
-                        remoteAbsolutePath: r.absolutePath,
-                        localRelativePath: rel,
-                        remoteModificationDate: r.modificationDate
-                    )
-                    try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
-                    log("sync.pull pair=\(pair.id) path=\(rel)")
+                    if let snapshot = store.uploadedSnapshot(pairID: pair.id, relativePath: rel) {
+                        // We previously synced this file. Its local absence means it was deleted locally.
+                        // Exception: if remote was modified after our last upload, remote wins (re-download).
+                        let remoteMtime = r.modificationDate?.timeIntervalSince1970 ?? 0
+                        if remoteMtime > snapshot.modificationTime + 1.0 {
+                            try await downloadFile(
+                                spec: spec,
+                                url: url,
+                                remoteAbsolutePath: r.absolutePath,
+                                localRelativePath: rel,
+                                remoteModificationDate: r.modificationDate
+                            )
+                            log("sync.pull pair=\(pair.id) path=\(rel) reason=local_deleted_remote_modified")
+                        } else {
+                            try await deleteRemote(connection: control, relativePath: rel)
+                            try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
+                            log("sync.delete_remote pair=\(pair.id) path=\(rel) reason=local_deleted")
+                        }
+                    } else {
+                        // No snapshot — new remote file, download it.
+                        try await downloadFile(
+                            spec: spec,
+                            url: url,
+                            remoteAbsolutePath: r.absolutePath,
+                            localRelativePath: rel,
+                            remoteModificationDate: r.modificationDate
+                        )
+                        log("sync.pull pair=\(pair.id) path=\(rel)")
+                    }
                 }
 
             case let (nil, l?):
                 if !l.isDirectory {
-                    log("sync.push_try pair=\(pair.id) path=\(rel)")
-                    try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
-                    try store.markUploaded(
-                        pairID: pair.id,
-                        relativePath: rel,
-                        size: l.size,
-                        modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
-                    )
-                    log("sync.push pair=\(pair.id) path=\(rel)")
+                    if let snapshot = store.uploadedSnapshot(pairID: pair.id, relativePath: rel) {
+                        // We previously synced this file. Its remote absence means it was deleted remotely.
+                        // Exception: if local was modified since our last upload, local wins (re-upload).
+                        let localMtime = l.modificationDate?.timeIntervalSince1970 ?? 0
+                        if snapshot.size != l.size || abs(snapshot.modificationTime - localMtime) > 1.0 {
+                            log("sync.push_try pair=\(pair.id) path=\(rel) reason=remote_deleted_local_modified")
+                            try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                            try store.markUploaded(
+                                pairID: pair.id,
+                                relativePath: rel,
+                                size: l.size,
+                                modificationTime: localMtime
+                            )
+                            log("sync.push pair=\(pair.id) path=\(rel) reason=remote_deleted_local_modified")
+                        } else {
+                            try deleteLocal(relativePath: rel)
+                            try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
+                            log("sync.delete_local pair=\(pair.id) path=\(rel) reason=remote_deleted")
+                        }
+                    } else {
+                        // No snapshot — new local file, upload it.
+                        log("sync.push_try pair=\(pair.id) path=\(rel)")
+                        try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                        try store.markUploaded(
+                            pairID: pair.id,
+                            relativePath: rel,
+                            size: l.size,
+                            modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                        )
+                        log("sync.push pair=\(pair.id) path=\(rel)")
+                    }
                 }
 
             case let (r?, l?):
                 guard !r.isDirectory && !l.isDirectory else { continue }
+
+                // If the local file matches our last-uploaded snapshot, the remote mtime
+                // difference is caused by our own previous upload (the server assigned its
+                // own timestamp). Treat the file as in-sync to break the push→pull loop.
+                if let snapshot = store.uploadedSnapshot(pairID: pair.id, relativePath: rel) {
+                    let localMtime = l.modificationDate?.timeIntervalSince1970 ?? 0
+                    if snapshot.size == l.size && abs(snapshot.modificationTime - localMtime) <= 1.0 {
+                        continue
+                    }
+                }
+
                 let remoteDate = r.modificationDate
                 let localDate = l.modificationDate
                 let sizeDiffers = r.size != l.size
@@ -1461,6 +1514,7 @@ private final class SyncEngine {
     private let specPath: String
     private let lock = NSLock()
     private var activePairs: Set<String> = []
+    private var pendingPairs: Set<String> = []
     private var loopTask: Task<Void, Never>?
 
     init(state: DaemonState, specPath: String) {
@@ -1518,6 +1572,7 @@ private final class SyncEngine {
         lock.lock()
         defer { lock.unlock() }
         if activePairs.contains(id) {
+            pendingPairs.insert(id)
             return false
         }
         activePairs.insert(id)
@@ -1526,8 +1581,22 @@ private final class SyncEngine {
 
     private func finishPair(id: String) {
         lock.lock()
-        activePairs.remove(id)
+        let hasPending = pendingPairs.remove(id) != nil
+        if !hasPending {
+            activePairs.remove(id)
+        }
         lock.unlock()
+
+        if hasPending {
+            // A sync was requested while this pair was running — relaunch immediately.
+            if let pair = state.snapshotPairs().first(where: { $0.id == id && !$0.paused }) {
+                runPair(pair)
+            } else {
+                lock.lock()
+                activePairs.remove(id)
+                lock.unlock()
+            }
+        }
     }
 
     private func runPair(_ pair: SyncPair) {

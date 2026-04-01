@@ -576,6 +576,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		4C90D0102FA1000100213277 /* Embed wiredsyncd */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

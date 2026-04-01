@@ -219,7 +219,7 @@ enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "8"
+    static let expectedDaemonVersion = "11"
 
     static func addPair(
         remotePath: String,
