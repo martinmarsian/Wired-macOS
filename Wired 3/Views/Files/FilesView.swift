@@ -200,6 +200,7 @@ private struct WiredSyncPairDescriptor: Hashable {
     let serverURL: String
     let login: String
     let mode: String
+    let deleteRemoteEnabled: Bool
     let paused: Bool
 }
 
@@ -218,12 +219,13 @@ private enum WiredSyncDaemonIPC {
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "4"
+    static let expectedDaemonVersion = "7"
 
     static func addPair(
         remotePath: String,
         localPath: String,
         mode: String = "bidirectional",
+        deleteRemoteEnabled: Bool = false,
         serverURL: String,
         login: String,
         password: String
@@ -236,6 +238,7 @@ private enum WiredSyncDaemonIPC {
                 "remote_path": remotePath,
                 "local_path": localPath,
                 "mode": mode,
+                "delete_remote_enabled": deleteRemoteEnabled ? "true" : "false",
                 "server_url": serverURL,
                 "login": login,
                 "password": password
@@ -305,25 +308,35 @@ private enum WiredSyncDaemonIPC {
             let pairLogin = (pair["login"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let pausedRaw = (pair["paused"] as? String)?.lowercased() ?? "false"
             let paused = pausedRaw == "true" || pausedRaw == "1"
+            let deleteRemoteRaw = (pair["delete_remote_enabled"] as? String)?.lowercased() ?? "false"
+            let deleteRemoteEnabled = deleteRemoteRaw == "true" || deleteRemoteRaw == "1"
             return WiredSyncPairDescriptor(
                 remotePath: normalizeSyncRemotePath(remotePath),
                 serverURL: pairServer,
                 login: pairLogin,
                 mode: (pair["mode"] as? String) ?? "bidirectional",
+                deleteRemoteEnabled: deleteRemoteEnabled,
                 paused: paused
             )
         }
         return Set(descriptors)
     }
 
-    static func updatePairMode(remotePath: String, mode: String, serverURL: String, login: String) throws -> Int {
+    static func updatePairPolicy(
+        remotePath: String,
+        mode: String,
+        deleteRemoteEnabled: Bool,
+        serverURL: String,
+        login: String
+    ) throws -> Int {
         let request: [String: Any] = [
             "jsonrpc": "2.0",
             "id": UUID().uuidString,
-            "method": "update_pair_mode",
+            "method": "update_pair_policy",
             "params": [
                 "remote_path": remotePath,
                 "mode": mode,
+                "delete_remote_enabled": deleteRemoteEnabled ? "true" : "false",
                 "server_url": serverURL,
                 "login": login
             ]
@@ -1115,15 +1128,20 @@ struct FilesView: View {
 
     private func effectiveSyncMode(for item: FileItem) -> String? {
         guard item.type == .sync else { return nil }
-        switch (item.readable, item.writable) {
-        case (true, true):
-            return "bidirectional"
-        case (true, false):
-            return "server_to_client"
-        case (false, true):
-            return "client_to_server"
-        case (false, false):
+        if item.syncEffectiveMode == .disabled {
             return nil
+        }
+        return item.syncEffectiveMode.rawValue
+    }
+
+    private func shouldEnableRemoteDelete(for item: FileItem) -> Bool {
+        guard item.type == .sync else { return false }
+        guard runtime.hasPrivilege("wired.account.file.sync.delete_remote") else { return false }
+        switch item.syncEffectiveMode {
+        case .clientToServer, .bidirectional:
+            return true
+        case .disabled, .serverToClient:
+            return false
         }
     }
 
@@ -1139,17 +1157,19 @@ struct FilesView: View {
             guard let descriptor = descriptors.first(where: {
                 $0.remotePath == path && $0.serverURL == serverURL && $0.login == login
             }) else { continue }
-            guard descriptor.mode != expectedMode else { continue }
+            let expectedDeleteRemote = shouldEnableRemoteDelete(for: item)
+            guard descriptor.mode != expectedMode || descriptor.deleteRemoteEnabled != expectedDeleteRemote else { continue }
             guard !syncPairModeReconciliationInFlight.contains(path) else { continue }
 
             syncPairModeReconciliationInFlight.insert(path)
-            print("[WiredSyncUI] reconcile.mode remote=\(path) stored=\(descriptor.mode) effective=\(expectedMode)")
+            print("[WiredSyncUI] reconcile.mode remote=\(path) stored=\(descriptor.mode) effective=\(expectedMode) delete_remote=\(expectedDeleteRemote)")
 
             Task.detached(priority: .utility) {
                 do {
-                    let updatedCount = try WiredSyncDaemonIPC.updatePairMode(
+                    let updatedCount = try WiredSyncDaemonIPC.updatePairPolicy(
                         remotePath: path,
                         mode: expectedMode,
+                        deleteRemoteEnabled: expectedDeleteRemote,
                         serverURL: serverURL,
                         login: login
                     )
@@ -1323,6 +1343,14 @@ struct FilesView: View {
 
     private func activateSync(for directory: FileItem) {
 #if os(macOS)
+        guard runtime.hasPrivilege("wired.account.file.sync.sync_files") else {
+            syncActivationNotice = SyncActivationNotice(
+                title: "Sync Error",
+                message: "Your account is not allowed to activate sync pairs."
+            )
+            return
+        }
+
         guard let connection = runtime.connection as? AsyncConnection,
               let url = connection.url else {
             syncActivationNotice = SyncActivationNotice(
@@ -1342,34 +1370,28 @@ struct FilesView: View {
         guard panel.runModal() == .OK, let localURL = panel.url else { return }
 
         let currentDirectory = filesViewModel.currentItem(path: directory.path) ?? directory
-        let mode: String
-        let serverURL = "\(url.hostname):\(url.port)"
-        let login = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch (currentDirectory.readable, currentDirectory.writable) {
-        case (true, true):
-            mode = "bidirectional"
-        case (true, false):
-            mode = "server_to_client"
-        case (false, true):
-            mode = "client_to_server"
-        case (false, false):
+        guard let mode = effectiveSyncMode(for: currentDirectory) else {
             syncActivationNotice = SyncActivationNotice(
                 title: "Sync Error",
-                message: "The selected sync folder grants no effective read/write access for your account."
+                message: "The selected sync folder is disabled for your account."
             )
             return
         }
+        let serverURL = "\(url.hostname):\(url.port)"
+        let login = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+        let deleteRemoteEnabled = shouldEnableRemoteDelete(for: currentDirectory)
 
         Task.detached(priority: .userInitiated) {
             await MainActor.run {
                 setSyncPairLocalOverride(.checking(active: true), for: directory.path)
-                print("[WiredSyncUI] activate path=\(directory.path) readable=\(currentDirectory.readable) writable=\(currentDirectory.writable) mode=\(mode)")
+                print("[WiredSyncUI] activate path=\(directory.path) sync_mode=\(mode) delete_remote=\(deleteRemoteEnabled)")
             }
             do {
                 let _ = try WiredSyncDaemonIPC.addPair(
                     remotePath: directory.path,
                     localPath: localURL.path,
                     mode: mode,
+                    deleteRemoteEnabled: deleteRemoteEnabled,
                     serverURL: serverURL,
                     login: login,
                     password: url.password

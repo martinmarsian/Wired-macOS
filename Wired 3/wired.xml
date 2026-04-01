@@ -494,11 +494,11 @@
         <p7:field name="wired.file.type" type="enum" id="7001" version="2.0">
             <p7:documentation>
                 File type. [enum:wired.file.type.file] indicates a normal file, and
-                [enum:wired.file.type.directory] indicates a normal directory. The other three are specific
-                to Wired, and are differentiated mostly by permissions. [enum:wired.file.type.uploads]
+                [enum:wired.file.type.directory] indicates a normal directory. The other three are specific to Wired, and are differentiated mostly by permissions. [enum:wired.file.type.uploads]
                 are directories that may be uploaded into, and listed, while [enum:wired.file.type.dropbox]
-                may be uploaded into, but not listed. [enum:wired.file.type.sync] are synchronized directories
-                and can also expose extended permissions, like [field:wired.file.owner], etc.
+                may be uploaded into, but not listed. [enum:wired.file.type.sync] identifies a synchronized
+                directory observed by a background daemon for uni- or bi-directional synchronization. Drop boxes can also have extended permissions, like
+                [field:wired.file.owner], etc.
             </p7:documentation>
             <p7:enum name="wired.file.type.file" value="0" version="2.0" />
             <p7:enum name="wired.file.type.directory" value="1" version="2.0" />
@@ -642,6 +642,26 @@
         <p7:field name="wired.file.preview" type="data" id="7026" version="2.0">
             <p7:documentation>
                 TBD
+            </p7:documentation>
+        </p7:field>
+        <p7:field name="wired.file.sync.user_mode" type="string" id="7027" version="2.0">
+            <p7:documentation>
+                Explicit sync policy for the directory owner of a synchronized directory.
+            </p7:documentation>
+        </p7:field>
+        <p7:field name="wired.file.sync.group_mode" type="string" id="7028" version="2.0">
+            <p7:documentation>
+                Explicit sync policy for the directory group of a synchronized directory.
+            </p7:documentation>
+        </p7:field>
+        <p7:field name="wired.file.sync.everyone_mode" type="string" id="7029" version="2.0">
+            <p7:documentation>
+                Explicit sync policy for everyone on a synchronized directory.
+            </p7:documentation>
+        </p7:field>
+        <p7:field name="wired.file.sync.mode_effective" type="string" id="7030" version="2.0">
+            <p7:documentation>
+                Effective sync policy resolved by the server for the currently logged in account.
             </p7:documentation>
         </p7:field>
 
@@ -1021,6 +1041,16 @@
                 the account gives. 0 means no limit.
             </p7:documentation>
         </p7:field>
+        <p7:field name="wired.account.file.sync.sync_files" type="bool" id="8099" version="2.0">
+            <p7:documentation>
+                Indicates whether the account gives the privilege of activating and running sync pairs.
+            </p7:documentation>
+        </p7:field>
+        <p7:field name="wired.account.file.sync.delete_remote" type="bool" id="8100" version="2.0">
+            <p7:documentation>
+                Indicates whether the account gives the privilege of deleting remote files from a sync pair.
+            </p7:documentation>
+        </p7:field>
         <p7:field name="wired.account.account.change_password" type="bool" id="8066" version="2.0">
             <p7:documentation>
                 Indicates whether the account gives the privilege of changing the password.
@@ -1277,6 +1307,7 @@
             <p7:enum name="wired.event.board.added_post" value="47" version="2.0" />
             <p7:enum name="wired.event.board.edited_post" value="48" version="2.0" />
             <p7:enum name="wired.event.board.deleted_post" value="49" version="2.0" />
+            <p7:enum name="wired.event.board.searched" value="67" version="2.0" />
             <p7:enum name="wired.event.transfer.started_file_download" value="50" version="2.0" />
             <p7:enum name="wired.event.transfer.stopped_file_download" value="51" version="2.0" />
             <p7:enum name="wired.event.transfer.completed_file_download" value="52" version="2.0" />
@@ -1462,6 +1493,8 @@
             <p7:member field="wired.account.transfer.upload_limit" />
             <p7:member field="wired.account.transfer.download_speed_limit" />
             <p7:member field="wired.account.transfer.upload_speed_limit" />
+            <p7:member field="wired.account.file.sync.sync_files" />
+            <p7:member field="wired.account.file.sync.delete_remote" />
             <p7:member field="wired.account.account.change_password" />
             <p7:member field="wired.account.account.list_accounts" />
             <p7:member field="wired.account.account.read_accounts" />
@@ -1831,29 +1864,6 @@
             <p7:parameter field="wired.chat.say" use="required" version="2.0" />
         </p7:message>
 
-        <p7:message name="wired.chat.send_typing" id="4031" version="3.1">
-            <p7:documentation>
-                Send an ephemeral typing pulse for a chat. [field:wired.chat.typing] set to true indicates
-                that the user is currently typing. [field:wired.chat.typing] set to false explicitly clears
-                the typing state. Servers may later emit [message:wired.chat.typing] with false when the
-                typing timeout expires, even if no explicit stop message was sent.
-            </p7:documentation>
-            <p7:parameter field="wired.transaction" version="2.0" />
-            <p7:parameter field="wired.chat.id" use="required" version="3.1" />
-            <p7:parameter field="wired.chat.typing" use="required" version="3.1" />
-        </p7:message>
-
-        <p7:message name="wired.chat.typing" id="4032" version="3.1">
-            <p7:documentation>
-                Ephemeral typing state update for a user in a chat. True indicates that the user is
-                currently typing. False indicates that typing has stopped, either explicitly or because the
-                server expired the typing timeout.
-            </p7:documentation>
-            <p7:parameter field="wired.chat.id" use="required" version="3.1" />
-            <p7:parameter field="wired.user.id" use="required" version="3.1" />
-            <p7:parameter field="wired.chat.typing" use="required" version="3.1" />
-        </p7:message>
-
         <p7:message name="wired.chat.say" id="4015" version="2.0">
             <p7:documentation>
                 Normal chat message for a chat. [field:wired.chat.say] may not be the empty string.
@@ -1987,6 +1997,29 @@
             </p7:documentation>
             <p7:parameter field="wired.transaction" version="2.0" />
             <p7:parameter field="wired.chat.id" use="required" version="3.0" />
+        </p7:message>
+
+        <p7:message name="wired.chat.send_typing" id="4031" version="3.1">
+            <p7:documentation>
+                Send an ephemeral typing pulse for a chat. [field:wired.chat.typing] set to true indicates
+                that the user is currently typing. [field:wired.chat.typing] set to false explicitly clears
+                the typing state. Servers may later emit [message:wired.chat.typing] with false when the
+                typing timeout expires, even if no explicit stop message was sent.
+            </p7:documentation>
+            <p7:parameter field="wired.transaction" version="2.0" />
+            <p7:parameter field="wired.chat.id" use="required" version="3.1" />
+            <p7:parameter field="wired.chat.typing" use="required" version="3.1" />
+        </p7:message>
+
+        <p7:message name="wired.chat.typing" id="4032" version="3.1">
+            <p7:documentation>
+                Ephemeral typing state update for a user in a chat. True indicates that the user is
+                currently typing. False indicates that typing has stopped, either explicitly or because the
+                server expired the typing timeout.
+            </p7:documentation>
+            <p7:parameter field="wired.chat.id" use="required" version="3.1" />
+            <p7:parameter field="wired.user.id" use="required" version="3.1" />
+            <p7:parameter field="wired.chat.typing" use="required" version="3.1" />
         </p7:message>
 
         <p7:message name="wired.message.send_message" id="5000" version="2.0">
@@ -2514,7 +2547,8 @@
                 File list item for a directory. [field:wired.file.path] may not be the empty string.
 
                 If [field:wired.file.type] is [enum:wired.file.type.dropbox] or [enum:wired.file.type.sync], [field:wired.file.readable]
-                and [field:wired.file.writable] should be set.
+                and [field:wired.file.writable] should be set. If [field:wired.file.type] is
+                [enum:wired.file.type.sync], [field:wired.file.sync.mode_effective] should also be set.
                 
                 rsrc TBD
             </p7:documentation>
@@ -2525,6 +2559,7 @@
             <p7:parameter field="wired.file.directory_count" version="2.0" />
             <p7:parameter field="wired.file.readable" version="2.0" />
             <p7:parameter field="wired.file.writable" version="2.0" />
+            <p7:parameter field="wired.file.sync.mode_effective" version="2.0" />
         </p7:message>
 
         <p7:message name="wired.file.file_list.done" id="7002" version="2.0">
@@ -2558,7 +2593,10 @@
                 [field:wired.file.owner.read], [field:wired.file.owner.write], [field:wired.file.group],
                 [field:wired.file.group.read], [field:wired.file.group.read], [field:wired.file.everyone.read],
                 [field:wired.file.everyone.write], [field:wired.file.readable] and [field:wired.file.writable]
-                should be set.
+                should be set. If [field:wired.file.type] is [enum:wired.file.type.sync],
+                [field:wired.file.sync.user_mode], [field:wired.file.sync.group_mode],
+                [field:wired.file.sync.everyone_mode] and [field:wired.file.sync.mode_effective]
+                should also be set.
                 
                 rsrc TBD
             </p7:documentation>
@@ -2578,6 +2616,10 @@
             <p7:parameter field="wired.file.everyone.write" version="2.0" />
             <p7:parameter field="wired.file.readable" version="2.0" />
             <p7:parameter field="wired.file.writable" version="2.0" />
+            <p7:parameter field="wired.file.sync.user_mode" version="2.0" />
+            <p7:parameter field="wired.file.sync.group_mode" version="2.0" />
+            <p7:parameter field="wired.file.sync.everyone_mode" version="2.0" />
+            <p7:parameter field="wired.file.sync.mode_effective" version="2.0" />
         </p7:message>
 
         <p7:message name="wired.file.move" id="7005" version="2.0">
@@ -2625,6 +2667,9 @@
                 Change directory type message. [field:wired.file.path] may not be the empty string.
                 
                 [field:wired.file.type] may not be [enum:wired.file.type.file].
+
+                Within a synchronized directory subtree, conversions to [enum:wired.file.type.uploads],
+                [enum:wired.file.type.dropbox] or [enum:wired.file.type.sync] should be rejected.
             </p7:documentation>
             <p7:parameter field="wired.transaction" version="2.0" />
             <p7:parameter field="wired.file.path" use="required" version="2.0" />
@@ -2653,8 +2698,9 @@
         
         <p7:message name="wired.file.set_permissions" id="7011" version="2.0">
             <p7:documentation>
-                Change executable flag message for a drop box directory. [field:wired.file.path] may not
-                be the empty string, but [field:wired.file.owner] and [field:wired.file.group] may be.
+                Change managed access permissions for a drop box or sync directory. [field:wired.file.path]
+                may not be the empty string, but [field:wired.file.owner] and [field:wired.file.group]
+                may be.
             </p7:documentation>
             <p7:parameter field="wired.transaction" version="2.0" />
             <p7:parameter field="wired.file.path" use="required" version="2.0" />
@@ -2666,6 +2712,18 @@
             <p7:parameter field="wired.file.group.write" use="required" version="2.0" />
             <p7:parameter field="wired.file.everyone.read" use="required" version="2.0" />
             <p7:parameter field="wired.file.everyone.write" use="required" version="2.0" />
+        </p7:message>
+
+        <p7:message name="wired.file.set_sync_policy" id="7023" version="2.0">
+            <p7:documentation>
+                Change sync policy for a synchronized directory. [field:wired.file.path] may not be the
+                empty string.
+            </p7:documentation>
+            <p7:parameter field="wired.transaction" version="2.0" />
+            <p7:parameter field="wired.file.path" use="required" version="2.0" />
+            <p7:parameter field="wired.file.sync.user_mode" use="required" version="2.0" />
+            <p7:parameter field="wired.file.sync.group_mode" use="required" version="2.0" />
+            <p7:parameter field="wired.file.sync.everyone_mode" use="required" version="2.0" />
         </p7:message>
 
         <p7:message name="wired.file.set_label" id="7012" version="2.0">
@@ -2691,6 +2749,10 @@
                 [field:wired.file.owner.read], [field:wired.file.owner.write], [field:wired.file.group],
                 [field:wired.file.group.read], [field:wired.file.group.write], [field:wired.file.everyone.read]
                 and [field:wired.file.everyone.write] should be set.
+
+                If [field:wired.file.type] is [enum:wired.file.type.sync], [field:wired.file.sync.user_mode],
+                [field:wired.file.sync.group_mode] and [field:wired.file.sync.everyone_mode] may also
+                be set to create the directory with an explicit sync policy.
             </p7:documentation>
             <p7:parameter field="wired.transaction" version="2.0" />
             <p7:parameter field="wired.file.path" use="required" version="2.0" />
@@ -2703,6 +2765,9 @@
             <p7:parameter field="wired.file.group.write" version="2.0" />
             <p7:parameter field="wired.file.everyone.read" version="2.0" />
             <p7:parameter field="wired.file.everyone.write" version="2.0" />
+            <p7:parameter field="wired.file.sync.user_mode" version="2.0" />
+            <p7:parameter field="wired.file.sync.group_mode" version="2.0" />
+            <p7:parameter field="wired.file.sync.everyone_mode" version="2.0" />
         </p7:message>
 
         <p7:message name="wired.file.search" id="7014" version="2.0">
@@ -2724,6 +2789,7 @@
             <p7:parameter field="wired.file.directory_count" version="2.0" />
             <p7:parameter field="wired.file.readable" version="2.0" />
             <p7:parameter field="wired.file.writable" version="2.0" />
+            <p7:parameter field="wired.file.sync.mode_effective" version="2.0" />
         </p7:message>
 
         <p7:message name="wired.file.search_list.done" id="7016" version="2.0">
@@ -3812,33 +3878,7 @@
                 <p7:reply message="wired.error" count="1" use="required" version="2.0" />
             </p7:or>
         </p7:transaction>
-
-        <p7:transaction message="wired.chat.send_typing" originator="client" version="3.1">
-            <p7:documentation>
-                [message:wired.error] should be replied with [enum:wired.error.chat_not_found]
-                if the chat is not the public chat or the chat has not been created.
-
-                [message:wired.error] should be replied with [enum:wired.error.not_on_chat] if the user is
-                not currently on the chat.
-
-                [message:wired.error] should be replied with [enum:wired.error.message_out_of_sequence]
-                if sent before [message:wired.client_info].
-
-                [message:wired.error] should be replied with [enum:wired.error.invalid_message] if the
-                message does not contain all the required parameters.
-
-                Otherwise, [message:wired.okay] should be replied.
-
-                Should cause [broadcast:wired.chat.typing] to be sent to the other users on the chat. A
-                server may also send [broadcast:wired.chat.typing] with false when the typing timeout
-                expires.
-            </p7:documentation>
-            <p7:or>
-                <p7:reply message="wired.okay" count="1" use="required" version="2.0" />
-                <p7:reply message="wired.error" count="1" use="required" version="2.0" />
-            </p7:or>
-        </p7:transaction>
-
+        
         <p7:transaction message="wired.chat.send_me" originator="client" version="2.0">
             <p7:documentation>
                 [message:wired.error] should be replied with [enum:wired.error.chat_not_found]
@@ -3902,7 +3942,33 @@
                 <p7:reply message="wired.error" count="1" use="required" version="2.0" />
             </p7:or>
         </p7:transaction>
-        
+
+        <p7:transaction message="wired.chat.send_typing" originator="client" version="3.1">
+            <p7:documentation>
+                [message:wired.error] should be replied with [enum:wired.error.chat_not_found]
+                if the chat is not the public chat or the chat has not been created.
+
+                [message:wired.error] should be replied with [enum:wired.error.not_on_chat] if the user is
+                not currently on the chat.
+
+                [message:wired.error] should be replied with [enum:wired.error.message_out_of_sequence]
+                if sent before [message:wired.client_info].
+
+                [message:wired.error] should be replied with [enum:wired.error.invalid_message] if the
+                message does not contain all the required parameters.
+
+                Otherwise, [message:wired.okay] should be replied.
+
+                Should cause [broadcast:wired.chat.typing] to be sent to the other users on the chat. A
+                server may also send [broadcast:wired.chat.typing] with false when the typing timeout
+                expires.
+            </p7:documentation>
+            <p7:or>
+                <p7:reply message="wired.okay" count="1" use="required" version="2.0" />
+                <p7:reply message="wired.error" count="1" use="required" version="2.0" />
+            </p7:or>
+        </p7:transaction>
+
         <p7:transaction message="wired.chat.invite_user" originator="client" version="2.0">
             <p7:documentation>
                 [message:wired.error] should be replied with [enum:wired.error.chat_not_found]
@@ -4469,6 +4535,32 @@
                 Should cause [message:wired.file.directory_changed] to be sent out to subscribed
                 users.
                 </p7:documentation>
+            <p7:or>
+                <p7:reply message="wired.okay" count="1" use="required" version="2.0" />
+                <p7:reply message="wired.error" count="1" use="required" version="2.0" />
+            </p7:or>
+        </p7:transaction>
+
+        <p7:transaction message="wired.file.set_sync_policy" originator="client" version="2.0">
+            <p7:documentation>
+                [message:wired.error] should be replied with [enum:wired.error.permission_denied]
+                if [field:wired.account.file.set_permissions] is not set for the user's account, or if the user
+                does not have applicable permissions for the directory.
+
+                [message:wired.error] should be replied with [enum:wired.error.file_not_found]
+                if the synchronized directory does not exist.
+
+                [message:wired.error] should be replied with [enum:wired.error.message_out_of_sequence]
+                if sent before [message:wired.client_info].
+
+                [message:wired.error] should be replied with [enum:wired.error.invalid_message] if the
+                message does not contain all the required parameters.
+
+                [message:wired.error] may be replied with [enum:wired.error.internal_error]
+                if an unknown error occurs.
+
+                Otherwise, [message:wired.okay] should be replied.
+            </p7:documentation>
             <p7:or>
                 <p7:reply message="wired.okay" count="1" use="required" version="2.0" />
                 <p7:reply message="wired.error" count="1" use="required" version="2.0" />
@@ -5408,7 +5500,7 @@
                 May be sent at any time to other users on a chat to reflect ephemeral typing state.
             </p7:documentation>
         </p7:broadcast>
-        
+
         <p7:broadcast message="wired.message.message" version="2.0">
             <p7:documentation>
                 May be sent at any time from any other user.

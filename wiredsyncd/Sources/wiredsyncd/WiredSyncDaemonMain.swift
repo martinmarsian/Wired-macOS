@@ -6,7 +6,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "4"
+private let kDaemonVersion = "7"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -29,6 +29,7 @@ struct SyncPair: Codable {
     var remotePath: String
     var localPath: String
     var mode: SyncMode
+    var deleteRemoteEnabled: Bool
     var endpoint: SyncEndpoint
     var paused: Bool
     var createdAt: Date
@@ -39,6 +40,7 @@ struct SyncPair: Codable {
         case remotePath
         case localPath
         case mode
+        case deleteRemoteEnabled
         case endpoint
         case paused
         case createdAt
@@ -56,6 +58,7 @@ struct SyncPair: Codable {
         remotePath: String,
         localPath: String,
         mode: SyncMode,
+        deleteRemoteEnabled: Bool,
         endpoint: SyncEndpoint,
         paused: Bool,
         createdAt: Date,
@@ -65,6 +68,7 @@ struct SyncPair: Codable {
         self.remotePath = remotePath
         self.localPath = localPath
         self.mode = mode
+        self.deleteRemoteEnabled = deleteRemoteEnabled
         self.endpoint = endpoint
         self.paused = paused
         self.createdAt = createdAt
@@ -77,6 +81,7 @@ struct SyncPair: Codable {
         remotePath = try c.decode(String.self, forKey: .remotePath)
         localPath = try c.decode(String.self, forKey: .localPath)
         mode = try c.decodeIfPresent(SyncMode.self, forKey: .mode) ?? .bidirectional
+        deleteRemoteEnabled = try c.decodeIfPresent(Bool.self, forKey: .deleteRemoteEnabled) ?? false
         paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? false
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
@@ -98,6 +103,7 @@ struct SyncPair: Codable {
         try c.encode(remotePath, forKey: .remotePath)
         try c.encode(localPath, forKey: .localPath)
         try c.encode(mode, forKey: .mode)
+        try c.encode(deleteRemoteEnabled, forKey: .deleteRemoteEnabled)
         try c.encode(endpoint, forKey: .endpoint)
         try c.encode(paused, forKey: .paused)
         try c.encode(createdAt, forKey: .createdAt)
@@ -157,6 +163,7 @@ final class SQLiteStore {
           remote_path TEXT NOT NULL,
           local_path TEXT NOT NULL,
           mode TEXT NOT NULL,
+          delete_remote_enabled INTEGER NOT NULL DEFAULT 0,
           endpoint_json TEXT NOT NULL,
           paused INTEGER NOT NULL,
           created_at REAL NOT NULL,
@@ -182,6 +189,7 @@ final class SQLiteStore {
           PRIMARY KEY(pair_id, relative_path)
         );
         """)
+        try execute("ALTER TABLE sync_pairs ADD COLUMN delete_remote_enabled INTEGER NOT NULL DEFAULT 0;")
         try execute("ALTER TABLE sync_pairs ADD COLUMN endpoint_json TEXT;")
     }
 
@@ -206,12 +214,13 @@ final class SQLiteStore {
     func upsert(pair: SyncPair) throws {
         guard let db else { return }
         let sql = """
-        INSERT INTO sync_pairs(id, remote_path, local_path, mode, endpoint_json, paused, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sync_pairs(id, remote_path, local_path, mode, delete_remote_enabled, endpoint_json, paused, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           remote_path=excluded.remote_path,
           local_path=excluded.local_path,
           mode=excluded.mode,
+          delete_remote_enabled=excluded.delete_remote_enabled,
           endpoint_json=excluded.endpoint_json,
           paused=excluded.paused,
           updated_at=excluded.updated_at;
@@ -227,10 +236,11 @@ final class SQLiteStore {
         sqlite3_bind_text(stmt, 2, pair.remotePath, -1, SQLiteBindings.transient)
         sqlite3_bind_text(stmt, 3, pair.localPath, -1, SQLiteBindings.transient)
         sqlite3_bind_text(stmt, 4, pair.mode.rawValue, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 5, endpointJSON, -1, SQLiteBindings.transient)
-        sqlite3_bind_int(stmt, 6, pair.paused ? 1 : 0)
-        sqlite3_bind_double(stmt, 7, pair.createdAt.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 8, pair.updatedAt.timeIntervalSince1970)
+        sqlite3_bind_int(stmt, 5, pair.deleteRemoteEnabled ? 1 : 0)
+        sqlite3_bind_text(stmt, 6, endpointJSON, -1, SQLiteBindings.transient)
+        sqlite3_bind_int(stmt, 7, pair.paused ? 1 : 0)
+        sqlite3_bind_double(stmt, 8, pair.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 9, pair.updatedAt.timeIntervalSince1970)
 
         _ = sqlite3_step(stmt)
     }
@@ -328,6 +338,27 @@ final class SQLiteStore {
             sqlite3_finalize(deleteStmt)
         }
     }
+
+    func clearUploadedSnapshots(pairID: String) throws {
+        guard let db else { return }
+        let sql = "DELETE FROM uploaded_items WHERE pair_id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+        _ = sqlite3_step(stmt)
+    }
+
+    func removeUploadedSnapshot(pairID: String, relativePath: String) throws {
+        guard let db else { return }
+        let sql = "DELETE FROM uploaded_items WHERE pair_id = ? AND relative_path = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+        sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
+        _ = sqlite3_step(stmt)
+    }
 }
 
 final class DaemonState {
@@ -397,13 +428,20 @@ final class DaemonState {
         return config.pairs
     }
 
-    func addPair(remotePath: String, localPath: String, mode: SyncMode, endpoint: SyncEndpoint) throws -> SyncPair {
+    func addPair(
+        remotePath: String,
+        localPath: String,
+        mode: SyncMode,
+        deleteRemoteEnabled: Bool,
+        endpoint: SyncEndpoint
+    ) throws -> SyncPair {
         let now = Date()
         var pair = SyncPair(
             id: UUID().uuidString,
             remotePath: remotePath,
             localPath: localPath,
             mode: mode,
+            deleteRemoteEnabled: deleteRemoteEnabled,
             endpoint: endpoint,
             paused: false,
             createdAt: now,
@@ -424,11 +462,17 @@ final class DaemonState {
 
             if let index = matchingIndexes.first {
                 pair = config.pairs[index]
+                let policyChanged = pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled
                 pair.mode = mode
+                pair.deleteRemoteEnabled = deleteRemoteEnabled
                 pair.endpoint = endpoint
                 pair.paused = false
                 pair.updatedAt = now
                 config.pairs[index] = pair
+                if policyChanged {
+                    staleIDs.append("clear:\(pair.id)")
+                    dedupLogLines.append("pair.policy_reset_cache id=\(pair.id)")
+                }
 
                 // Keep one logical pair per (server_url, login, remote_path, local_path).
                 if matchingIndexes.count > 1 {
@@ -450,14 +494,18 @@ final class DaemonState {
         lock.unlock()
 
         for staleID in staleIDs {
-            try store.remove(id: staleID)
+            if staleID.hasPrefix("clear:") {
+                try store.clearUploadedSnapshots(pairID: String(staleID.dropFirst("clear:".count)))
+            } else {
+                try store.remove(id: staleID)
+            }
         }
         try store.upsert(pair: pair)
         try store.enqueue(pairID: pair.id, opKind: "rescan", payload: "{}")
         for line in dedupLogLines {
             appendLog(line)
         }
-        appendLog("pair.add id=\(pair.id) mode=\(pair.mode.rawValue) remote=\(pair.remotePath)")
+        appendLog("pair.add id=\(pair.id) mode=\(pair.mode.rawValue) delete_remote=\(pair.deleteRemoteEnabled) remote=\(pair.remotePath)")
         return pair
     }
 
@@ -518,7 +566,13 @@ final class DaemonState {
         return removedIDs
     }
 
-    func updatePairMode(remotePath: String, serverURL: String?, login: String?, mode: SyncMode) throws -> [String] {
+    func updatePairPolicy(
+        remotePath: String,
+        serverURL: String?,
+        login: String?,
+        mode: SyncMode,
+        deleteRemoteEnabled: Bool
+    ) throws -> [String] {
         lock.lock()
         let normalizedServer = serverURL?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedLogin = login?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -533,8 +587,9 @@ final class DaemonState {
             if let normalizedLogin, !normalizedLogin.isEmpty, pair.endpoint.login != normalizedLogin {
                 continue
             }
-            guard pair.mode != mode else { continue }
+            guard pair.mode != mode || pair.deleteRemoteEnabled != deleteRemoteEnabled else { continue }
             config.pairs[index].mode = mode
+            config.pairs[index].deleteRemoteEnabled = deleteRemoteEnabled
             config.pairs[index].updatedAt = Date()
             updatedPairs.append(config.pairs[index])
         }
@@ -554,8 +609,9 @@ final class DaemonState {
 
         for pair in updatedPairs {
             try store.upsert(pair: pair)
+            try store.clearUploadedSnapshots(pairID: pair.id)
             try store.enqueue(pairID: pair.id, opKind: "rescan", payload: "{}")
-            appendLog("pair.update_mode id=\(pair.id) mode=\(pair.mode.rawValue) remote=\(pair.remotePath)")
+            appendLog("pair.update_policy id=\(pair.id) mode=\(pair.mode.rawValue) delete_remote=\(pair.deleteRemoteEnabled) remote=\(pair.remotePath)")
         }
 
         return updatedPairs.map(\.id)
@@ -734,7 +790,7 @@ private final class SyncPairWorker {
                     remote: remote,
                     local: local,
                     url: url,
-                    allowRemotePrune: remoteInventoryAvailable
+                    allowRemotePrune: remoteInventoryAvailable && self.pair.deleteRemoteEnabled
                 )
             }
         case .bidirectional:
@@ -871,7 +927,14 @@ private final class SyncPairWorker {
         let remoteFiles = remote.values.filter { !$0.isDirectory }.sorted { $0.relativePath < $1.relativePath }
         for entry in remoteFiles {
             if shouldPull(remote: entry, local: local[entry.relativePath]) {
-                try await downloadFile(spec: spec, url: url, remoteAbsolutePath: entry.absolutePath, localRelativePath: entry.relativePath)
+                try await downloadFile(
+                    spec: spec,
+                    url: url,
+                    remoteAbsolutePath: entry.absolutePath,
+                    localRelativePath: entry.relativePath,
+                    remoteModificationDate: entry.modificationDate
+                )
+                try store.removeUploadedSnapshot(pairID: pair.id, relativePath: entry.relativePath)
                 log("sync.pull pair=\(pair.id) path=\(entry.relativePath)")
             }
         }
@@ -881,6 +944,7 @@ private final class SyncPairWorker {
         let stale = localKeys.subtracting(remoteKeys).sorted { $0.count > $1.count }
         for rel in stale {
             try deleteLocal(relativePath: rel)
+            try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
             log("sync.delete_local pair=\(pair.id) path=\(rel)")
         }
     }
@@ -962,7 +1026,14 @@ private final class SyncPairWorker {
             switch (remoteEntry, localEntry) {
             case let (r?, nil):
                 if !r.isDirectory {
-                    try await downloadFile(spec: spec, url: url, remoteAbsolutePath: r.absolutePath, localRelativePath: rel)
+                    try await downloadFile(
+                        spec: spec,
+                        url: url,
+                        remoteAbsolutePath: r.absolutePath,
+                        localRelativePath: rel,
+                        remoteModificationDate: r.modificationDate
+                    )
+                    try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
                     log("sync.pull pair=\(pair.id) path=\(rel)")
                 }
 
@@ -970,40 +1041,88 @@ private final class SyncPairWorker {
                 if !l.isDirectory {
                     log("sync.push_try pair=\(pair.id) path=\(rel)")
                     try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                    try store.markUploaded(
+                        pairID: pair.id,
+                        relativePath: rel,
+                        size: l.size,
+                        modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                    )
                     log("sync.push pair=\(pair.id) path=\(rel)")
                 }
 
             case let (r?, l?):
                 guard !r.isDirectory && !l.isDirectory else { continue }
-                if r.size == l.size {
-                    continue
-                }
-
                 let remoteDate = r.modificationDate
                 let localDate = l.modificationDate
+                let sizeDiffers = r.size != l.size
+                let remoteTimestamp = remoteDate?.timeIntervalSince1970 ?? 0
+                let localTimestamp = localDate?.timeIntervalSince1970 ?? 0
+                let mtimeDiffers = abs(remoteTimestamp - localTimestamp) > 1.0
+
+                if !sizeDiffers && !mtimeDiffers {
+                    continue
+                }
 
                 if let remoteDate, let localDate {
                     let delta = remoteDate.timeIntervalSince(localDate)
                     if delta > 1.0 {
-                        try await downloadFile(spec: spec, url: url, remoteAbsolutePath: r.absolutePath, localRelativePath: rel)
+                        try await downloadFile(
+                            spec: spec,
+                            url: url,
+                            remoteAbsolutePath: r.absolutePath,
+                            localRelativePath: rel,
+                            remoteModificationDate: r.modificationDate
+                        )
+                        try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
                         log("sync.pull pair=\(pair.id) path=\(rel)")
                     } else if delta < -1.0 {
                         try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                        try store.markUploaded(
+                            pairID: pair.id,
+                            relativePath: rel,
+                            size: l.size,
+                            modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                        )
                         log("sync.push pair=\(pair.id) path=\(rel)")
                     } else {
                         // Avoid conflict amplification when mtimes are too close to compare reliably.
                         // Deterministic tie-break: local side wins.
                         try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                        try store.markUploaded(
+                            pairID: pair.id,
+                            relativePath: rel,
+                            size: l.size,
+                            modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                        )
                         log("sync.push pair=\(pair.id) path=\(rel) reason=mtime_tie")
                     }
                 } else if remoteDate != nil {
-                    try await downloadFile(spec: spec, url: url, remoteAbsolutePath: r.absolutePath, localRelativePath: rel)
+                    try await downloadFile(
+                        spec: spec,
+                        url: url,
+                        remoteAbsolutePath: r.absolutePath,
+                        localRelativePath: rel,
+                        remoteModificationDate: r.modificationDate
+                    )
+                    try store.removeUploadedSnapshot(pairID: pair.id, relativePath: rel)
                     log("sync.pull pair=\(pair.id) path=\(rel) reason=remote_mtime_only")
                 } else if localDate != nil {
                     try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                    try store.markUploaded(
+                        pairID: pair.id,
+                        relativePath: rel,
+                        size: l.size,
+                        modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                    )
                     log("sync.push pair=\(pair.id) path=\(rel) reason=local_mtime_only")
                 } else {
                     try await uploadFile(spec: spec, url: url, localRelativePath: rel, remoteRelativePath: rel)
+                    try store.markUploaded(
+                        pairID: pair.id,
+                        relativePath: rel,
+                        size: l.size,
+                        modificationTime: l.modificationDate?.timeIntervalSince1970 ?? 0
+                    )
                     log("sync.push pair=\(pair.id) path=\(rel) reason=no_mtime")
                 }
 
@@ -1022,7 +1141,13 @@ private final class SyncPairWorker {
             try FileManager.default.copyItem(atPath: localPath, toPath: localConflict)
         }
 
-        try await downloadFile(spec: spec, url: url, remoteAbsolutePath: remoteAbsolutePath, localRelativePath: relativePath)
+        try await downloadFile(
+            spec: spec,
+            url: url,
+            remoteAbsolutePath: remoteAbsolutePath,
+            localRelativePath: relativePath,
+            remoteModificationDate: nil
+        )
         if FileManager.default.fileExists(atPath: localConflict) {
             try await uploadFile(spec: spec, url: url, localRelativePath: normalizedRelative(path: localConflict, root: pair.localPath), remoteRelativePath: remoteConflictRelative)
         }
@@ -1033,13 +1158,30 @@ private final class SyncPairWorker {
     private func shouldPull(remote: RemoteEntry, local: LocalEntry?) -> Bool {
         guard let local else { return true }
         guard !local.isDirectory else { return true }
-        return remote.size != local.size
+        if remote.size != local.size {
+            return true
+        }
+        let remoteModificationTime = remote.modificationDate?.timeIntervalSince1970 ?? 0
+        let localModificationTime = local.modificationDate?.timeIntervalSince1970 ?? 0
+        return abs(remoteModificationTime - localModificationTime) > 1.0
     }
 
     private func shouldPush(local: LocalEntry, remote: RemoteEntry?) -> Bool {
         guard let remote else { return true }
         guard !remote.isDirectory else { return true }
-        return local.size != remote.size
+        if local.size != remote.size {
+            return true
+        }
+        if let snapshot = store.uploadedSnapshot(pairID: pair.id, relativePath: local.relativePath) {
+            let localModificationTime = local.modificationDate?.timeIntervalSince1970 ?? 0
+            if snapshot.size == local.size,
+               abs(snapshot.modificationTime - localModificationTime) <= 1.0 {
+                return false
+            }
+        }
+        let localModificationTime = local.modificationDate?.timeIntervalSince1970 ?? 0
+        let remoteModificationTime = remote.modificationDate?.timeIntervalSince1970 ?? 0
+        return abs(localModificationTime - remoteModificationTime) > 1.0
     }
 
     private func shouldPushWithoutRemoteInventory(local: LocalEntry) -> Bool {
@@ -1082,7 +1224,13 @@ private final class SyncPairWorker {
         try FileManager.default.removeItem(atPath: absolute)
     }
 
-    private func downloadFile(spec: P7Spec, url: Url, remoteAbsolutePath: String, localRelativePath: String) async throws {
+    private func downloadFile(
+        spec: P7Spec,
+        url: Url,
+        remoteAbsolutePath: String,
+        localRelativePath: String,
+        remoteModificationDate: Date?
+    ) async throws {
         let tconn = AsyncConnection(withSpec: spec)
         tconn.interactive = false
         try tconn.connect(withUrl: url)
@@ -1127,6 +1275,9 @@ private final class SyncPairWorker {
             try FileManager.default.removeItem(atPath: localPath)
         }
         try FileManager.default.moveItem(atPath: tmpPath, toPath: localPath)
+        if let remoteModificationDate {
+            try? FileManager.default.setAttributes([.modificationDate: remoteModificationDate], ofItemAtPath: localPath)
+        }
     }
 
     private func uploadFile(spec: P7Spec, url: Url, localRelativePath: String, remoteRelativePath: String) async throws {
@@ -1487,6 +1638,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 "remote_path": pair.remotePath,
                 "local_path": pair.localPath,
                 "mode": pair.mode.rawValue,
+                "delete_remote_enabled": pair.deleteRemoteEnabled ? "true" : "false",
                 "server_url": pair.endpoint.serverURL,
                 "login": pair.endpoint.login,
                 "paused": pair.paused ? "true" : "false"
@@ -1501,6 +1653,8 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
             return
         }
         let mode = SyncMode(rawValue: params["mode"] ?? "bidirectional") ?? .bidirectional
+        let deleteRemoteEnabledRaw = (params["delete_remote_enabled"] ?? "false").lowercased()
+        let deleteRemoteEnabled = deleteRemoteEnabledRaw == "true" || deleteRemoteEnabledRaw == "1"
         let endpoint = SyncEndpoint(
             serverURL: params["server_url"] ?? "",
             login: params["login"] ?? "",
@@ -1512,7 +1666,13 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
         }
 
         do {
-            let pair = try state.addPair(remotePath: remotePath, localPath: localPath, mode: mode, endpoint: endpoint)
+            let pair = try state.addPair(
+                remotePath: remotePath,
+                localPath: localPath,
+                mode: mode,
+                deleteRemoteEnabled: deleteRemoteEnabled,
+                endpoint: endpoint
+            )
             respondResult(id: req.id, result: ["ok": true, "pair_id": pair.id], fd: fd)
         } catch {
             respondError(id: req.id, code: -32000, message: "add_pair failed: \(error.localizedDescription)", fd: fd)
@@ -1550,7 +1710,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
             respondError(id: req.id, code: -32000, message: "remove_pair_for_remote failed: \(error.localizedDescription)", fd: fd)
         }
 
-    case "update_pair_mode":
+    case "update_pair_policy", "update_pair_mode":
         guard let remotePath = params["remote_path"] else {
             respondError(id: req.id, code: -32602, message: "remote_path required", fd: fd)
             return
@@ -1560,12 +1720,15 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
             respondError(id: req.id, code: -32602, message: "valid mode required", fd: fd)
             return
         }
+        let deleteRemoteEnabledRaw = (params["delete_remote_enabled"] ?? "false").lowercased()
+        let deleteRemoteEnabled = deleteRemoteEnabledRaw == "true" || deleteRemoteEnabledRaw == "1"
         do {
-            let updated = try state.updatePairMode(
+            let updated = try state.updatePairPolicy(
                 remotePath: remotePath,
                 serverURL: params["server_url"],
                 login: params["login"],
-                mode: mode
+                mode: mode,
+                deleteRemoteEnabled: deleteRemoteEnabled
             )
             respondResult(
                 id: req.id,
@@ -1577,7 +1740,7 @@ private func handleRequest(_ req: RPCRequest, state: DaemonState, engine: SyncEn
                 fd: fd
             )
         } catch {
-            respondError(id: req.id, code: -32000, message: "update_pair_mode failed: \(error.localizedDescription)", fd: fd)
+            respondError(id: req.id, code: -32000, message: "\(req.method) failed: \(error.localizedDescription)", fd: fd)
         }
 
     case "pause_pair":

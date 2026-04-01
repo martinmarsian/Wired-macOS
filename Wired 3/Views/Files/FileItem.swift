@@ -40,6 +40,28 @@ enum FileType: UInt32, CustomStringConvertible {
     }
 }
 
+enum SyncModeValue: String, CaseIterable, Identifiable {
+    case disabled = "disabled"
+    case serverToClient = "server_to_client"
+    case clientToServer = "client_to_server"
+    case bidirectional = "bidirectional"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .disabled:
+            return "Disabled"
+        case .serverToClient:
+            return "server_to_client"
+        case .clientToServer:
+            return "client_to_server"
+        case .bidirectional:
+            return "bidirectional"
+        }
+    }
+}
+
 public struct FileItem: Identifiable, Hashable {
     public let id = UUID()
     var name: String = ""
@@ -64,6 +86,10 @@ public struct FileItem: Identifiable, Hashable {
     var everyoneWrite = false
     var readable = false
     var writable = false
+    var syncUserMode: SyncModeValue = .disabled
+    var syncGroupMode: SyncModeValue = .disabled
+    var syncEveryoneMode: SyncModeValue = .disabled
+    var syncEffectiveMode: SyncModeValue = .disabled
     var uploadDataSize:UInt64 = 0
     var uploadRsrcSize:UInt64 = 0
     var dataTransferred:UInt64 = 0
@@ -134,6 +160,22 @@ public struct FileItem: Identifiable, Hashable {
         }
         if let value = message.bool(forField: "wired.file.writable") {
             self.writable = value
+        }
+        if let value = message.string(forField: "wired.file.sync.user_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncUserMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.group_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncGroupMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.everyone_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncEveryoneMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.mode_effective"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncEffectiveMode = mode
         }
     }
 }

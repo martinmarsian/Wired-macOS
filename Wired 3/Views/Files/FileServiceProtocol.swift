@@ -20,6 +20,12 @@ struct DropboxPermissions {
     let everyoneWrite: Bool
 }
 
+struct SyncPolicyPayload {
+    let userMode: SyncModeValue
+    let groupMode: SyncModeValue
+    let everyoneMode: SyncModeValue
+}
+
 protocol FileServiceProtocol {
     func listDirectory(
         path: String,
@@ -53,6 +59,12 @@ protocol FileServiceProtocol {
     func setFilePermissions(
         path: String,
         permissions: DropboxPermissions,
+        connection: AsyncConnection
+    ) async throws
+
+    func setFileSyncPolicy(
+        path: String,
+        policy: SyncPolicyPayload,
         connection: AsyncConnection
     ) async throws
 
@@ -211,6 +223,28 @@ final class FileService: FileServiceProtocol {
         message.addParameter(field: "wired.file.group.write", value: permissions.groupWrite)
         message.addParameter(field: "wired.file.everyone.read", value: permissions.everyoneRead)
         message.addParameter(field: "wired.file.everyone.write", value: permissions.everyoneWrite)
+
+        let response = try await connection.sendAsync(message)
+
+        if response?.name == "wired.error" {
+            throw WiredError(message: response!)
+        }
+    }
+
+    func setFileSyncPolicy(
+        path: String,
+        policy: SyncPolicyPayload,
+        connection: AsyncConnection
+    ) async throws {
+        let message = P7Message(
+            withName: "wired.file.set_sync_policy",
+            spec: spec!
+        )
+
+        message.addParameter(field: "wired.file.path", value: path)
+        message.addParameter(field: "wired.file.sync.user_mode", value: policy.userMode.rawValue)
+        message.addParameter(field: "wired.file.sync.group_mode", value: policy.groupMode.rawValue)
+        message.addParameter(field: "wired.file.sync.everyone_mode", value: policy.everyoneMode.rawValue)
 
         let response = try await connection.sendAsync(message)
 

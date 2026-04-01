@@ -654,6 +654,17 @@ final class FilesViewModel: ObservableObject {
     }
 
     @MainActor
+    func setFileSyncPolicy(path: String, policy: SyncPolicyPayload) async throws {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return }
+
+        try await withFileNetworkActivity {
+            try await fileService.setFileSyncPolicy(path: path, policy: policy, connection: connection)
+        }
+        await reloadAll()
+    }
+
+    @MainActor
     func listUserNames() async throws -> [String] {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return [] }
