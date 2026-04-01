@@ -622,7 +622,8 @@ enum WiredSyncDaemonIPC {
             ],
             "StandardOutPath": (logDir as NSString).appendingPathComponent("wiredsyncd.out.log"),
             "StandardErrorPath": (logDir as NSString).appendingPathComponent("wiredsyncd.err.log"),
-            "ProcessType": "Background"
+            "ProcessType": "Background",
+            "ThrottleInterval": 1
         ]
 
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
@@ -750,7 +751,7 @@ enum WiredSyncDaemonIPC {
         return stdout + stderr
     }
 
-    private static func waitForDaemonReady(timeout: TimeInterval = 5.0) throws {
+    private static func waitForDaemonReady(timeout: TimeInterval = 15.0) throws {
         let deadline = Date().addingTimeInterval(timeout)
         var lastError: Error?
 

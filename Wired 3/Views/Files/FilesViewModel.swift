@@ -634,12 +634,20 @@ final class FilesViewModel: ObservableObject {
         if isSyncFolder, let url = connection.url {
             let serverURL = "\(url.hostname):\(url.port)"
             let login     = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
-            try WiredSyncDaemonIPC.renamePairForRemote(
-                oldPath: path,
-                newPath: newPath,
-                serverURL: serverURL,
-                login: login
-            )
+            let oldPath   = path
+            let renamedTo = newPath
+            Task.detached(priority: .userInitiated) {
+                do {
+                    try WiredSyncDaemonIPC.renamePairForRemote(
+                        oldPath: oldPath,
+                        newPath: renamedTo,
+                        serverURL: serverURL,
+                        login: login
+                    )
+                } catch {
+                    print("[Files] rename sync pair failed: \(error.localizedDescription)")
+                }
+            }
         }
 
         return newPath
