@@ -75,8 +75,14 @@ struct MainView: View {
         return connectionController.runtime(for: id)
     }
 
+    private var defaultAppTitle: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String) ??
+        "Wired"
+    }
+
     private var tabTitle: String {
-        let baseTitle = windowConnectionName ?? "Wired 3"
+        let baseTitle = windowConnectionName ?? defaultAppTitle
 
         guard let runtime = windowRuntime else { return baseTitle }
         let hasConnectionIssue =
@@ -300,7 +306,7 @@ struct MainView: View {
                     }
             } else {
                 compactSidebarList
-                    .navigationTitle("Wired 3")
+                    .navigationTitle(defaultAppTitle)
                     .toolbar {
                         mainToolbar
                     }

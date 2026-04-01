@@ -211,7 +211,10 @@ private struct MainAppCommands: Commands {
 
 private enum OverlayGlyphs {
     static var aboutLabel: String {
-        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "App"
+        let appName =
+            (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
+            (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String) ??
+            "App"
         return "About \(appName)"
     }
 
@@ -715,7 +718,7 @@ struct Wired_3App: App {
 
     var body: some Scene {
 #if os(macOS)
-        WindowGroup("Wired 3", id: "main") {
+        WindowGroup(appDisplayName, id: "main") {
             AppRootView(appTerminationDelegate: appTerminationDelegate)
                 .environment(controller)
                 .environment(errorLogStore)
@@ -751,6 +754,12 @@ struct Wired_3App: App {
         .modelContainer(sharedModelContainer)
 #endif
     }
+}
+
+private var appDisplayName: String {
+    (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
+    (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String) ??
+    "Wired"
 }
 
 #if os(macOS)

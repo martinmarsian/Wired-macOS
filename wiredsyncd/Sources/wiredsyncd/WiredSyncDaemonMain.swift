@@ -7,10 +7,26 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "14"
+private let kDaemonVersion = "15"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+}
+
+private final class DaemonClientInfoDelegate: ClientInfoDelegate {
+    private let applicationInfo = WiredApplicationInfo.current().overriding(name: "wiredsyncd")
+
+    func clientInfoApplicationName(for connection: Connection) -> String? {
+        applicationInfo.name
+    }
+
+    func clientInfoApplicationVersion(for connection: Connection) -> String? {
+        applicationInfo.version
+    }
+
+    func clientInfoApplicationBuild(for connection: Connection) -> String? {
+        applicationInfo.build
+    }
 }
 
 enum SyncMode: String, Codable {
@@ -956,6 +972,7 @@ private final class SyncPairWorker {
     private let secrets: KeychainSecretStore
     private let specPath: String
     private let log: (String) -> Void
+    private let clientInfoDelegate = DaemonClientInfoDelegate()
 
     init(pair: SyncPair, store: SQLiteStore, secrets: KeychainSecretStore, specPath: String, log: @escaping (String) -> Void) {
         self.pair = pair
@@ -1012,6 +1029,7 @@ private final class SyncPairWorker {
 
         let spec = P7Spec(withPath: specPath)
         let control = AsyncConnection(withSpec: spec)
+        control.clientInfoDelegate = clientInfoDelegate
         // AsyncConnection transaction streams require interactive listener mode.
         control.interactive = true
 
@@ -1565,6 +1583,7 @@ private final class SyncPairWorker {
         remoteModificationDate: Date?
     ) async throws {
         let tconn = AsyncConnection(withSpec: spec)
+        tconn.clientInfoDelegate = clientInfoDelegate
         tconn.interactive = false
         try tconn.connect(withUrl: url)
         defer { tconn.disconnect() }
@@ -1619,6 +1638,7 @@ private final class SyncPairWorker {
         let expectedSize = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
 
         let tconn = AsyncConnection(withSpec: spec)
+        tconn.clientInfoDelegate = clientInfoDelegate
         tconn.interactive = false
         try tconn.connect(withUrl: url)
         defer { tconn.disconnect() }

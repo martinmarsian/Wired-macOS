@@ -216,10 +216,18 @@ enum WiredSyncDaemonIPC {
     static let daemonResourcesPath = (daemonInstallPath as NSString).appendingPathComponent("Resources")
     static let installedDaemonPath = (daemonInstallPath as NSString).appendingPathComponent("wiredsyncd")
     static let launchAgentLabel = "fr.read-write.wiredsyncd"
+
+    private static var wiredSyncApplicationVersion: String? {
+        WiredApplicationInfo.current().version
+    }
+
+    private static var wiredSyncApplicationBuild: String? {
+        WiredApplicationInfo.current().build
+    }
     static let launchAgentPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
         .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     /// Must match `kDaemonVersion` in WiredSyncDaemonMain.swift.
-    static let expectedDaemonVersion = "14"
+    static let expectedDaemonVersion = "15"
 
     static func addPair(
         remotePath: String,
@@ -615,15 +623,24 @@ enum WiredSyncDaemonIPC {
         try? fm.removeItem(atPath: socketPath)
         print("[WiredSyncUI] launchd.install daemon=\(daemonPath) resource_root=\(daemonResourcesPath)")
 
+        var environmentVariables: [String: String] = [
+            "WIRED_SYNCD_RESOURCE_ROOT": daemonResourcesPath,
+            "WIRED_APPLICATION_NAME": "wiredsyncd"
+        ]
+        if let version = wiredSyncApplicationVersion {
+            environmentVariables["WIRED_APPLICATION_VERSION"] = version
+        }
+        if let build = wiredSyncApplicationBuild {
+            environmentVariables["WIRED_APPLICATION_BUILD"] = build
+        }
+
         let plist: [String: Any] = [
             "Label": launchAgentLabel,
             "ProgramArguments": [daemonPath],
             "RunAtLoad": true,
             "KeepAlive": true,
             "WorkingDirectory": daemonInstallPath,
-            "EnvironmentVariables": [
-                "WIRED_SYNCD_RESOURCE_ROOT": daemonResourcesPath
-            ],
+            "EnvironmentVariables": environmentVariables,
             "StandardOutPath": (logDir as NSString).appendingPathComponent("wiredsyncd.out.log"),
             "StandardErrorPath": (logDir as NSString).appendingPathComponent("wiredsyncd.err.log"),
             "ProcessType": "Background",

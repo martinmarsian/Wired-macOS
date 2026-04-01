@@ -104,7 +104,7 @@
 
 /* Begin PBXFileReference section */
 		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
-		4C0C2DB42EF436FE00213277 /* Wired 3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired 3.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C0C2DB42EF436FE00213277 /* Wired Client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired Client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DE02EF437DE00213277 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -464,8 +464,8 @@
 				4C0C2DEE2EF458E000213277 /* KeychainSwift */,
 				4C0C2E372EFF06BF00213277 /* DebouncedOnChange */,
 			);
-			productName = "Wired 3";
-			productReference = 4C0C2DB42EF436FE00213277 /* Wired 3.app */;
+			productName = "Wired Client";
+			productReference = 4C0C2DB42EF436FE00213277 /* Wired Client.app */;
 			productType = "com.apple.product-type.application";
 		};
 		4C0C2DC22EF4370000213277 /* Wired 3Tests */ = {
@@ -570,31 +570,6 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		4C90D0102FA1000100213277 /* Embed wiredsyncd */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/wiredsyncd",
-				"$(SRCROOT)/wiredsyncd/Package.swift",
-			);
-			name = "Embed wiredsyncd";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/wiredsyncd",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nDAEMON_SRC=\"${SRCROOT}/wiredsyncd\"\nif [ ! -f \"${DAEMON_SRC}/Package.swift\" ]; then\n  echo \"warning: wiredsyncd package not found at ${DAEMON_SRC}\"\n  exit 0\nfi\n\nxcrun --sdk macosx swift build --package-path \"${DAEMON_SRC}\" -c release\n\nDAEMON_BIN=\"${DAEMON_SRC}/.build/release/wiredsyncd\"\nif [ ! -x \"${DAEMON_BIN}\" ]; then\n  DAEMON_BIN=\"$(find \"${DAEMON_SRC}/.build\" -type f -name wiredsyncd -perm -111 | head -n 1)\"\nfi\n\nif [ -z \"${DAEMON_BIN:-}\" ] || [ ! -x \"${DAEMON_BIN}\" ]; then\n  echo \"error: unable to locate built wiredsyncd binary\"\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nDEST_BIN=\"${DEST_DIR}/wiredsyncd\"\nmkdir -p \"${DEST_DIR}\"\ncp \"${DAEMON_BIN}\" \"${DEST_BIN}\"\nchmod 755 \"${DEST_BIN}\"\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${DEST_BIN}\"\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXResourcesBuildPhase section */
 		4C0C2DB22EF436FE00213277 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -622,6 +597,31 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4C90D0102FA1000100213277 /* Embed wiredsyncd */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/wiredsyncd",
+				"$(SRCROOT)/wiredsyncd/Package.swift",
+			);
+			name = "Embed wiredsyncd";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/wiredsyncd",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nDAEMON_SRC=\"${SRCROOT}/wiredsyncd\"\nif [ ! -f \"${DAEMON_SRC}/Package.swift\" ]; then\n  echo \"warning: wiredsyncd package not found at ${DAEMON_SRC}\"\n  exit 0\nfi\n\nxcrun --sdk macosx swift build --package-path \"${DAEMON_SRC}\" -c release\n\nDAEMON_BIN=\"${DAEMON_SRC}/.build/release/wiredsyncd\"\nif [ ! -x \"${DAEMON_BIN}\" ]; then\n  DAEMON_BIN=\"$(find \"${DAEMON_SRC}/.build\" -type f -name wiredsyncd -perm -111 | head -n 1)\"\nfi\n\nif [ -z \"${DAEMON_BIN:-}\" ] || [ ! -x \"${DAEMON_BIN}\" ]; then\n  echo \"error: unable to locate built wiredsyncd binary\"\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nDEST_BIN=\"${DEST_DIR}/wiredsyncd\"\nmkdir -p \"${DEST_DIR}\"\ncp \"${DAEMON_BIN}\" \"${DEST_BIN}\"\nchmod 755 \"${DEST_BIN}\"\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${DEST_BIN}\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4C0C2DB02EF436FE00213277 /* Sources */ = {
@@ -754,7 +754,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Wired 3";
+				INFOPLIST_KEY_CFBundleDisplayName = "Wired Client";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				"INFOPLIST_KEY_LSMinimumSystemVersion[sdk=macosx*]" = "$(MACOSX_DEPLOYMENT_TARGET)";
 				"INFOPLIST_KEY_NSPrincipalClass[sdk=macosx*]" = NSApplication;
@@ -775,7 +775,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
@@ -814,7 +814,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Wired 3";
+				INFOPLIST_KEY_CFBundleDisplayName = "Wired Client";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				"INFOPLIST_KEY_LSMinimumSystemVersion[sdk=macosx*]" = "$(MACOSX_DEPLOYMENT_TARGET)";
 				"INFOPLIST_KEY_NSPrincipalClass[sdk=macosx*]" = NSApplication;
@@ -835,7 +835,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
@@ -875,7 +875,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired 3.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired 3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired Client.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired Client";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Debug;
@@ -905,7 +905,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired 3.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired 3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired Client.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired Client";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Release;

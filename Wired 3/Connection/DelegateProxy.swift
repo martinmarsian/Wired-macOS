@@ -12,6 +12,7 @@ import WiredSwift
 final class DelegateProxy: NSObject, ConnectionDelegate, ClientInfoDelegate, ServerInfoDelegate {
     let id: UUID
     private let onEvent: (SocketEvent) -> Void
+    private let applicationInfo: WiredApplicationInfo
 
     init(
         id: UUID,
@@ -19,6 +20,7 @@ final class DelegateProxy: NSObject, ConnectionDelegate, ClientInfoDelegate, Ser
     ) {
         self.id = id
         self.onEvent = onEvent
+        self.applicationInfo = WiredApplicationInfo.current()
     }
 
     // MARK: - ConnectionDelegate
@@ -55,15 +57,15 @@ final class DelegateProxy: NSObject, ConnectionDelegate, ClientInfoDelegate, Ser
     // MARK: -
     
     func clientInfoApplicationName(for connection: Connection) -> String? {
-        return Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String
+        return applicationInfo.name
     }
     
     func clientInfoApplicationVersion(for connection: Connection) -> String? {
-        return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        return applicationInfo.version
     }
     
     func clientInfoApplicationBuild(for connection: Connection) -> String? {
-        return Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        return applicationInfo.build
     }
     
     // MARK: -
