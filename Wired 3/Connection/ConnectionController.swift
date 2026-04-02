@@ -782,20 +782,6 @@ final class ConnectionController {
         }
     }
     
-    // MARK: - IdleTimers
-    
-    @MainActor func startIdleTimers() {
-        for r in runtimeStores {
-            r.startIdleTimer()
-        }
-    }
-
-    @MainActor func stopIdleTimers() {
-        for r in runtimeStores {
-            r.stopIdleTimer()
-        }
-    }
-
     // MARK: - Public API
 
     func connect(_ bookmark: Bookmark) {
@@ -841,10 +827,6 @@ final class ConnectionController {
             for attempt in 1...maxConnectAttempts {
                 do {
                     let stream = await socketClient.connect(configuration: configuration)
-
-                    await MainActor.run {
-                        self.startIdleTimers()
-                    }
 
                     for try await event in stream {
                         await handle(event)

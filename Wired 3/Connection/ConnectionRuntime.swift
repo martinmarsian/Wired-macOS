@@ -228,10 +228,6 @@ final class ConnectionRuntime: Identifiable {
     var autoReconnectInterval: TimeInterval = 0
     var autoReconnectNextAttemptAt: Date? = nil
 
-    let idleTimeout = 10.0
-    var lastMessageSentAt: Date = .now
-    private(set) var isIdle: Bool = false
-    private var timerTask: Task<Void, Never>?
     private let incomingTypingTimeout: TimeInterval = 6.5
     @ObservationIgnored
     private var typingCleanupTask: Task<Void, Never>?
@@ -401,39 +397,6 @@ final class ConnectionRuntime: Identifiable {
         autoReconnectNextAttemptAt = nil
     }
     
-    // MARK: - Idle Timer
-    
-    private func evaluateIdleState() {
-        let elapsed = Date.now.timeIntervalSince(lastMessageSentAt)
-                
-        if elapsed >= idleTimeout, !isIdle {
-            isIdle = true
-            
-            let message = P7Message(withName: "wired.user.set_idle", spec: spec)
-            
-            Task {
-                try? await connectionController.socketClient.send(message, on: id)
-            }
-        }
-    }
-    
-    func startIdleTimer() {
-        stopIdleTimer()
-
-        timerTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                
-                evaluateIdleState()
-            }
-        }
-    }
-
-    func stopIdleTimer() {
-        timerTask?.cancel()
-        timerTask = nil
-    }
-
     // MARK: - Typing Indicator
 
     private func startTypingCleanupTimer() {
@@ -1418,9 +1381,6 @@ final class ConnectionRuntime: Identifiable {
     // MARK: -
     
     func send(_ message: P7Message) async throws -> P7Message? {
-        isIdle = false
-        lastMessageSentAt = .now
-
         guard connection != nil else {
             throw AsyncConnectionError.notConnected
         }
