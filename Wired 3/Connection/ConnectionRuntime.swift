@@ -1873,6 +1873,13 @@ final class ConnectionRuntime: Identifiable {
             message.addParameter(field: "wired.chat.topic.topic", value: value)
             return message
 
+        case .broadcast:
+            let value = command.deletingPrefix(String(comps[0]) + " ")
+            guard !value.isEmpty, value != String(comps[0]) else { return nil }
+            let message = P7Message(withName: "wired.message.send_broadcast", spec: spec)
+            message.addParameter(field: "wired.message.broadcast", value: value)
+            return message
+
         case .help:
             let lines = ChatCommand.allCases.map { c -> String in
                 let h = c.hint.isEmpty ? "" : " \(c.hint)"
@@ -1883,7 +1890,7 @@ final class ConnectionRuntime: Identifiable {
             message.addParameter(field: "wired.chat.say", value: "Chat commands:\n\n" + lines)
             return message
 
-        case .clear, .broadcast, .stats, .afk:
+        case .clear, .stats, .afk:
             return nil
         }
     }
