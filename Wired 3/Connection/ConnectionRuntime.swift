@@ -1608,6 +1608,13 @@ final class ConnectionRuntime: Identifiable {
     
     func sendChatMessage( _ chatID: UInt32, _ text: String) async throws -> P7Message? {
         if text.starts(with: "/") {
+            if text == ChatCommand.clear.rawValue {
+                await MainActor.run {
+                    self.clearChat(chatID)
+                }
+                return nil
+            }
+
             if let message = self.chatCommand(chatID, text) {
                 return try await self.send(message)
             }
@@ -1619,6 +1626,13 @@ final class ConnectionRuntime: Identifiable {
         }
         
         return nil
+    }
+
+    @MainActor
+    private func clearChat(_ chatID: UInt32) {
+        guard let chat = chat(withID: chatID) else { return }
+        chat.messages.removeAll()
+        chat.clearAllTyping()
     }
     
     
