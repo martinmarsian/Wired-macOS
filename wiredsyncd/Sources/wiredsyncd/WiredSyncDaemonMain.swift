@@ -9,7 +9,7 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "18"
+private let kDaemonVersion = "27"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -265,11 +265,13 @@ final class PathLayout {
 
 final class SQLiteStore {
     private var db: OpaquePointer?
+    private let queue = DispatchQueue(label: "fr.read-write.wiredsyncd.sqlite")
 
     init(path: String) throws {
         if sqlite3_open(path, &db) != SQLITE_OK {
             throw NSError(domain: "wiredsyncd", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to open sqlite db"])
         }
+        try configureDatabase()
         try execute("""
         CREATE TABLE IF NOT EXISTS sync_pairs (
           id TEXT PRIMARY KEY,
@@ -309,59 +311,63 @@ final class SQLiteStore {
     }
 
     deinit {
-        if let db { sqlite3_close(db) }
+        let handle = queue.sync { db }
+        if let handle { sqlite3_close(handle) }
     }
 
     func execute(_ sql: String) throws {
-        guard let db else { return }
-        var err: UnsafeMutablePointer<Int8>?
-        if sqlite3_exec(db, sql, nil, nil, &err) != SQLITE_OK {
-            let msg = err.map { String(cString: $0) } ?? "sqlite error"
-            sqlite3_free(err)
-            // Ignore duplicate-column migration attempt
-            if msg.localizedCaseInsensitiveContains("duplicate column") {
-                return
+        try queue.sync {
+            guard let db else { return }
+            var err: UnsafeMutablePointer<Int8>?
+            if sqlite3_exec(db, sql, nil, nil, &err) != SQLITE_OK {
+                let msg = err.map { String(cString: $0) } ?? sqliteMessage(db)
+                sqlite3_free(err)
+                // Ignore duplicate-column migration attempt
+                if msg.localizedCaseInsensitiveContains("duplicate column") {
+                    return
+                }
+                throw NSError(domain: "wiredsyncd", code: 2, userInfo: [NSLocalizedDescriptionKey: msg])
             }
-            throw NSError(domain: "wiredsyncd", code: 2, userInfo: [NSLocalizedDescriptionKey: msg])
         }
     }
 
     func upsert(pair: SyncPair) throws {
-        guard let db else { return }
-        let sql = """
-        INSERT INTO sync_pairs(id, remote_path, local_path, mode, delete_remote_enabled, exclude_patterns, endpoint_json, paused, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          remote_path=excluded.remote_path,
-          local_path=excluded.local_path,
-          mode=excluded.mode,
-          delete_remote_enabled=excluded.delete_remote_enabled,
-          exclude_patterns=excluded.exclude_patterns,
-          endpoint_json=excluded.endpoint_json,
-          paused=excluded.paused,
-          updated_at=excluded.updated_at;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
         let endpointData = try JSONEncoder().encode(pair.endpoint)
         let endpointJSON = String(decoding: endpointData, as: UTF8.self)
-
         let excludePatternsJSON = pair.excludePatterns.joined(separator: "\n")
 
-        sqlite3_bind_text(stmt, 1, pair.id, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 2, pair.remotePath, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 3, pair.localPath, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 4, pair.mode.rawValue, -1, SQLiteBindings.transient)
-        sqlite3_bind_int(stmt, 5, pair.deleteRemoteEnabled ? 1 : 0)
-        sqlite3_bind_text(stmt, 6, excludePatternsJSON, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 7, endpointJSON, -1, SQLiteBindings.transient)
-        sqlite3_bind_int(stmt, 8, pair.paused ? 1 : 0)
-        sqlite3_bind_double(stmt, 9, pair.createdAt.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 10, pair.updatedAt.timeIntervalSince1970)
+        try queue.sync {
+            guard let db else { return }
+            let sql = """
+            INSERT INTO sync_pairs(id, remote_path, local_path, mode, delete_remote_enabled, exclude_patterns, endpoint_json, paused, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              remote_path=excluded.remote_path,
+              local_path=excluded.local_path,
+              mode=excluded.mode,
+              delete_remote_enabled=excluded.delete_remote_enabled,
+              exclude_patterns=excluded.exclude_patterns,
+              endpoint_json=excluded.endpoint_json,
+              paused=excluded.paused,
+              updated_at=excluded.updated_at;
+            """
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
 
-        _ = sqlite3_step(stmt)
+            sqlite3_bind_text(stmt, 1, pair.id, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 2, pair.remotePath, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 3, pair.localPath, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 4, pair.mode.rawValue, -1, SQLiteBindings.transient)
+            sqlite3_bind_int(stmt, 5, pair.deleteRemoteEnabled ? 1 : 0)
+            sqlite3_bind_text(stmt, 6, excludePatternsJSON, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 7, endpointJSON, -1, SQLiteBindings.transient)
+            sqlite3_bind_int(stmt, 8, pair.paused ? 1 : 0)
+            sqlite3_bind_double(stmt, 9, pair.createdAt.timeIntervalSince1970)
+            sqlite3_bind_double(stmt, 10, pair.updatedAt.timeIntervalSince1970)
+
+            try stepDone(db, stmt: stmt)
+        }
     }
 
     func remove(id: String) throws {
@@ -370,113 +376,151 @@ final class SQLiteStore {
     }
 
     func enqueue(pairID: String, opKind: String, payload: String) throws {
-        guard let db else { return }
-        let sql = "INSERT INTO op_queue(pair_id, op_kind, payload, created_at) VALUES(?, ?, ?, ?);"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 2, opKind, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 3, payload, -1, SQLiteBindings.transient)
-        sqlite3_bind_double(stmt, 4, Date().timeIntervalSince1970)
-        _ = sqlite3_step(stmt)
+        try queue.sync {
+            guard let db else { return }
+            let sql = "INSERT INTO op_queue(pair_id, op_kind, payload, created_at) VALUES(?, ?, ?, ?);"
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 2, opKind, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 3, payload, -1, SQLiteBindings.transient)
+            sqlite3_bind_double(stmt, 4, Date().timeIntervalSince1970)
+            try stepDone(db, stmt: stmt)
+        }
     }
 
     func queueDepth() -> Int {
-        guard let db else { return 0 }
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM op_queue;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
-        defer { sqlite3_finalize(stmt) }
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
-        return Int(sqlite3_column_int(stmt, 0))
+        queue.sync {
+            guard let db else { return 0 }
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM op_queue;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+            return Int(sqlite3_column_int(stmt, 0))
+        }
     }
 
     func uploadedSnapshot(pairID: String, relativePath: String) -> UploadedItemSnapshot? {
-        guard let db else { return nil }
-        let sql = """
-        SELECT relative_path, size, modification_time
-        FROM uploaded_items
-        WHERE pair_id = ? AND relative_path = ?;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-        let path = sqlite3_column_text(stmt, 0).map { String(cString: $0) } ?? relativePath
-        let size = UInt64(max(0, sqlite3_column_int64(stmt, 1)))
-        let modificationTime = sqlite3_column_double(stmt, 2)
-        return UploadedItemSnapshot(relativePath: path, size: size, modificationTime: modificationTime)
+        queue.sync {
+            guard let db else { return nil }
+            let sql = """
+            SELECT relative_path, size, modification_time
+            FROM uploaded_items
+            WHERE pair_id = ? AND relative_path = ?;
+            """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+            let path = sqlite3_column_text(stmt, 0).map { String(cString: $0) } ?? relativePath
+            let size = UInt64(max(0, sqlite3_column_int64(stmt, 1)))
+            let modificationTime = sqlite3_column_double(stmt, 2)
+            return UploadedItemSnapshot(relativePath: path, size: size, modificationTime: modificationTime)
+        }
     }
 
     func markUploaded(pairID: String, relativePath: String, size: UInt64, modificationTime: TimeInterval) throws {
-        guard let db else { return }
-        let sql = """
-        INSERT INTO uploaded_items(pair_id, relative_path, size, modification_time, updated_at)
-        VALUES(?, ?, ?, ?, ?)
-        ON CONFLICT(pair_id, relative_path) DO UPDATE SET
-          size=excluded.size,
-          modification_time=excluded.modification_time,
-          updated_at=excluded.updated_at;
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
-        sqlite3_bind_int64(stmt, 3, sqlite3_int64(size))
-        sqlite3_bind_double(stmt, 4, modificationTime)
-        sqlite3_bind_double(stmt, 5, Date().timeIntervalSince1970)
-        _ = sqlite3_step(stmt)
+        try queue.sync {
+            guard let db else { return }
+            let sql = """
+            INSERT INTO uploaded_items(pair_id, relative_path, size, modification_time, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(pair_id, relative_path) DO UPDATE SET
+              size=excluded.size,
+              modification_time=excluded.modification_time,
+              updated_at=excluded.updated_at;
+            """
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
+            sqlite3_bind_int64(stmt, 3, sqlite3_int64(size))
+            sqlite3_bind_double(stmt, 4, modificationTime)
+            sqlite3_bind_double(stmt, 5, Date().timeIntervalSince1970)
+            try stepDone(db, stmt: stmt)
+        }
     }
 
     func pruneUploadedSnapshots(pairID: String, keeping relativePaths: Set<String>) throws {
-        guard let db else { return }
-        let sql = "SELECT relative_path FROM uploaded_items WHERE pair_id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+        try queue.sync {
+            guard let db else { return }
+            let sql = "SELECT relative_path FROM uploaded_items WHERE pair_id = ?;"
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
 
-        var stalePaths: [String] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let path = sqlite3_column_text(stmt, 0).map { String(cString: $0) } ?? ""
-            if !relativePaths.contains(path) {
-                stalePaths.append(path)
+            var stalePaths: [String] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let path = sqlite3_column_text(stmt, 0).map { String(cString: $0) } ?? ""
+                if !relativePaths.contains(path) {
+                    stalePaths.append(path)
+                }
             }
-        }
 
-        let deleteSQL = "DELETE FROM uploaded_items WHERE pair_id = ? AND relative_path = ?;"
-        for stalePath in stalePaths {
-            var deleteStmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, deleteSQL, -1, &deleteStmt, nil) == SQLITE_OK else { continue }
-            sqlite3_bind_text(deleteStmt, 1, pairID, -1, SQLiteBindings.transient)
-            sqlite3_bind_text(deleteStmt, 2, stalePath, -1, SQLiteBindings.transient)
-            _ = sqlite3_step(deleteStmt)
-            sqlite3_finalize(deleteStmt)
+            let deleteSQL = "DELETE FROM uploaded_items WHERE pair_id = ? AND relative_path = ?;"
+            for stalePath in stalePaths {
+                var deleteStmt: OpaquePointer?
+                try prepare(db, sql: deleteSQL, into: &deleteStmt)
+                sqlite3_bind_text(deleteStmt, 1, pairID, -1, SQLiteBindings.transient)
+                sqlite3_bind_text(deleteStmt, 2, stalePath, -1, SQLiteBindings.transient)
+                try stepDone(db, stmt: deleteStmt)
+                sqlite3_finalize(deleteStmt)
+            }
         }
     }
 
     func clearUploadedSnapshots(pairID: String) throws {
-        guard let db else { return }
-        let sql = "DELETE FROM uploaded_items WHERE pair_id = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
-        _ = sqlite3_step(stmt)
+        try queue.sync {
+            guard let db else { return }
+            let sql = "DELETE FROM uploaded_items WHERE pair_id = ?;"
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+            try stepDone(db, stmt: stmt)
+        }
     }
 
     func removeUploadedSnapshot(pairID: String, relativePath: String) throws {
+        try queue.sync {
+            guard let db else { return }
+            let sql = "DELETE FROM uploaded_items WHERE pair_id = ? AND relative_path = ?;"
+            var stmt: OpaquePointer?
+            try prepare(db, sql: sql, into: &stmt)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
+            sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
+            try stepDone(db, stmt: stmt)
+        }
+    }
+
+    private func configureDatabase() throws {
         guard let db else { return }
-        let sql = "DELETE FROM uploaded_items WHERE pair_id = ? AND relative_path = ?;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, pairID, -1, SQLiteBindings.transient)
-        sqlite3_bind_text(stmt, 2, relativePath, -1, SQLiteBindings.transient)
-        _ = sqlite3_step(stmt)
+        sqlite3_busy_timeout(db, 5_000)
+        try execute("PRAGMA journal_mode=WAL;")
+        try execute("PRAGMA synchronous=NORMAL;")
+        try execute("PRAGMA foreign_keys=ON;")
+    }
+
+    private func prepare(_ db: OpaquePointer, sql: String, into stmt: inout OpaquePointer?) throws {
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw NSError(domain: "wiredsyncd", code: 3, userInfo: [NSLocalizedDescriptionKey: sqliteMessage(db)])
+        }
+    }
+
+    private func stepDone(_ db: OpaquePointer, stmt: OpaquePointer?) throws {
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw NSError(domain: "wiredsyncd", code: 4, userInfo: [NSLocalizedDescriptionKey: sqliteMessage(db)])
+        }
+    }
+
+    private func sqliteMessage(_ db: OpaquePointer) -> String {
+        sqlite3_errmsg(db).map { String(cString: $0) } ?? "sqlite error"
     }
 }
 
@@ -639,10 +683,13 @@ final class DaemonState {
     }
 
     func appendLog(_ line: String) {
+        let formatted = "\(ISO8601DateFormatter().string(from: Date())) \(line)"
         lock.lock()
-        logs.append("\(ISO8601DateFormatter().string(from: Date())) \(line)")
+        logs.append(formatted)
         if logs.count > 500 { logs.removeFirst(logs.count - 500) }
         lock.unlock()
+        fputs("wiredsyncd: \(formatted)\n", stdout)
+        fflush(stdout)
     }
 
     func tail(count: Int) -> [String] {
@@ -1187,17 +1234,18 @@ private final class SyncPairWorker {
     }
 
     func connectControlIfNeeded(connection control: AsyncConnection) async throws -> Url {
-        log("sync.connect pair=\(pair.id) endpoint=\(pair.endpoint.serverURL)")
+        log("sync.connect pair=\(pair.id) kind=control endpoint=\(pair.endpoint.serverURL)")
 
         let url = try makeURL(endpoint: resolvedEndpoint())
         try await withTimeout(seconds: 10, label: "connect") {
             try control.connect(withUrl: url)
         }
-        log("sync.connected pair=\(pair.id)")
+        log("sync.connected pair=\(pair.id) kind=control")
         return url
     }
 
     func disconnectControl(connection control: AsyncConnection) {
+        log("sync.disconnect pair=\(pair.id) kind=control")
         control.disconnect()
     }
 
@@ -1760,11 +1808,15 @@ private final class SyncPairWorker {
         localRelativePath: String,
         remoteModificationDate: Date?
     ) async throws {
+        log("sync.transfer_connect pair=\(pair.id) kind=download path=\(localRelativePath)")
         let tconn = AsyncConnection(withSpec: spec)
         tconn.clientInfoDelegate = clientInfoDelegate
         tconn.interactive = false
         try tconn.connect(withUrl: url)
-        defer { tconn.disconnect() }
+        defer {
+            log("sync.transfer_disconnect pair=\(pair.id) kind=download path=\(localRelativePath)")
+            tconn.disconnect()
+        }
 
         let localPath = localAbsolute(relativePath: localRelativePath)
         let parent = (localPath as NSString).deletingLastPathComponent
@@ -1815,11 +1867,15 @@ private final class SyncPairWorker {
         let attributes = try FileManager.default.attributesOfItem(atPath: localPath)
         let expectedSize = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
 
+        log("sync.transfer_connect pair=\(pair.id) kind=upload path=\(localRelativePath)")
         let tconn = AsyncConnection(withSpec: spec)
         tconn.clientInfoDelegate = clientInfoDelegate
         tconn.interactive = false
         try tconn.connect(withUrl: url)
-        defer { tconn.disconnect() }
+        defer {
+            log("sync.transfer_disconnect pair=\(pair.id) kind=upload path=\(localRelativePath)")
+            tconn.disconnect()
+        }
 
         let remoteAbsolutePath = remoteAbsolute(relativePath: remoteRelativePath)
 
@@ -1965,6 +2021,8 @@ private final class PairSession {
     private var shouldStop = false
     private var pendingSyncNow = false
     private var pendingReconnect = false
+    private var pendingSyncReason: String?
+    private var pendingReconnectReason: String?
     private var loopSignal: CheckedContinuation<Void, Never>?
     private var currentConnection: AsyncConnection?
     private var scheduledWakeTask: Task<Void, Never>?
@@ -1983,7 +2041,7 @@ private final class PairSession {
         lock.lock()
         guard task == nil else {
             lock.unlock()
-            signalSyncNow()
+            signalSyncNow(reason: "session_start_existing")
             return
         }
         shouldStop = false
@@ -2017,23 +2075,29 @@ private final class PairSession {
         state.appendLog("pair.session_stop id=\(pairID)")
     }
 
-    func signalSyncNow() {
-        resumeLoop(syncNow: true, reconnect: false, dueToTimeout: false)
+    func signalSyncNow(reason: String = "manual") {
+        resumeLoop(syncNow: true, reconnect: false, dueToTimeout: false, reason: reason)
     }
 
-    func signalReconnectNow() {
-        resumeLoop(syncNow: true, reconnect: true, dueToTimeout: false)
+    func signalReconnectNow(reason: String = "manual") {
+        resumeLoop(syncNow: true, reconnect: true, dueToTimeout: false, reason: reason)
     }
 
-    private func resumeLoop(syncNow: Bool, reconnect: Bool, dueToTimeout: Bool) {
+    private func resumeLoop(syncNow: Bool, reconnect: Bool, dueToTimeout: Bool, reason: String?) {
         let continuation: CheckedContinuation<Void, Never>?
         let connection: AsyncConnection?
         lock.lock()
         if syncNow {
             pendingSyncNow = true
+            if let reason {
+                pendingSyncReason = reason
+            }
         }
         if reconnect {
             pendingReconnect = true
+            if let reason {
+                pendingReconnectReason = reason
+            }
         }
         if dueToTimeout {
             wakeTimedOut = true
@@ -2123,44 +2187,55 @@ private final class PairSession {
         url: Url
     ) async -> Bool {
         var runImmediateCycle = true
+        var nextSyncAt = Date()
         while state.isRunning() && !isStopped {
             let decision = consumeSignals()
             if decision.forceReconnect {
-                state.appendLog("pair.reconnect_aborted id=\(pairID) reason=signal")
+                state.appendLog("pair.reconnect_aborted id=\(pairID) reason=\(decision.reconnectReason ?? "signal")")
                 return true
             }
 
-            if runImmediateCycle || decision.runSyncNow {
+            let now = Date()
+            let shouldRunSync = runImmediateCycle || decision.runSyncNow || now >= nextSyncAt
+            if shouldRunSync {
                 do {
                     state.setRuntimeStatus(pairID: pairID, state: .syncing, lastSyncStartedAt: .some(Date()))
-                    state.appendLog("pair.sync_cycle_start id=\(pairID)")
+                    let cycleReason = runImmediateCycle ? "initial_connect" : (decision.syncReason ?? "scheduled")
+                    state.appendLog("pair.sync_cycle_start id=\(pairID) reason=\(cycleReason)")
                     let remoteInventoryAvailable = try await worker.runCycle(connection: control, spec: spec, url: url)
+                    let completedAt = Date()
                     state.setRuntimeStatus(
                         pairID: pairID,
                         state: .connected,
                         lastError: .some(nil),
-                        lastSyncCompletedAt: .some(Date()),
+                        lastSyncCompletedAt: .some(completedAt),
                         remoteInventoryAvailable: .some(remoteInventoryAvailable)
                     )
-                    state.appendLog("pair.sync_cycle_done id=\(pairID)")
+                    state.appendLog("pair.sync_cycle_done id=\(pairID) reason=\(cycleReason)")
                     runImmediateCycle = false
+                    nextSyncAt = completedAt.addingTimeInterval(steadyStateSyncInterval)
+                    continue
                 } catch {
                     let shouldReconnect = handleCycleError(error, pair: pair, duringConnect: false)
                     if shouldReconnect {
                         return true
                     }
                     runImmediateCycle = false
+                    let retryAt = Date()
+                    nextSyncAt = retryAt.addingTimeInterval(steadyStateSyncInterval)
+                    continue
                 }
             }
 
-            runImmediateCycle = await waitForNextEvent()
+            let waitSeconds = max(0.1, nextSyncAt.timeIntervalSinceNow)
+            runImmediateCycle = await waitForNextEvent(seconds: waitSeconds)
         }
         return false
     }
 
     private func handleCycleError(_ error: Error, pair: SyncPair, duringConnect: Bool) -> Bool {
         let errorText = describeSyncError(error)
-        state.appendLog("pair.sync_cycle_error id=\(pairID) error=\(errorText)")
+        state.appendLog("pair.sync_cycle_error id=\(pairID) during_connect=\(duringConnect) error=\(errorText)")
 
         let nsError = error as NSError
         if nsError.domain == "wiredsyncd.sync", nsError.code == 950 {
@@ -2182,7 +2257,7 @@ private final class PairSession {
                 retryCount: retryCount,
                 nextRetryAt: .some(nextRetryAt)
             )
-            state.appendLog("pair.reconnecting id=\(pairID) error=\(errorText)")
+            state.appendLog("pair.reconnecting id=\(pairID) during_connect=\(duringConnect) error=\(errorText)")
             state.appendLog("pair.reconnect_scheduled id=\(pairID) retry=\(retryCount) at=\(ISO8601DateFormatter().string(from: nextRetryAt))")
             return true
         }
@@ -2191,20 +2266,20 @@ private final class PairSession {
         return false
     }
 
-    private func waitForNextEvent() async -> Bool {
+    private func waitForNextEvent(seconds: TimeInterval) async -> Bool {
         let decision = consumeSignals()
         if decision.forceReconnect || decision.runSyncNow {
             return decision.runSyncNow
         }
-        let timedOut = await waitForSignalOrTimeout(seconds: steadyStateSyncInterval)
-        return timedOut
+        _ = await waitForSignalOrTimeout(seconds: seconds, timeoutTriggersSync: false)
+        return false
     }
 
     private func sleepBeforeReconnect(delay: TimeInterval) async {
-        _ = await waitForSignalOrTimeout(seconds: delay)
+        _ = await waitForSignalOrTimeout(seconds: delay, timeoutTriggersSync: false)
     }
 
-    private func waitForSignalOrTimeout(seconds: TimeInterval) async -> Bool {
+    private func waitForSignalOrTimeout(seconds: TimeInterval, timeoutTriggersSync: Bool) async -> Bool {
         await withCheckedContinuation { continuation in
             var shouldResumeImmediately = false
             lock.lock()
@@ -2219,7 +2294,7 @@ private final class PairSession {
                     } catch {
                         return
                     }
-                    self.resumeLoop(syncNow: true, reconnect: false, dueToTimeout: true)
+                    self.resumeLoop(syncNow: timeoutTriggersSync, reconnect: false, dueToTimeout: true, reason: timeoutTriggersSync ? "timer" : nil)
                 }
                 scheduledWakeTask = timeoutTask
             }
@@ -2265,11 +2340,13 @@ private final class PairSession {
         return shouldStop
     }
 
-    private func consumeSignals() -> (runSyncNow: Bool, forceReconnect: Bool) {
+    private func consumeSignals() -> (runSyncNow: Bool, forceReconnect: Bool, syncReason: String?, reconnectReason: String?) {
         lock.lock()
-        let decision = (pendingSyncNow, pendingReconnect)
+        let decision = (pendingSyncNow, pendingReconnect, pendingSyncReason, pendingReconnectReason)
         pendingSyncNow = false
         pendingReconnect = false
+        pendingSyncReason = nil
+        pendingReconnectReason = nil
         lock.unlock()
         return decision
     }
@@ -2310,6 +2387,7 @@ private final class SyncEngine {
     private var wakeObserver: NSObjectProtocol?
     private var lastNetworkStatus: NWPath.Status?
     private var lastGlobalReconnectSignalAt: Date?
+    private let globalSignalDebounce: TimeInterval = 15
 
     init(state: DaemonState, specPath: String) {
         self.state = state
@@ -2428,7 +2506,7 @@ private final class SyncEngine {
                 startOrReplaceSession(for: pair.id)
                 launched += 1
             }
-            session(for: pair.id)?.signalSyncNow()
+            session(for: pair.id)?.signalSyncNow(reason: "sync_now_rpc")
         }
         return (pairs.count, launched)
     }
@@ -2458,7 +2536,7 @@ private final class SyncEngine {
     private func signalReconnectAll(reason: String, force: Bool = false) {
         lock.lock()
         let now = Date()
-        if !force, let last = lastGlobalReconnectSignalAt, now.timeIntervalSince(last) < 5 {
+        if !force, let last = lastGlobalReconnectSignalAt, now.timeIntervalSince(last) < globalSignalDebounce {
             lock.unlock()
             state.appendLog("daemon.reconnect_all_skipped reason=\(reason) debounce=true")
             return
@@ -2469,7 +2547,25 @@ private final class SyncEngine {
         lock.unlock()
         state.appendLog("daemon.reconnect_all reason=\(reason) sessions=\(sessions.count)")
         for session in sessions {
-            session.signalReconnectNow()
+            session.signalReconnectNow(reason: reason)
+        }
+    }
+
+    private func signalSyncAll(reason: String, force: Bool = false) {
+        lock.lock()
+        let now = Date()
+        if !force, let last = lastGlobalReconnectSignalAt, now.timeIntervalSince(last) < globalSignalDebounce {
+            lock.unlock()
+            state.appendLog("daemon.sync_all_skipped reason=\(reason) debounce=true")
+            return
+        }
+        lastGlobalReconnectSignalAt = now
+        let sessions: [PairSession]
+        sessions = Array(sessionsByPairID.values)
+        lock.unlock()
+        state.appendLog("daemon.sync_all reason=\(reason) sessions=\(sessions.count)")
+        for session in sessions {
+            session.signalSyncNow(reason: reason)
         }
     }
 
@@ -2490,7 +2586,11 @@ private final class SyncEngine {
             guard previous != current else { return }
 
             self.state.appendLog("daemon.network_path_changed from=\(previous) to=\(current)")
-            self.signalReconnectAll(reason: "network_path_changed", force: false)
+            if current == .unsatisfied {
+                self.state.appendLog("daemon.network_path_unavailable status=\(current)")
+                return
+            }
+            self.signalSyncAll(reason: "network_path_changed", force: false)
         }
         monitor.start(queue: DispatchQueue(label: "wiredsyncd.network-monitor"))
         networkMonitor = monitor
@@ -2503,7 +2603,7 @@ private final class SyncEngine {
             queue: nil
         ) { [weak self] _ in
             self?.state.appendLog("daemon.did_wake")
-            self?.signalReconnectAll(reason: "did_wake", force: true)
+            self?.signalSyncAll(reason: "did_wake", force: true)
         }
 
         wakeMonitorTask = Task.detached(priority: .background) { [weak self] in
@@ -2511,9 +2611,9 @@ private final class SyncEngine {
             while let self, self.state.isRunning() {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 let now = Date()
-                if now.timeIntervalSince(previous) > 45 {
+                if now.timeIntervalSince(previous) > 120 {
                     self.state.appendLog("daemon.sleep_wake_detected")
-                    self.signalReconnectAll(reason: "sleep_wake_detected", force: true)
+                    self.signalSyncAll(reason: "sleep_wake_detected", force: true)
                 }
                 previous = now
             }
