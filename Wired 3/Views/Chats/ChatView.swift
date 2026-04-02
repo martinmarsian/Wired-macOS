@@ -320,7 +320,7 @@ struct ConversationComposer: View {
                         suggestions: commandSuggestions,
                         selectedIndex: selectedSuggestionIndex
                     ) { command in
-                        text = command.rawValue + " "
+                        text = completionText(for: command)
                         commandSuggestions = []
                     }
                     .padding(.horizontal, 5)
@@ -456,12 +456,24 @@ struct ConversationComposer: View {
     }
 
     private func updateCommandSuggestions(for input: String) {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("/"), !trimmed.contains(" ") else {
+        let normalized = input.trimmingCharacters(in: .newlines)
+        guard normalized.hasPrefix("/") else {
             commandSuggestions = []
             return
         }
-        let filtered = ChatCommand.allCases.filter { $0.rawValue.hasPrefix(trimmed) }
+
+        guard !normalized.contains(" ") else {
+            commandSuggestions = []
+            return
+        }
+
+        let query = normalized.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else {
+            commandSuggestions = []
+            return
+        }
+
+        let filtered = ChatCommand.allCases.filter { $0.rawValue.hasPrefix(query) }
         commandSuggestions = filtered
         selectedSuggestionIndex = 0
     }
@@ -475,8 +487,12 @@ struct ConversationComposer: View {
     private func applySelectedSuggestion() {
         guard !commandSuggestions.isEmpty else { return }
         let command = commandSuggestions[selectedSuggestionIndex]
-        text = command.rawValue + " "
+        text = completionText(for: command)
         commandSuggestions = []
+    }
+
+    private func completionText(for command: ChatCommand) -> String {
+        command.hint.isEmpty ? command.rawValue : command.rawValue + " "
     }
 }
 
