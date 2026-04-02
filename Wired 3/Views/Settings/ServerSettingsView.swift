@@ -582,7 +582,7 @@ private struct GeneralServerSettingsView: View {
         defer { isLoading = false }
 
         do {
-            let message = P7Message(withName: "wired.settings.get_settings", spec: spec!)
+            let message = P7Message(withName: "wired.settings.get_settings", spec: spec)
             guard let response = try await connection.sendAsync(message) else { return }
 
             if response.name == "wired.error" {
@@ -642,7 +642,7 @@ private struct GeneralServerSettingsView: View {
         defer { isSaving = false }
 
         do {
-            let message = P7Message(withName: "wired.settings.set_settings", spec: spec!)
+            let message = P7Message(withName: "wired.settings.set_settings", spec: spec)
             message.addParameter(field: "wired.info.name", value: serverName)
             message.addParameter(field: "wired.info.description", value: serverDescription)
             message.addParameter(field: "wired.info.downloads", value: UInt32(clamping: maxDownloads))

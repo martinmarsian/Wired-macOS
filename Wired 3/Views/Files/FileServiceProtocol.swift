@@ -20,6 +20,15 @@ struct DropboxPermissions {
     let everyoneWrite: Bool
 }
 
+struct SyncPolicyPayload {
+    let userMode: SyncModeValue
+    let groupMode: SyncModeValue
+    let everyoneMode: SyncModeValue
+    let maxFileSizeBytes: UInt64
+    let maxTreeSizeBytes: UInt64
+    let excludePatterns: String
+}
+
 protocol FileServiceProtocol {
     func listDirectory(
         path: String,
@@ -56,6 +65,12 @@ protocol FileServiceProtocol {
         connection: AsyncConnection
     ) async throws
 
+    func setFileSyncPolicy(
+        path: String,
+        policy: SyncPolicyPayload,
+        connection: AsyncConnection
+    ) async throws
+
     func getFileInfo(
         path: String,
         connection: AsyncConnection
@@ -89,7 +104,7 @@ final class FileService: FileServiceProtocol {
 
         let message = P7Message(
             withName: "wired.file.list_directory",
-            spec: spec!
+            spec: spec
         )
         message.addParameter(field: "wired.file.path", value: path)
         message.addParameter(field: "wired.file.recursive", value: recursive)
@@ -118,7 +133,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.delete",
-            spec: spec!
+            spec: spec
         )
         
         message.addParameter(field: "wired.file.path", value: path)
@@ -137,7 +152,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.create_directory",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -157,7 +172,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.move",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: sourcePath)
@@ -179,7 +194,7 @@ final class FileService: FileServiceProtocol {
 
         let message = P7Message(
             withName: "wired.file.set_type",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -199,7 +214,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.set_permissions",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -219,13 +234,40 @@ final class FileService: FileServiceProtocol {
         }
     }
 
+    func setFileSyncPolicy(
+        path: String,
+        policy: SyncPolicyPayload,
+        connection: AsyncConnection
+    ) async throws {
+        let message = P7Message(
+            withName: "wired.file.set_sync_policy",
+            spec: spec
+        )
+
+        message.addParameter(field: "wired.file.path", value: path)
+        message.addParameter(field: "wired.file.sync.user_mode", value: policy.userMode.rawValue)
+        message.addParameter(field: "wired.file.sync.group_mode", value: policy.groupMode.rawValue)
+        message.addParameter(field: "wired.file.sync.everyone_mode", value: policy.everyoneMode.rawValue)
+        message.addParameter(field: "wired.file.sync.max_file_size_bytes", value: policy.maxFileSizeBytes)
+        message.addParameter(field: "wired.file.sync.max_tree_size_bytes", value: policy.maxTreeSizeBytes)
+        if !policy.excludePatterns.isEmpty {
+            message.addParameter(field: "wired.file.sync.exclude_patterns", value: policy.excludePatterns)
+        }
+
+        let response = try await connection.sendAsync(message)
+
+        if response?.name == "wired.error" {
+            throw WiredError(message: response!)
+        }
+    }
+
     func getFileInfo(
         path: String,
         connection: AsyncConnection
     ) async throws -> FileItem {
         let message = P7Message(
             withName: "wired.file.get_info",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -248,7 +290,7 @@ final class FileService: FileServiceProtocol {
     }
 
     func listUserNames(connection: AsyncConnection) async throws -> [String] {
-        let message = P7Message(withName: "wired.account.list_users", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_users", spec: spec)
         var values: [String] = []
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -267,7 +309,7 @@ final class FileService: FileServiceProtocol {
     }
 
     func listGroupNames(connection: AsyncConnection) async throws -> [String] {
-        let message = P7Message(withName: "wired.account.list_groups", spec: spec!)
+        let message = P7Message(withName: "wired.account.list_groups", spec: spec)
         var values: [String] = []
 
         for try await response in try connection.sendAndWaitMany(message) {
@@ -291,7 +333,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.subscribe_directory",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -309,7 +351,7 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.unsubscribe_directory",
-            spec: spec!
+            spec: spec
         )
 
         message.addParameter(field: "wired.file.path", value: path)
@@ -325,7 +367,7 @@ final class FileService: FileServiceProtocol {
         query: String,
         connection: AsyncConnection
     ) -> AsyncThrowingStream<FileItem, Error> {
-        let message = P7Message(withName: "wired.file.search", spec: spec!)
+        let message = P7Message(withName: "wired.file.search", spec: spec)
         message.addParameter(field: "wired.file.query", value: query)
 
         return AsyncThrowingStream { continuation in

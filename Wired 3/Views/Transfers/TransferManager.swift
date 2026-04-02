@@ -139,7 +139,7 @@ final class TransferManager: ObservableObject {
     func download(_ file: FileItem, with connectionID: UUID) {
         let destination: String
 
-        let isFolder = (file.type == .directory || file.type == .uploads || file.type == .dropbox)
+        let isFolder = (file.type.isDirectoryLike)
         if isFolder {
             // Download folders into Downloads/<foldername>
             destination = (downloadPath as NSString).appendingPathComponent(file.name)
@@ -247,7 +247,7 @@ final class TransferManager: ObservableObject {
         transfer.remotePath = file.path
         transfer.localPath = destination
         transfer.file = file
-        transfer.isFolder = (file.type == .directory || file.type == .uploads || file.type == .dropbox)
+        transfer.isFolder = (file.type.isDirectoryLike)
 
         // For folders, size/progress will be computed during listing.
         if !transfer.isFolder {

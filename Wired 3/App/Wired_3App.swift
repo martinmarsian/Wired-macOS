@@ -12,10 +12,10 @@ import WiredSwift
 import UserNotifications
 #if os(macOS)
 import AppKit
+import CoreText
 #endif
 
-let specURL = Bundle.main.url(forResource: "wired", withExtension: "xml")!
-let spec = P7Spec(withUrl: specURL)
+let spec = WiredProtocolSpec.bundledSpec()!
 let iconData = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")!.dataRepresentation
 
 let byteCountFormatter = ByteCountFormatter()
@@ -93,6 +93,19 @@ private struct MainAppCommands: Commands {
     let controller: ConnectionController
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button(OverlayGlyphs.aboutLabel) {
+                let optionPressed = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+
+                if optionPressed {
+                    OverlayInfoWindow.shared.present()
+                } else {
+                    NSApp.orderFrontStandardAboutPanel(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+        }
+
         CommandGroup(replacing: .appSettings) {
             Button("Settings...") {
                 openWindow(id: "settings")
@@ -193,6 +206,262 @@ private struct MainAppCommands: Commands {
             sourceWindow.tabGroup?.selectedWindow = newWindow
             newWindow.makeKeyAndOrderFront(nil)
         }
+    }
+}
+
+private enum OverlayGlyphs {
+    static var aboutLabel: String {
+        let appName =
+            (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
+            (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String) ??
+            "App"
+        return "About \(appName)"
+    }
+
+    static var leftLine: String { decode([130, 189, 190, 163, 178, 243, 135, 187, 190, 243, 132, 188, 161, 191, 183, 223], key: 0xE0) }
+    static var rightLine: String { decode([191, 128, 186, 185, 243, 135, 187, 190, 243, 189, 178, 163, 135], key: 0xF0) }
+    static var lowerLine: String { decode([166, 243, 135, 161, 186, 177, 166, 135, 182, 243, 135, 188, 243, 190, 161, 161, 186, 160, 160], key: 0xC7) }
+
+    private static func decode(_ bytes: [UInt8], key: UInt8) -> String {
+        String(bytes: bytes.map { $0 ^ key }, encoding: .utf8) ?? ""
+    }
+}
+
+private final class OverlayInfoWindow: NSWindow, NSWindowDelegate {
+    static let shared = OverlayInfoWindow()
+
+    private init() {
+        let frame = Self.bannerFrame()
+
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        let view = OverlayInfoView(frame: NSRect(origin: .zero, size: frame.size))
+        view.autoresizingMask = [.width, .height]
+
+        delegate = self
+        isReleasedWhenClosed = false
+        backgroundColor = .clear
+        isOpaque = false
+        level = .screenSaver
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        contentView = view
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func present() {
+        let frame = Self.bannerFrame()
+        setFrame(frame, display: false)
+        contentView?.frame = NSRect(origin: .zero, size: frame.size)
+        makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        close()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        close()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        close()
+    }
+
+    @objc private func applicationDidResignActive() {
+        close()
+    }
+
+    private static func bannerFrame() -> NSRect {
+        guard let mainScreen = NSScreen.main ?? NSScreen.screens.first else {
+            return NSRect(x: 0, y: 0, width: 1320, height: 120)
+        }
+
+        let width = mainScreen.frame.width
+        let height = max(90.0, width / 11.0)
+        return NSRect(
+            x: mainScreen.frame.minX,
+            y: mainScreen.frame.midY - (height / 2.0),
+            width: width,
+            height: height
+        )
+    }
+}
+
+private final class OverlayInfoView: NSView {
+    private var animationTimer: Timer?
+    private var animationPhase: CGFloat = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        startAnimation()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        startAnimation()
+    }
+
+    deinit {
+        animationTimer?.invalidate()
+    }
+
+    override var isOpaque: Bool {
+        false
+    }
+
+    private func startAnimation() {
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.animationPhase += 0.045
+            self.needsDisplay = true
+        }
+        animationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            return
+        }
+
+        let width = bounds.width
+        let baseFontSize = max(26.0, width / 13.8)
+        let fontSize = min(baseFontSize, max(22.0, bounds.height * 0.48))
+
+        let centeredParagraphStyle = NSMutableParagraphStyle()
+        centeredParagraphStyle.alignment = .center
+
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: fontSize),
+            .foregroundColor: NSColor.black
+        ]
+
+        let primaryLeft = NSAttributedString(string: OverlayGlyphs.leftLine, attributes: baseAttributes)
+        let primaryRight = NSMutableAttributedString(string: OverlayGlyphs.rightLine, attributes: baseAttributes)
+        let secondaryFont = NSFont.systemFont(ofSize: max(12.0, fontSize * 0.24), weight: .semibold)
+        let secondaryAttributes: [NSAttributedString.Key: Any] = [
+            .font: secondaryFont,
+            .paragraphStyle: centeredParagraphStyle
+        ]
+        let secondaryLine = NSAttributedString(string: OverlayGlyphs.lowerLine, attributes: secondaryAttributes)
+
+        let emphasisRange = (primaryRight.string as NSString).range(of: "E")
+        if emphasisRange.location != NSNotFound {
+            primaryRight.addAttribute(
+                .foregroundColor,
+                value: NSColor.red.shadow(withLevel: 0.5) ?? NSColor.red,
+                range: emphasisRange
+            )
+        }
+
+        let mainTextHeight = ceil(max(primaryLeft.size().height, primaryRight.size().height))
+        let secondaryHeight = max(14.0, ceil(secondaryLine.size().height))
+        let gap = max(8.0, fontSize * 0.20)
+        let topPadding = max(4.0, bounds.height * 0.03)
+        let mainAreaHeight = max(0.0, bounds.height - secondaryHeight - gap - topPadding)
+        let mainY = secondaryHeight + gap + max(0.0, (mainAreaHeight - mainTextHeight) * 0.5)
+        let mainRect = NSRect(x: 0, y: mainY, width: bounds.width, height: mainTextHeight)
+
+        let centerGap = max(18.0, fontSize * 0.45)
+        let leftSize = primaryLeft.size()
+        let rightSize = primaryRight.size()
+        let textY = mainRect.minY + (mainRect.height - max(leftSize.height, rightSize.height)) * 0.5
+
+        let leftOrigin = NSPoint(
+            x: max(8.0, bounds.midX - (centerGap * 0.5) - leftSize.width),
+            y: textY
+        )
+        primaryLeft.draw(at: leftOrigin)
+
+        let rightOriginX = min(bounds.width - rightSize.width - 8.0, bounds.midX + (centerGap * 0.5))
+        context.saveGState()
+        context.translateBy(x: rightOriginX + rightSize.width, y: 0)
+        context.scaleBy(x: -1, y: 1)
+        primaryRight.draw(at: NSPoint(x: 0, y: textY))
+        context.restoreGState()
+
+        let secondarySize = secondaryLine.size()
+        let secondaryRect = NSRect(
+            x: (bounds.width - secondarySize.width) * 0.5,
+            y: max(4.0, bounds.height * 0.03),
+            width: secondarySize.width,
+            height: secondaryHeight
+        )
+
+        context.saveGState()
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: secondaryRect.minX, y: secondaryRect.minY + (secondaryRect.height - secondarySize.height) * 0.5)
+        context.setTextDrawingMode(.clip)
+
+        let ctLine = CTLineCreateWithAttributedString(NSAttributedString(
+            string: OverlayGlyphs.lowerLine,
+            attributes: [.font: secondaryFont]
+        ))
+        CTLineDraw(ctLine, context)
+
+        let palette: [NSColor] = [
+            NSColor.systemPink.withAlphaComponent(0.36),
+            NSColor.systemOrange.withAlphaComponent(0.34),
+            NSColor.systemYellow.withAlphaComponent(0.30),
+            NSColor.systemGreen.withAlphaComponent(0.34),
+            NSColor.systemTeal.withAlphaComponent(0.36),
+            NSColor.systemBlue.withAlphaComponent(0.34),
+            NSColor.systemIndigo.withAlphaComponent(0.34),
+            NSColor.systemPurple.withAlphaComponent(0.36)
+        ]
+
+        let bandWidth = max(18.0, secondaryRect.width / 5.5)
+        for index in 0..<10 {
+            let phase = animationPhase + CGFloat(index) * 0.62
+            let x = secondaryRect.minX - bandWidth + CGFloat(index) * (bandWidth * 0.82) + sin(phase) * (bandWidth * 0.35)
+            let rect = NSRect(
+                x: x,
+                y: secondaryRect.minY - 6.0,
+                width: bandWidth,
+                height: secondaryRect.height + 12.0
+            )
+            context.setFillColor(palette[index % palette.count].cgColor)
+            context.fill(rect)
+        }
+
+        let glowX = secondaryRect.midX + cos(animationPhase * 1.6) * (secondaryRect.width * 0.23)
+        let glowY = secondaryRect.midY + sin(animationPhase * 2.1) * 2.0
+        let glowRect = NSRect(x: glowX - 34.0, y: glowY - 18.0, width: 68.0, height: 36.0)
+        context.setFillColor(NSColor.white.withAlphaComponent(0.18).cgColor)
+        context.fillEllipse(in: glowRect)
+
+        context.restoreGState()
+
+        let secondaryStrokeAttributes: [NSAttributedString.Key: Any] = [
+            .font: secondaryFont,
+            .foregroundColor: NSColor.black.withAlphaComponent(0.20),
+            .strokeColor: NSColor.black.withAlphaComponent(0.48),
+            .strokeWidth: 1.2,
+            .paragraphStyle: centeredParagraphStyle
+        ]
+        NSAttributedString(string: OverlayGlyphs.lowerLine, attributes: secondaryStrokeAttributes).draw(in: secondaryRect)
     }
 }
 #endif
@@ -351,7 +620,7 @@ struct Wired_3App: App {
     init() {
         let socket = SocketClient()
         let cc = ConnectionController(socketClient: socket)
-        let tm = TransferManager(spec: spec!, connectionController: cc)
+        let tm = TransferManager(spec: spec, connectionController: cc)
         
         self._controller = State(initialValue: cc)
         self._transfers = State(initialValue: tm)
@@ -449,7 +718,7 @@ struct Wired_3App: App {
 
     var body: some Scene {
 #if os(macOS)
-        WindowGroup("Wired 3", id: "main") {
+        WindowGroup(appDisplayName, id: "main") {
             AppRootView(appTerminationDelegate: appTerminationDelegate)
                 .environment(controller)
                 .environment(errorLogStore)
@@ -485,6 +754,12 @@ struct Wired_3App: App {
         .modelContainer(sharedModelContainer)
 #endif
     }
+}
+
+private var appDisplayName: String {
+    (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
+    (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String) ??
+    "Wired"
 }
 
 #if os(macOS)

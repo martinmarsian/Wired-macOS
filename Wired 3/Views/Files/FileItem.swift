@@ -14,6 +14,7 @@ enum FileType: UInt32, CustomStringConvertible {
     case directory  = 1
     case uploads    = 2
     case dropbox    = 3
+    case sync       = 4
     
     var description: String {
         switch self {
@@ -25,6 +26,38 @@ enum FileType: UInt32, CustomStringConvertible {
             "Uploads"
         case .dropbox:
             "Drop Box"
+        case .sync:
+            "Sync"
+        }
+    }
+
+    var isDirectoryLike: Bool {
+        self == .directory || self == .uploads || self == .dropbox || self == .sync
+    }
+
+    var isManagedAccessType: Bool {
+        self == .dropbox || self == .sync
+    }
+}
+
+enum SyncModeValue: String, CaseIterable, Identifiable {
+    case disabled = "disabled"
+    case serverToClient = "server_to_client"
+    case clientToServer = "client_to_server"
+    case bidirectional = "bidirectional"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .disabled:
+            return "Disabled"
+        case .serverToClient:
+            return "server_to_client"
+        case .clientToServer:
+            return "client_to_server"
+        case .bidirectional:
+            return "bidirectional"
         }
     }
 }
@@ -53,6 +86,13 @@ public struct FileItem: Identifiable, Hashable {
     var everyoneWrite = false
     var readable = false
     var writable = false
+    var syncUserMode: SyncModeValue = .disabled
+    var syncGroupMode: SyncModeValue = .disabled
+    var syncEveryoneMode: SyncModeValue = .disabled
+    var syncEffectiveMode: SyncModeValue = .disabled
+    var syncMaxFileSizeBytes: UInt64 = 0
+    var syncMaxTreeSizeBytes: UInt64 = 0
+    var syncExcludePatterns: String = ""
     var uploadDataSize:UInt64 = 0
     var uploadRsrcSize:UInt64 = 0
     var dataTransferred:UInt64 = 0
@@ -123,6 +163,31 @@ public struct FileItem: Identifiable, Hashable {
         }
         if let value = message.bool(forField: "wired.file.writable") {
             self.writable = value
+        }
+        if let value = message.string(forField: "wired.file.sync.user_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncUserMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.group_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncGroupMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.everyone_mode"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncEveryoneMode = mode
+        }
+        if let value = message.string(forField: "wired.file.sync.mode_effective"),
+           let mode = SyncModeValue(rawValue: value) {
+            self.syncEffectiveMode = mode
+        }
+        if let v = message.uint64(forField: "wired.file.sync.max_file_size_bytes") {
+            self.syncMaxFileSizeBytes = v
+        }
+        if let v = message.uint64(forField: "wired.file.sync.max_tree_size_bytes") {
+            self.syncMaxTreeSizeBytes = v
+        }
+        if let v = message.string(forField: "wired.file.sync.exclude_patterns") {
+            self.syncExcludePatterns = v
         }
     }
 }

@@ -177,7 +177,7 @@ actor TransferWorker {
             let localPath = (localRoot as NSString).appendingPathComponent(rel)
 
             switch e.type {
-            case .directory, .uploads, .dropbox:
+            case .directory, .uploads, .dropbox, .sync:
                 directories.insert(localPath)
             case .file:
                 let s = Int64(e.dataSize + e.rsrcSize)

@@ -1323,7 +1323,7 @@ final class ConnectionController {
                 runtime.resetBoards()
             }
 
-            let request = P7Message(withName: "wired.chat.get_chats", spec: spec!)
+            let request = P7Message(withName: "wired.chat.get_chats", spec: spec)
             _ = try? await runtime.send(request)
 
             // Keep board bootstrap off the main message-processing path:
@@ -1337,8 +1337,8 @@ final class ConnectionController {
         case "wired.account.privileges":
             var parsedPrivileges: [String: Any] = [:]
 
-            for fieldName in spec?.accountPrivileges ?? [] {
-                if let field = spec?.fieldsByName[fieldName] {
+            for fieldName in spec.accountPrivileges ?? [] {
+                if let field = spec.fieldsByName[fieldName] {
                     if field.type == .bool {
                         if let val = message.bool(forField: fieldName) {
                             parsedPrivileges[fieldName] = val

@@ -1,13 +1,13 @@
 {
-  "originHash" : "0ccde9f34aff806398a5b419f673014a8b37d98ff664ee0715ca5e41d953fd4e",
+  "originHash" : "c34492cfbd529762c04a5c328f3ad7d143c8713647f104ea7d014b2d700cceda",
   "pins" : [
     {
       "identity" : "aexml",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tadija/AEXML.git",
       "state" : {
-        "revision" : "8623e73b193386909566a9ca20203e33a09af142",
-        "version" : "4.5.0"
+        "revision" : "db806756c989760b35108146381535aec231092b",
+        "version" : "4.7.0"
       }
     },
     {
@@ -29,15 +29,6 @@
       }
     },
     {
-      "identity" : "debouncedonchange",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Tunous/DebouncedOnChange",
-      "state" : {
-        "revision" : "29a60e088293845364294ebc270831997e2a5873",
-        "version" : "2.0.0"
-      }
-    },
-    {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/groue/GRDB.swift.git",
@@ -47,57 +38,12 @@
       }
     },
     {
-      "identity" : "keychain-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/evgenyneu/keychain-swift",
-      "state" : {
-        "revision" : "5e1b02b6a9dac2a759a1d5dbc175c86bd192a608",
-        "version" : "24.0.0"
-      }
-    },
-    {
-      "identity" : "keychainaccess",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kishikawakatsumi/KeychainAccess",
-      "state" : {
-        "revision" : "b920ad7df3c73189dcdd4aa05c540849b2010dbf",
-        "version" : "4.1.0"
-      }
-    },
-    {
-      "identity" : "preferences",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sindresorhus/Preferences",
-      "state" : {
-        "revision" : "139484818fe4b6b89823fa462cab686b3a419928",
-        "version" : "1.0.1"
-      }
-    },
-    {
       "identity" : "queuer",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/FabrizioBrancati/Queuer.git",
       "state" : {
         "revision" : "52515108d0ac4616d9e15ffcc7ad986e300d31ff",
         "version" : "2.1.1"
-      }
-    },
-    {
-      "identity" : "reachability.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ashleymills/Reachability.swift",
-      "state" : {
-        "revision" : "98e968e7b6c1318fb61df23e347bc319761e8acb",
-        "version" : "5.0.0"
-      }
-    },
-    {
-      "identity" : "sparkle",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sparkle-project/Sparkle",
-      "state" : {
-        "revision" : "2a98381dfe72e24bf593c5c06d2c4fc1763c3f19",
-        "version" : "2.3.0"
       }
     },
     {
@@ -114,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "810496cf121e525d660cd0ea89a758740476b85f",
-        "version" : "1.5.1"
+        "revision" : "9f542610331815e29cc3821d3b6f488db8715517",
+        "version" : "1.6.0"
       }
     },
     {

@@ -70,13 +70,13 @@
 		4C8D12022F30000200213277 /* MessageConversationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D12122F30000200213277 /* MessageConversationRow.swift */; };
 		4C8D12042F30000200213277 /* MessageConversationMessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D12142F30000200213277 /* MessageConversationMessagesView.swift */; };
 		4C8D13012F30000300213277 /* UserDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D13112F30000300213277 /* UserDragPayload.swift */; };
+		4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4C90D0022FA1000100213277 /* SyncBadge.icns */; };
 		4C95F1642F56CB5F005CD1BA /* Board.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1612F56CB5F005CD1BA /* Board.swift */; };
 		4C95F1652F56CB5F005CD1BA /* BoardPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1622F56CB5F005CD1BA /* BoardPost.swift */; };
 		4C95F1662F56CB5F005CD1BA /* BoardThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1632F56CB5F005CD1BA /* BoardThread.swift */; };
 		4C95F16C2F56CB7D005CD1BA /* ReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */; };
 		4C95F16D2F56CB7D005CD1BA /* NewThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */; };
 		4C95F16E2F56CB7D005CD1BA /* BoardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1682F56CB7D005CD1BA /* BoardsView.swift */; };
-		4C95F1712F571884005CD1BA /* wired.xml in Resources */ = {isa = PBXBuildFile; fileRef = 4C95F1702F571884005CD1BA /* wired.xml */; };
 		4CA1B0012F70000100213277 /* BoardDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA1B0112F70000100213277 /* BoardDragPayload.swift */; };
 		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
 		4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDBA0022F80000100213277 /* RelativeDateText.swift */; };
@@ -104,7 +104,7 @@
 
 /* Begin PBXFileReference section */
 		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
-		4C0C2DB42EF436FE00213277 /* Wired 3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired 3.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C0C2DB42EF436FE00213277 /* Wired Client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired Client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DE02EF437DE00213277 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -156,6 +156,7 @@
 		4C62A7752F6852F200FB42E3 /* BackgroundEdgeFade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundEdgeFade.swift; sourceTree = "<group>"; };
 		4C62A77D2F698AB500FB42E3 /* ServerTrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerTrustStore.swift; sourceTree = "<group>"; };
 		4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsSettingsView.swift; sourceTree = "<group>"; };
+		4C62A8732F7A9EB800FB42E3 /* wiredsyncd */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = wiredsyncd; sourceTree = "<group>"; };
 		4C7E10012F21000100213277 /* ServerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSettingsView.swift; sourceTree = "<group>"; };
 		4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationDetailView.swift; sourceTree = "<group>"; };
 		4C8D11112F30000100213277 /* StoredPrivateConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateConversation.swift; sourceTree = "<group>"; };
@@ -167,13 +168,13 @@
 		4C8D12122F30000200213277 /* MessageConversationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationRow.swift; sourceTree = "<group>"; };
 		4C8D12142F30000200213277 /* MessageConversationMessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationMessagesView.swift; sourceTree = "<group>"; };
 		4C8D13112F30000300213277 /* UserDragPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDragPayload.swift; sourceTree = "<group>"; };
+		4C90D0022FA1000100213277 /* SyncBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = SyncBadge.icns; sourceTree = "<group>"; };
 		4C95F1612F56CB5F005CD1BA /* Board.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Board.swift; sourceTree = "<group>"; };
 		4C95F1622F56CB5F005CD1BA /* BoardPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardPost.swift; sourceTree = "<group>"; };
 		4C95F1632F56CB5F005CD1BA /* BoardThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardThread.swift; sourceTree = "<group>"; };
 		4C95F1682F56CB7D005CD1BA /* BoardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardsView.swift; sourceTree = "<group>"; };
 		4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewThreadView.swift; sourceTree = "<group>"; };
 		4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyView.swift; sourceTree = "<group>"; };
-		4C95F1702F571884005CD1BA /* wired.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = wired.xml; sourceTree = "<group>"; };
 		4CA1B0112F70000100213277 /* BoardDragPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardDragPayload.swift; sourceTree = "<group>"; };
 		4CAB00012F900001AB213277 /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		4CB1F6E426068DDD00017676 /* SocketSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = SocketSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -220,10 +221,10 @@
 		4C0C2DE52EF437DE00213277 /* Wired 3 */ = {
 			isa = PBXGroup;
 			children = (
-				4C95F1702F571884005CD1BA /* wired.xml */,
 				4C0C2DE02EF437DE00213277 /* Assets.xcassets */,
 				4CF01A962F200A1100213277 /* UploadsBadge.icns */,
 				4CF01A972F200A1100213277 /* DropBoxBadge.icns */,
+				4C90D0022FA1000100213277 /* SyncBadge.icns */,
 				4C0C2E242EFDB8CB00213277 /* App */,
 				4C0C2E022EF5658500213277 /* Views */,
 				4C0C2E042EF5659700213277 /* SwiftData */,
@@ -387,6 +388,7 @@
 				4C0C2DD02EF4370000213277 /* Wired 3UITests */,
 				4C74285F22DCECE800D6E6F9 /* Products */,
 				4CF6736B2403F48000A8EDC2 /* Frameworks */,
+				4C62A8732F7A9EB800FB42E3 /* wiredsyncd */,
 			);
 			sourceTree = "<group>";
 		};
@@ -449,6 +451,7 @@
 			buildPhases = (
 				4C0C2DB02EF436FE00213277 /* Sources */,
 				4C0C2DB12EF436FE00213277 /* Frameworks */,
+				4C90D0102FA1000100213277 /* Embed wiredsyncd */,
 				4C0C2DB22EF436FE00213277 /* Resources */,
 			);
 			buildRules = (
@@ -461,8 +464,8 @@
 				4C0C2DEE2EF458E000213277 /* KeychainSwift */,
 				4C0C2E372EFF06BF00213277 /* DebouncedOnChange */,
 			);
-			productName = "Wired 3";
-			productReference = 4C0C2DB42EF436FE00213277 /* Wired 3.app */;
+			productName = "Wired Client";
+			productReference = 4C0C2DB42EF436FE00213277 /* Wired Client.app */;
 			productType = "com.apple.product-type.application";
 		};
 		4C0C2DC22EF4370000213277 /* Wired 3Tests */ = {
@@ -575,7 +578,7 @@
 				4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */,
 				4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */,
 				4CF01A952F200A1100213277 /* DropBoxBadge.icns in Resources */,
-				4C95F1712F571884005CD1BA /* wired.xml in Resources */,
+				4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -594,6 +597,31 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4C90D0102FA1000100213277 /* Embed wiredsyncd */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/wiredsyncd",
+				"$(SRCROOT)/wiredsyncd/Package.swift",
+			);
+			name = "Embed wiredsyncd";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/wiredsyncd",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nDAEMON_SRC=\"${SRCROOT}/wiredsyncd\"\nif [ ! -f \"${DAEMON_SRC}/Package.swift\" ]; then\n  echo \"warning: wiredsyncd package not found at ${DAEMON_SRC}\"\n  exit 0\nfi\n\nxcrun --sdk macosx swift build --package-path \"${DAEMON_SRC}\" -c release\n\nDAEMON_BIN=\"${DAEMON_SRC}/.build/release/wiredsyncd\"\nif [ ! -x \"${DAEMON_BIN}\" ]; then\n  DAEMON_BIN=\"$(find \"${DAEMON_SRC}/.build\" -type f -name wiredsyncd -perm -111 | head -n 1)\"\nfi\n\nif [ -z \"${DAEMON_BIN:-}\" ] || [ ! -x \"${DAEMON_BIN}\" ]; then\n  echo \"error: unable to locate built wiredsyncd binary\"\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nDEST_BIN=\"${DEST_DIR}/wiredsyncd\"\nmkdir -p \"${DEST_DIR}\"\ncp \"${DAEMON_BIN}\" \"${DEST_BIN}\"\nchmod 755 \"${DEST_BIN}\"\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${DEST_BIN}\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4C0C2DB02EF436FE00213277 /* Sources */ = {
@@ -722,11 +750,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Wired 3";
+				INFOPLIST_KEY_CFBundleDisplayName = "Wired Client";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				"INFOPLIST_KEY_LSMinimumSystemVersion[sdk=macosx*]" = "$(MACOSX_DEPLOYMENT_TARGET)";
 				"INFOPLIST_KEY_NSPrincipalClass[sdk=macosx*]" = NSApplication;
@@ -747,7 +775,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
@@ -782,11 +810,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Wired 3/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Wired 3";
+				INFOPLIST_KEY_CFBundleDisplayName = "Wired Client";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				"INFOPLIST_KEY_LSMinimumSystemVersion[sdk=macosx*]" = "$(MACOSX_DEPLOYMENT_TARGET)";
 				"INFOPLIST_KEY_NSPrincipalClass[sdk=macosx*]" = NSApplication;
@@ -807,7 +835,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
@@ -847,7 +875,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired 3.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired 3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired Client.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired Client";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Debug;
@@ -877,7 +905,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired 3.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired 3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wired Client.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Wired Client";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Release;

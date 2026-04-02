@@ -53,7 +53,7 @@ struct PublicChatFormView: View {
     
     func save() async {
         if !chatName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let message = P7Message(withName: "wired.chat.create_public_chat", spec: spec!)
+            let message = P7Message(withName: "wired.chat.create_public_chat", spec: spec)
             message.addParameter(field: "wired.chat.name", value: chatName)
             
             do {

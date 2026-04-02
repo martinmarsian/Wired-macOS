@@ -75,7 +75,7 @@ struct ChangePasswordView: View {
         errorMessage = nil
 
         let hashed = newPassword.sha256()
-        let message = P7Message(withName: "wired.account.change_password", spec: spec!)
+        let message = P7Message(withName: "wired.account.change_password", spec: spec)
         message.addParameter(field: "wired.account.password", value: hashed)
 
         do {

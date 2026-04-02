@@ -415,6 +415,20 @@ final class FilesViewModel: ObservableObject {
         }
     }
 
+    func currentItem(path: String) -> FileItem? {
+        for column in columns {
+            if let match = column.items.first(where: { $0.path == path }) {
+                return match
+            }
+        }
+        for children in treeChildrenByPath.values {
+            if let match = children.first(where: { $0.path == path }) {
+                return match
+            }
+        }
+        return nil
+    }
+
     @MainActor
     func loadTreeRoot() async {
         let rootPath = normalizedRemotePath(treeRootPath)
@@ -503,8 +517,8 @@ final class FilesViewModel: ObservableObject {
             guard let children = treeChildrenByPath[path] else { return }
 
             let sortedChildren = children.sorted {
-                if ($0.type == .directory || $0.type == .uploads || $0.type == .dropbox) != ($1.type == .directory || $1.type == .uploads || $1.type == .dropbox) {
-                    return ($0.type == .directory || $0.type == .uploads || $0.type == .dropbox)
+                if ($0.type.isDirectoryLike) != ($1.type.isDirectoryLike) {
+                    return ($0.type.isDirectoryLike)
                 }
                 return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
@@ -524,10 +538,10 @@ final class FilesViewModel: ObservableObject {
     @MainActor
     func selectTreeItem(_ item: FileItem) async {
         treeSelectionPath = item.path
-        if item.type == .directory || item.type == .uploads || item.type == .dropbox {
+        if item.type.isDirectoryLike {
             await ensureTreeChildren(for: item.path)
         }
-        let includeSelf = (item.type == .directory || item.type == .uploads || item.type == .dropbox)
+        let includeSelf = (item.type.isDirectoryLike)
         await expandTreeAncestors(for: item.path, includeSelf: includeSelf)
         _ = await revealRemotePath(item.path)
     }
@@ -600,6 +614,46 @@ final class FilesViewModel: ObservableObject {
     }
 
     @MainActor
+    func renameItem(at path: String, newName: String, isSyncFolder: Bool) async throws -> String {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return path }
+
+        let parentDir = (path as NSString).deletingLastPathComponent
+        let newPath   = (parentDir as NSString).appendingPathComponent(newName)
+
+        guard normalizedRemotePath(path) != normalizedRemotePath(newPath) else { return path }
+
+        try await withFileNetworkActivity {
+            try await fileService.moveFile(from: path, to: newPath, connection: connection)
+        }
+
+        // Reload before the daemon IPC so subscriptions on the old path are dropped
+        // and the UI reflects the rename regardless of what happens next.
+        await reloadAll()
+
+        if isSyncFolder, let url = connection.url {
+            let serverURL = "\(url.hostname):\(url.port)"
+            let login     = url.login.trimmingCharacters(in: .whitespacesAndNewlines)
+            let oldPath   = path
+            let renamedTo = newPath
+            Task.detached(priority: .userInitiated) {
+                do {
+                    try WiredSyncDaemonIPC.renamePairForRemote(
+                        oldPath: oldPath,
+                        newPath: renamedTo,
+                        serverURL: serverURL,
+                        login: login
+                    )
+                } catch {
+                    print("[Files] rename sync pair failed: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        return newPath
+    }
+
+    @MainActor
     func moveRemoteItem(from sourcePath: String, to targetDirectoryPath: String) async throws {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }
@@ -635,6 +689,17 @@ final class FilesViewModel: ObservableObject {
 
         try await withFileNetworkActivity {
             try await fileService.setFilePermissions(path: path, permissions: permissions, connection: connection)
+        }
+        await reloadAll()
+    }
+
+    @MainActor
+    func setFileSyncPolicy(path: String, policy: SyncPolicyPayload) async throws {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return }
+
+        try await withFileNetworkActivity {
+            try await fileService.setFileSyncPolicy(path: path, policy: policy, connection: connection)
         }
         await reloadAll()
     }
@@ -712,7 +777,7 @@ final class FilesViewModel: ObservableObject {
             columns = Array(columns.prefix(columnIndex + 1))
 
             let isLastComponent = idx == components.count - 1
-            if !isLastComponent && (matched.type == .directory || matched.type == .uploads || matched.type == .dropbox) {
+            if !isLastComponent && (matched.type.isDirectoryLike) {
                 _ = await loadColumn(for: matched)
                 columnIndex += 1
             }
@@ -784,7 +849,7 @@ final class FilesViewModel: ObservableObject {
 }
 
 
-private extension FilesViewModel {
+extension FilesViewModel {
     @MainActor
     func syncDirectorySubscriptions() async {
         guard let connection = runtime?.connection as? AsyncConnection,
@@ -1008,6 +1073,24 @@ private extension FilesViewModel {
         return "/" + trimmed
     }
 
+    func isInsideSyncTree(_ path: String) -> Bool {
+        let normalizedPath = normalizedRemotePath(path)
+        let items = columns.flatMap(\.items) + treeChildrenByPath.values.flatMap { $0 }
+
+        for item in items where item.type == .sync {
+            let syncPath = normalizedRemotePath(item.path)
+            if syncPath == "/" {
+                if normalizedPath != "/" { return true }
+                continue
+            }
+            if normalizedPath != syncPath && normalizedPath.hasPrefix(syncPath + "/") {
+                return true
+            }
+        }
+
+        return false
+    }
+
     func withFileNetworkActivity<T>(_ operation: () async throws -> T) async rethrows -> T {
         fileNetworkActivityCount += 1
         defer {
@@ -1037,7 +1120,7 @@ private extension FilesViewModel {
         guard
             let id = newID,
             let item = columns[index].items.first(where: { $0.id == id }),
-            (item.type == .directory || item.type == .uploads || item.type == .dropbox)
+            (item.type.isDirectoryLike)
         else {
             if let id = newID,
                let selected = columns[index].items.first(where: { $0.id == id }) {
