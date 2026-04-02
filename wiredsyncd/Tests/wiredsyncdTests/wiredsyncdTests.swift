@@ -2,6 +2,19 @@ import XCTest
 @testable import wiredsyncd
 
 final class wiredsyncdTests: XCTestCase {
+    func testPathLayoutSupportsEnvironmentOverrides() {
+        let layout = PathLayout(environment: [
+            PathLayout.appSupportDirEnv: "/tmp/wiredsyncd-tests/app-support",
+            PathLayout.runDirEnv: "/tmp/wiredsyncd-tests/run"
+        ])
+
+        XCTAssertEqual(layout.baseDir.path, "/tmp/wiredsyncd-tests/app-support")
+        XCTAssertEqual(layout.configPath.path, "/tmp/wiredsyncd-tests/app-support/config.json")
+        XCTAssertEqual(layout.statePath.path, "/tmp/wiredsyncd-tests/app-support/state.sqlite")
+        XCTAssertEqual(layout.runDir.path, "/tmp/wiredsyncd-tests/run")
+        XCTAssertEqual(layout.socketPath.path, "/tmp/wiredsyncd-tests/run/wiredsyncd.sock")
+    }
+
     func testSyncModeRawValues() {
         XCTAssertEqual(SyncMode.serverToClient.rawValue, "server_to_client")
         XCTAssertEqual(SyncMode.clientToServer.rawValue, "client_to_server")
