@@ -9,7 +9,8 @@ import WiredSwift
 /// Monotonically incremented whenever the daemon protocol or behaviour changes in a
 /// way that requires the running process to be replaced after a client update.
 /// Must be kept in sync with `WiredSyncDaemonIPC.expectedDaemonVersion` on the client.
-private let kDaemonVersion = "27"
+private let kDaemonVersion = "28"
+private let kDaemonNick = "wiredsyncd"
 
 private enum SQLiteBindings {
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -1188,6 +1189,7 @@ private final class SyncPairWorker {
         let spec = P7Spec(withPath: specPath)
         let control = AsyncConnection(withSpec: spec)
         control.clientInfoDelegate = clientInfoDelegate
+        control.nick = kDaemonNick
         control.interactive = true
         let url = try await connectControlIfNeeded(connection: control)
         defer { disconnectControl(connection: control) }
@@ -1811,6 +1813,7 @@ private final class SyncPairWorker {
         log("sync.transfer_connect pair=\(pair.id) kind=download path=\(localRelativePath)")
         let tconn = AsyncConnection(withSpec: spec)
         tconn.clientInfoDelegate = clientInfoDelegate
+        tconn.nick = kDaemonNick
         tconn.interactive = false
         try tconn.connect(withUrl: url)
         defer {
@@ -1870,6 +1873,7 @@ private final class SyncPairWorker {
         log("sync.transfer_connect pair=\(pair.id) kind=upload path=\(localRelativePath)")
         let tconn = AsyncConnection(withSpec: spec)
         tconn.clientInfoDelegate = clientInfoDelegate
+        tconn.nick = kDaemonNick
         tconn.interactive = false
         try tconn.connect(withUrl: url)
         defer {
@@ -2133,6 +2137,7 @@ private final class PairSession {
             }
             let control = AsyncConnection(withSpec: spec)
             control.clientInfoDelegate = DaemonClientInfoDelegate()
+            control.nick = kDaemonNick
             control.interactive = true
             setConnection(control)
 
