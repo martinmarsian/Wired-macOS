@@ -1850,7 +1850,12 @@ final class ConnectionRuntime: Identifiable {
             message.addParameter(field: "wired.chat.say", value: "Chat commands:\n\n" + lines)
             return message
 
-        case .clear, .stats, .afk:
+        case .afk:
+            let message = P7Message(withName: "wired.user.set_idle", spec: spec)
+            message.addParameter(field: "wired.user.idle", value: true)
+            return message
+
+        case .clear, .stats:
             return nil
         }
     }
