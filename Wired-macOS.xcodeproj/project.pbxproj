@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */; };
+		AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000112F90010000213277 /* TrackerBookmark.swift */; };
+		AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000122F90010000213277 /* TrackerBrowserController.swift */; };
+		AA1000032F90010000213277 /* TrackerBookmarkFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */; };
 		4C0C2DDF2EF4372200213277 /* WiredSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DDE2EF4372200213277 /* WiredSwift */; };
 		4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE02EF437DE00213277 /* Assets.xcassets */; };
 		4C0C2DE72EF437DE00213277 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE12EF437DE00213277 /* MainView.swift */; };
@@ -104,6 +107,9 @@
 
 /* Begin PBXFileReference section */
 		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
+		AA1000112F90010000213277 /* TrackerBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBookmark.swift; sourceTree = "<group>"; };
+		AA1000122F90010000213277 /* TrackerBrowserController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBrowserController.swift; sourceTree = "<group>"; };
+		AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBookmarkFormView.swift; sourceTree = "<group>"; };
 		4C0C2DB42EF436FE00213277 /* Wired Client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired Client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -255,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				4C62A77D2F698AB500FB42E3 /* ServerTrustStore.swift */,
+				AA1000122F90010000213277 /* TrackerBrowserController.swift */,
 				4C0C2DF22EF482D600213277 /* SocketClient.swift */,
 				4C0C2DF42EF485A300213277 /* DelegateProxy.swift */,
 				4C0C2DF62EF4872600213277 /* ConnectionController.swift */,
@@ -267,6 +274,7 @@
 			isa = PBXGroup;
 			children = (
 				4C0C2DE22EF437DE00213277 /* Bookmark.swift */,
+				AA1000112F90010000213277 /* TrackerBookmark.swift */,
 				4C8D11112F30000100213277 /* StoredPrivateConversation.swift */,
 				4C8D11122F30000100213277 /* StoredPrivateMessage.swift */,
 				4C8D11132F30000100213277 /* StoredBroadcastConversation.swift */,
@@ -326,6 +334,7 @@
 				4C0C2DFF2EF5649C00213277 /* ConnectionRowView.swift */,
 				4C0C2DFB2EF558DF00213277 /* TabsView.swift */,
 				4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */,
+				AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */,
 				4CAB00012F900001AB213277 /* ChangePasswordView.swift */,
 			);
 			path = Main;
@@ -666,6 +675,8 @@
 				4C62A8542F747E9600FB42E3 /* AccountsSettingsView.swift in Sources */,
 				4C0C2E542F110DC400213277 /* FilesView.swift in Sources */,
 				4C0C2E2D2EFDB93B00213277 /* Topic.swift in Sources */,
+				AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */,
+				AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */,
 				4C0C2E2B2EFDB92200213277 /* Chat.swift in Sources */,
 				4C0C2E5A2F14025200213277 /* TransferWorker.swift in Sources */,
 				4C95F16C2F56CB7D005CD1BA /* ReplyView.swift in Sources */,
@@ -691,6 +702,7 @@
 				4C0C2E562F1192EE00213277 /* Transfer.swift in Sources */,
 				4C0C2E4C2F0B10A600213277 /* PublicChatFormView.swift in Sources */,
 				4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */,
+				AA1000032F90010000213277 /* TrackerBookmarkFormView.swift in Sources */,
 				4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */,
 				4C0C2E6B2F17ADC700213277 /* TimeInterval.swift in Sources */,
 				4C0C2DE92EF437DE00213277 /* Wired_3App.swift in Sources */,

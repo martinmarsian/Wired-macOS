@@ -9,6 +9,7 @@
 import SwiftUI
 import SwiftData
 import KeychainSwift
+import WiredSwift
 #if os(macOS)
 import AppKit
 #endif
@@ -18,15 +19,22 @@ struct MainView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var bookmarks: [Bookmark]
+    @Query private var trackerBookmarks: [TrackerBookmark]
     @Environment(ConnectionController.self) private var connectionController
+    @Environment(TrackerBrowserController.self) private var trackerBrowser
     @EnvironmentObject private var transfers: TransferManager
 
     @State private var windowConnectionID: UUID? = nil
     @State private var listSelectionID: UUID? = nil
     @State private var editedBookmark: Bookmark? = nil
+    @State private var editedTrackerBookmark: TrackerBookmark? = nil
+    @State private var showingNewTrackerSheet: Bool = false
     
     @State private var showDeleteBookmarkConfirmation: Bool = false
     @State private var bookmarkToDelete: Bookmark? = nil
+    @State private var showDeleteTrackerConfirmation: Bool = false
+    @State private var trackerBookmarkToDelete: TrackerBookmark? = nil
+    @State private var expandedTrackerIDs: Set<UUID> = []
 
     @AppStorage("transfersHeight") private var transfersHeight: Double = 0
     @AppStorage("CheckActiveConnectionsBeforeClosingWindowTab")
@@ -283,12 +291,26 @@ struct MainView: View {
         .sheet(item: $editedBookmark) { bookmark in
             BookmarkFormView(bookmark: bookmark)
         }
+        .sheet(item: $editedTrackerBookmark) { trackerBookmark in
+            TrackerBookmarkFormView(trackerBookmark: trackerBookmark)
+        }
+        .sheet(isPresented: $showingNewTrackerSheet) {
+            TrackerBookmarkFormView()
+        }
         .alert("Delete Bookmark", isPresented: $showDeleteBookmarkConfirmation) {
             Button("Cancel", role: .cancel) {
             }
 
             Button("Delete", role: .destructive) {
                 deleteBookmark()
+            }
+        }
+        .alert("Delete Tracker", isPresented: $showDeleteTrackerConfirmation) {
+            Button("Cancel", role: .cancel) {
+            }
+
+            Button("Delete", role: .destructive) {
+                deleteTrackerBookmark()
             }
         }
     }
@@ -315,12 +337,26 @@ struct MainView: View {
         .sheet(item: $editedBookmark) { bookmark in
             BookmarkFormView(bookmark: bookmark)
         }
+        .sheet(item: $editedTrackerBookmark) { trackerBookmark in
+            TrackerBookmarkFormView(trackerBookmark: trackerBookmark)
+        }
+        .sheet(isPresented: $showingNewTrackerSheet) {
+            TrackerBookmarkFormView()
+        }
         .alert("Delete Bookmark", isPresented: $showDeleteBookmarkConfirmation) {
             Button("Cancel", role: .cancel) {
             }
 
             Button("Delete", role: .destructive) {
                 deleteBookmark()
+            }
+        }
+        .alert("Delete Tracker", isPresented: $showDeleteTrackerConfirmation) {
+            Button("Cancel", role: .cancel) {
+            }
+
+            Button("Delete", role: .destructive) {
+                deleteTrackerBookmark()
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -373,6 +409,8 @@ struct MainView: View {
                 Text("Favorites")
             }
 
+            trackerSection
+
             if !connectionController.temporaryConnections.isEmpty {
                 Section {
                     ForEach(connectionController.temporaryConnections, id: \.id) { temporary in
@@ -401,6 +439,8 @@ struct MainView: View {
             Text("Favorites")
         }
 
+        trackerSection
+
         if !connectionController.temporaryConnections.isEmpty {
             Section {
                 ForEach(connectionController.temporaryConnections, id: \.id) { temporary in
@@ -409,6 +449,193 @@ struct MainView: View {
                 }
             } header: {
                 Text("Connections")
+            }
+        }
+    }
+
+    private var sortedTrackerBookmarks: [TrackerBookmark] {
+        trackerBookmarks.sorted {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
+            }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private var trackerSection: some View {
+        Section {
+            if sortedTrackerBookmarks.isEmpty {
+                Button {
+                    showingNewTrackerSheet = true
+                } label: {
+                    Label("Add Tracker", systemImage: "plus.circle")
+                }
+                .buttonStyle(.plain)
+            } else {
+                ForEach(sortedTrackerBookmarks, id: \.id) { trackerBookmark in
+                    trackerBookmarkRow(trackerBookmark)
+                }
+            }
+        } header: {
+            HStack {
+                Text("Trackers")
+                Spacer()
+                Button {
+                    showingNewTrackerSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func trackerBookmarkRow(_ trackerBookmark: TrackerBookmark) -> some View {
+        let state = trackerBrowser.state(for: trackerBookmark.id)
+
+        return DisclosureGroup(
+            isExpanded: trackerExpansionBinding(for: trackerBookmark)
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                if state.isLoading && !state.hasContent {
+                    ProgressView("Loading tracker...")
+                        .controlSize(.small)
+                }
+
+                if let lastError = state.lastError {
+                    Text(lastError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Retry") {
+                        trackerBrowser.refresh(trackerBookmark)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                ForEach(state.categories) { category in
+                    trackerCategoryView(category)
+                }
+
+                ForEach(state.rootServers) { server in
+                    trackerServerRow(server)
+                }
+
+                if !state.isLoading && state.lastError == nil && !state.hasContent {
+                    Text("No servers listed")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if state.hasContent || state.lastError != nil {
+                    Button("Reload") {
+                        trackerBrowser.refresh(trackerBookmark)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundStyle(.secondary)
+                    Text(trackerBookmark.name)
+                    if state.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                Text(trackerBookmark.displayAddress)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 24)
+            }
+        }
+        .contextMenu {
+            Button("Reload") {
+                expandedTrackerIDs.insert(trackerBookmark.id)
+                trackerBrowser.refresh(trackerBookmark)
+            }
+
+            Divider()
+
+            Button("Edit") {
+                editedTrackerBookmark = trackerBookmark
+            }
+
+            Button("Delete") {
+                trackerBookmarkToDelete = trackerBookmark
+                showDeleteTrackerConfirmation = true
+            }
+        }
+    }
+
+    private func trackerCategoryView(_ category: TrackerCategoryNode) -> AnyView {
+        AnyView(
+            DisclosureGroup(category.name) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(category.categories) { child in
+                        trackerCategoryView(child)
+                    }
+
+                    ForEach(category.servers) { server in
+                        trackerServerRow(server)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        )
+    }
+
+    private func trackerServerRow(_ server: TrackerServerNode) -> some View {
+        Button {
+            connectToTrackerServer(server)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: server.isTracker ? "point.3.connected.trianglepath.dotted" : "server.rack")
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(server.name)
+                        .foregroundStyle(.primary)
+
+                    if !server.serverDescription.isEmpty {
+                        Text(server.serverDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    HStack(spacing: 8) {
+                        Text("\(server.users) users")
+                        Text("\(server.filesCount) files")
+                        Text(byteCountFormatter.string(fromByteCount: Int64(server.filesSize)))
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Connect") {
+                connectToTrackerServer(server)
+            }
+
+            Button("Add to Favorites") {
+                addTrackerServerToFavorites(server)
+            }
+
+            if server.isTracker {
+                Button("Add to Trackers") {
+                    addTrackerBookmark(from: server)
+                }
             }
         }
     }
@@ -603,6 +830,19 @@ struct MainView: View {
         
         showDeleteBookmarkConfirmation = false
     }
+
+    private func deleteTrackerBookmark() {
+        if let trackerBookmarkToDelete {
+            KeychainSwift().delete(trackerBookmarkToDelete.credentialKey)
+            modelContext.delete(trackerBookmarkToDelete)
+            trackerBrowser.clear(for: trackerBookmarkToDelete.id)
+            expandedTrackerIDs.remove(trackerBookmarkToDelete.id)
+            self.trackerBookmarkToDelete = nil
+            try? modelContext.save()
+        }
+
+        showDeleteTrackerConfirmation = false
+    }
     
     private func disconnect(_ id:UUID) {
         if let runtime = connectionController.runtime(for: id) {
@@ -763,6 +1003,84 @@ struct MainView: View {
         }
 
         connectionController.markConnectionAsBookmarked(id)
+    }
+
+    private func trackerExpansionBinding(for trackerBookmark: TrackerBookmark) -> Binding<Bool> {
+        Binding(
+            get: { expandedTrackerIDs.contains(trackerBookmark.id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedTrackerIDs.insert(trackerBookmark.id)
+                    trackerBrowser.refreshIfNeeded(trackerBookmark)
+                } else {
+                    expandedTrackerIDs.remove(trackerBookmark.id)
+                }
+            }
+        )
+    }
+
+    private func draft(for server: TrackerServerNode) -> NewConnectionDraft? {
+        guard !server.urlString.isEmpty else { return nil }
+
+        let url = Url(withString: server.urlString)
+        guard !url.hostname.isEmpty else { return nil }
+
+        let hostname = url.port == Wired.wiredPort ? url.hostname : "\(url.hostname):\(url.port)"
+        return NewConnectionDraft(
+            hostname: hostname,
+            login: url.login,
+            password: url.password
+        )
+    }
+
+    private func connectToTrackerServer(_ server: TrackerServerNode) {
+        guard let draft = draft(for: server),
+              let connectionID = connectionController.connectOrReuseTemporary(draft) else {
+            return
+        }
+
+#if os(macOS)
+        connectionController.requestedSelectionID = connectionID
+        openMainTab()
+#else
+        selectConnection(connectionID)
+#endif
+    }
+
+    private func addTrackerServerToFavorites(_ server: TrackerServerNode) {
+        guard let draft = draft(for: server) else { return }
+
+        let bookmark = Bookmark(
+            name: server.name,
+            hostname: draft.hostname,
+            login: draft.login
+        )
+        modelContext.insert(bookmark)
+
+        if !draft.password.isEmpty {
+            KeychainSwift().set(draft.password, forKey: "\(draft.login)@\(draft.hostname)")
+        }
+
+        try? modelContext.save()
+    }
+
+    private func addTrackerBookmark(from server: TrackerServerNode) {
+        let url = Url(withString: server.urlString)
+        guard !url.hostname.isEmpty else { return }
+
+        let bookmark = TrackerBookmark(
+            name: server.name,
+            hostname: url.hostname,
+            port: url.port,
+            login: url.login
+        )
+        modelContext.insert(bookmark)
+
+        if !url.password.isEmpty {
+            KeychainSwift().set(url.password, forKey: bookmark.credentialKey)
+        }
+
+        try? modelContext.save()
     }
 
     @ViewBuilder

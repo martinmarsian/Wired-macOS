@@ -610,6 +610,7 @@ private struct ErrorLogWindowView: View {
 struct Wired_3App: App {
     @State private var socketClient = SocketClient()
     @State private var controller: ConnectionController
+    @State private var trackerBrowser = TrackerBrowserController()
     @State private var transfers: TransferManager
     @State private var errorLogStore = ErrorLogStore()
     @State private var errorToastCenter = ErrorToastCenter()
@@ -648,6 +649,7 @@ struct Wired_3App: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Bookmark.self,
+            TrackerBookmark.self,
             ErrorLogEntry.self,
             Transfer.self,
             StoredPrivateConversation.self,
@@ -721,6 +723,7 @@ struct Wired_3App: App {
         WindowGroup(appDisplayName, id: "main") {
             AppRootView(appTerminationDelegate: appTerminationDelegate)
                 .environment(controller)
+                .environment(trackerBrowser)
                 .environment(errorLogStore)
                 .environment(errorToastCenter)
                 .environmentObject(transfers)
@@ -747,6 +750,7 @@ struct Wired_3App: App {
         WindowGroup {
             AppRootView()
                 .environment(controller)
+                .environment(trackerBrowser)
                 .environment(errorLogStore)
                 .environment(errorToastCenter)
                 .environmentObject(transfers)
@@ -779,6 +783,7 @@ private extension Scene {
 private struct AppRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ConnectionController.self) private var connectionController
+    @Environment(TrackerBrowserController.self) private var trackerBrowser
     @Environment(ErrorLogStore.self) private var errorLogStore
     @Environment(ErrorToastCenter.self) private var errorToastCenter
     @EnvironmentObject private var transfers: TransferManager
@@ -788,6 +793,7 @@ private struct AppRootView: View {
 
     var body: some View {
         MainView()
+            .environment(trackerBrowser)
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
             .overlay(alignment: .bottomTrailing) {
                 ErrorToastOverlay()
