@@ -1595,6 +1595,7 @@ final class ConnectionController {
                         user.color = message.enumeration(forField: "wired.account.color")
                             ?? message.uint32(forField: "wired.account.color")
                             ?? user.color
+                        user.activeTransfer = parseActiveTransfer(from: message)
                         runtime.refreshPrivateChatName(chat)
 
                         guard user.id != runtime.userID else { continue }
@@ -2258,6 +2259,7 @@ final class ConnectionController {
         user.color = message.enumeration(forField: "wired.account.color")
             ?? message.uint32(forField: "wired.account.color")
             ?? 0
+        user.activeTransfer = parseActiveTransfer(from: message)
 
         return user
     }
@@ -2271,6 +2273,7 @@ final class ConnectionController {
             existing.icon = user.icon
             existing.idle = user.idle
             existing.color = user.color
+            existing.activeTransfer = user.activeTransfer
             return false
         }
 
@@ -2282,6 +2285,11 @@ final class ConnectionController {
         if let userID = message.uint32(forField: "wired.user.id") {
             for chat in runtime.chats {
                 if let user = chat.users.first(where: { $0.id == userID }) {
+                    let activeTransfer = parseActiveTransfer(from: message)
+                    await MainActor.run {
+                        user.activeTransfer = activeTransfer
+                    }
+
                     if let login = message.string(forField: "wired.user.login") {
                         await MainActor.run {
                             user.login = login
@@ -2356,6 +2364,27 @@ final class ConnectionController {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func parseActiveTransfer(from message: P7Message) -> UserActiveTransfer? {
+        guard let rawType = message.enumeration(forField: "wired.transfer.type")
+                ?? message.uint32(forField: "wired.transfer.type"),
+              let type = UserActiveTransferType(rawValue: rawType),
+              let path = message.string(forField: "wired.file.path")
+        else {
+            return nil
+        }
+
+        return UserActiveTransfer(
+            type: type,
+            path: path,
+            dataSize: message.uint64(forField: "wired.transfer.data_size") ?? 0,
+            rsrcSize: message.uint64(forField: "wired.transfer.rsrc_size") ?? 0,
+            transferred: message.uint64(forField: "wired.transfer.transferred") ?? 0,
+            speed: message.uint32(forField: "wired.transfer.speed") ?? 0,
+            queuePosition: Int(message.uint32(forField: "wired.transfer.queue_position") ?? 0)
+        )
     }
     
     // MARK: -

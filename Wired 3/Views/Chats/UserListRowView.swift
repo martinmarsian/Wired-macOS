@@ -170,7 +170,30 @@ struct UserInfosView: View {
                     Text("Idle Time")
                 }
             }
+
+            if let transfer = user.activeTransfer {
+                let snapshot = transfer.displaySnapshot
+                Section("Transfer") {
+                    HStack(spacing: 8) {
+                        Image(systemName: transfer.type == .download ? "arrow.down.square.fill" : "arrow.up.square.fill")
+                            .foregroundStyle(transfer.type == .download ? .blue : .red)
+
+                        Text((transfer.path as NSString).lastPathComponent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    TransferProgressSummaryView(snapshot: snapshot)
+                }
+            }
         }
         .formStyle(.grouped)
+        .task(id: user.id) {
+            while !Task.isCancelled && runtime.showInfos && runtime.showInfosUserID == user.id {
+                await runtime.refreshUserInfo(user.id)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
 }

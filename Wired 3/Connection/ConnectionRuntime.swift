@@ -1396,21 +1396,24 @@ final class ConnectionRuntime: Identifiable {
     
     func getUserInfo(_ userID: UInt32) {
         Task {
-            let message = P7Message(withName: "wired.user.get_info", spec: spec)
-            message.addParameter(field: "wired.user.id", value: userID)
-            
             showInfosUserID = userID
-            
-            do {
-                if let response = try await send(message) {
-                    if response.name == "wired.user.info" {
-                        await connectionController.updateUserInfo(from: response, in: self)
-                        showInfos.toggle()
-                    }
+            await refreshUserInfo(userID, openPopover: true)
+        }
+    }
+
+    func refreshUserInfo(_ userID: UInt32, openPopover: Bool = false) async {
+        let message = P7Message(withName: "wired.user.get_info", spec: spec)
+        message.addParameter(field: "wired.user.id", value: userID)
+
+        do {
+            if let response = try await send(message), response.name == "wired.user.info" {
+                await connectionController.updateUserInfo(from: response, in: self)
+                if openPopover && !showInfos {
+                    showInfos = true
                 }
-            } catch let error {
-                lastError = error
             }
+        } catch let error {
+            lastError = error
         }
     }
 

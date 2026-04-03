@@ -13,6 +13,25 @@ import AppKit
 import UniformTypeIdentifiers
 #endif
 
+struct TransferProgressSummaryView: View {
+    let snapshot: TransferDisplaySnapshot
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ProgressView(value: snapshot.progressFraction, total: 1)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(snapshot.statusText)
+                    .font(.caption)
+                    .foregroundColor(snapshot.isErrorStatus ? .red : .secondary)
+                    .lineLimit(2)
+
+                Spacer()
+            }
+        }
+    }
+}
+
 struct TransfersView: View {
     @Environment(ConnectionController.self) private var connectionController
     @EnvironmentObject private var transfers: TransferManager
@@ -133,6 +152,7 @@ struct TransfersView: View {
 
     private var transferRows: some View {
         ForEach(transfers.transfers) { transfer in
+            let snapshot = transfer.displaySnapshot
             VStack(spacing: 0) {
                 HStack {
                     Image(systemName: transfer.type == .download ? "arrow.down.square.fill" : "arrow.up.square.fill")
@@ -161,17 +181,8 @@ struct TransfersView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
-                ProgressView(value: transfer.percent, total: 100)
-                
-                HStack {
-                    Text(transferStatusText(for: transfer))
-                        .font(.caption)
-                        .foregroundColor(transferStatusColor(for: transfer))
-                        .lineLimit(2)
-                    
-                    Spacer()
-                }
+
+                TransferProgressSummaryView(snapshot: snapshot)
 
 //                        if transfer.hasError {
 //                            HStack {
@@ -268,22 +279,6 @@ struct TransfersView: View {
 
     private func canShowRemote(_ items: [Transfer]) -> Bool {
         items.contains { ($0.remotePath?.isEmpty == false) && $0.connectionID != nil }
-    }
-
-    private func transferStatusText(for transfer: Transfer) -> String {
-        let error = transfer.error.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !error.isEmpty && (transfer.state == .stopped || transfer.state == .disconnected) {
-            return error
-        }
-        return transfer.transferStatus()
-    }
-
-    private func transferStatusColor(for transfer: Transfer) -> Color {
-        let error = transfer.error.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !error.isEmpty && (transfer.state == .stopped || transfer.state == .disconnected) {
-            return .red
-        }
-        return .secondary
     }
 
     private func serverName(for transfer: Transfer) -> String {

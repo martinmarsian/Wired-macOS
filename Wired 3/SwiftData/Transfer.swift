@@ -169,3 +169,21 @@ public final class Transfer {
         }
     }
 }
+
+extension Transfer {
+    var displaySnapshot: TransferDisplaySnapshot {
+        let trimmedError = error.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isErrorStatus = !trimmedError.isEmpty && (state == .stopped || state == .disconnected)
+
+        return TransferDisplaySnapshot(
+            typeTitle: type == .download ? "Download" : "Upload",
+            path: remotePath ?? localPath ?? name,
+            transferredBytes: UInt64(max(0, dataTransferred + rsrcTransferred)),
+            totalBytes: UInt64(max(0, size)),
+            speedBytesPerSecond: speed,
+            queuePosition: queuePosition,
+            statusText: isErrorStatus ? trimmedError : transferStatus(),
+            isErrorStatus: isErrorStatus
+        )
+    }
+}
