@@ -655,8 +655,7 @@ private struct GeneralServerSettingsView: View {
     @State private var downloadSpeedLimit: Int = 0
     @State private var uploadSpeedLimit: Int = 0
     @State private var registerWithTrackers: Bool = false
-    @State private var trackers: [TrackerRow] = [TrackerRow(url: "wired.read-write.fr", login: "guest", password: "", category: "")]
-    @State private var selectedTrackerID: UUID?
+    @State private var trackers: [TrackerRow] = [TrackerRow(host: "wired.read-write.fr")]
     @State private var trackerEnabled: Bool = false
     @State private var trackerCategories: [String] = []
     @State private var selectedCategoryIndex: Int?
@@ -883,53 +882,94 @@ private struct GeneralServerSettingsView: View {
     private var directorySection: some View {
         settingsFieldRow("", labelWidth: 0, alignment: .top) {
             VStack(alignment: .leading, spacing: 8) {
-                registerWithTrackersToggle
-
-                trackerTable
-                trackerToolbar
+                trackerRegistrationSection
 
                 Divider()
                     .padding(.vertical, 4)
 
-                trackerEnabledToggle
-
-                settingsFieldRow("Catégories d'annuaire", labelWidth: 0, alignment: .top) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        List(selection: $selectedCategoryIndex) {
-                            ForEach(Array(trackerCategories.enumerated()), id: \.offset) { index, value in
-                                Text(value)
-                                    .tag(index)
-                            }
-                        }
-                        .frame(height: 130)
-
-                        HStack(spacing: 8) {
-                            Button {
-                                trackerCategories.append("Nouvelle catégorie")
-                                selectedCategoryIndex = trackerCategories.count - 1
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-
-                            Button {
-                                guard let index = selectedCategoryIndex else { return }
-                                guard trackerCategories.indices.contains(index) else { return }
-                                trackerCategories.remove(at: index)
-                                if trackerCategories.isEmpty {
-                                    selectedCategoryIndex = nil
-                                } else {
-                                    selectedCategoryIndex = min(index, trackerCategories.count - 1)
-                                }
-                            } label: {
-                                Image(systemName: "minus")
-                            }
-                            .disabled(selectedCategoryIndex == nil)
-                        }
-                    }
-                    .frame(maxWidth: 360, alignment: .leading)
-                }
+                trackerDirectorySection
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var trackerRegistrationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            registerWithTrackersToggle
+
+            Text("Chaque annuaire est enregistré sous forme d'URL `wired://hote[:port]/Categorie`. L'interface édite les différentes parties, puis les sérialise automatiquement.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(trackers.indices), id: \.self) { index in
+                    trackerCard(index: index, tracker: $trackers[index])
+                }
+            }
+
+            Button {
+                trackers.append(TrackerRow())
+                scheduleAutoSave()
+            } label: {
+                Label("Ajouter un annuaire", systemImage: "plus")
+            }
+            .disabled(!canSetSettings || isSaving)
+        }
+    }
+
+    private var trackerDirectorySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            trackerEnabledToggle
+
+            Text("Quand cette option est activée, ce serveur répond aux messages `wired.tracker.*` et expose les catégories ci-dessous.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            settingsFieldRow("Catégories d'annuaire", labelWidth: 0, alignment: .top) {
+                VStack(alignment: .leading, spacing: 8) {
+                    List(selection: $selectedCategoryIndex) {
+                        ForEach(Array(trackerCategories.indices), id: \.self) { index in
+                            TextField(
+                                "Catégorie",
+                                text: Binding(
+                                    get: { trackerCategories[index] },
+                                    set: { trackerCategories[index] = $0 }
+                                )
+                            )
+                            .tag(index)
+                            .disabled(!canSetSettings)
+                        }
+                    }
+                    .frame(height: 150)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            trackerCategories.append("Nouvelle catégorie")
+                            selectedCategoryIndex = trackerCategories.count - 1
+                            scheduleAutoSave()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .disabled(!canSetSettings || isSaving)
+
+                        Button {
+                            guard let index = selectedCategoryIndex else { return }
+                            guard trackerCategories.indices.contains(index) else { return }
+                            trackerCategories.remove(at: index)
+                            if trackerCategories.isEmpty {
+                                selectedCategoryIndex = nil
+                            } else {
+                                selectedCategoryIndex = min(index, trackerCategories.count - 1)
+                            }
+                            scheduleAutoSave()
+                        } label: {
+                            Image(systemName: "minus")
+                        }
+                        .disabled(!canSetSettings || isSaving || selectedCategoryIndex == nil)
+                    }
+                }
+                .frame(maxWidth: 460, alignment: .leading)
+            }
         }
     }
 
@@ -953,34 +993,80 @@ private struct GeneralServerSettingsView: View {
         #endif
     }
 
-    private var trackerTable: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                trackerHeader("Adresse", width: 220)
-                trackerHeader("Identifiant", width: 130)
-                trackerHeader("Mot de passe", width: 130)
-                trackerHeader("Catégorie", width: 140)
-            }
-            .background(.quaternary.opacity(0.35))
+    private func trackerCard(index: Int, tracker: Binding<TrackerRow>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Annuaire \(index + 1)")
+                    .font(.headline)
 
-            List(selection: $selectedTrackerID) {
-                ForEach($trackers) { $tracker in
-                    HStack(spacing: 10) {
-                        TextField("", text: $tracker.url)
-                            .disabled(!canSetSettings)
-                        TextField("", text: $tracker.login)
-                            .disabled(!canSetSettings)
-                        SecureField("", text: $tracker.password)
-                            .disabled(!canSetSettings)
-                        TextField("", text: $tracker.category)
-                            .disabled(!canSetSettings)
+                Spacer()
+
+                if trackers.count > 1 {
+                    Button(role: .destructive) {
+                        trackers.removeAll { $0.id == tracker.wrappedValue.id }
+                        if trackers.isEmpty {
+                            trackers = [TrackerRow()]
+                        }
+                        scheduleAutoSave()
+                    } label: {
+                        Label("Supprimer", systemImage: "trash")
                     }
-                    .font(.system(size: 12))
-                    .tag(tracker.id)
+                    .buttonStyle(.borderless)
+                    .disabled(!canSetSettings || isSaving)
                 }
             }
-            .listStyle(.plain)
-            .frame(height: 100)
+
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    trackerField("Hôte") {
+                        TextField("wired.read-write.fr", text: tracker.host)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!canSetSettings)
+                    }
+                    trackerField("Port") {
+                        TextField("4871", text: tracker.port)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!canSetSettings)
+                    }
+                }
+
+                GridRow {
+                    trackerField("Identifiant") {
+                        TextField("guest", text: tracker.login)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!canSetSettings)
+                    }
+                    trackerField("Mot de passe") {
+                        SecureField("", text: tracker.password)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!canSetSettings)
+                    }
+                }
+
+                GridRow {
+                    trackerField("Catégorie") {
+                        TextField("Chat", text: tracker.category)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!canSetSettings)
+                    }
+                    Color.clear
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("URL enregistrée")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(tracker.wrappedValue.serializedValue)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.quaternary.opacity(0.18))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 4)
@@ -988,36 +1074,13 @@ private struct GeneralServerSettingsView: View {
         }
     }
 
-    private var trackerToolbar: some View {
-        HStack(spacing: 8) {
-            Button {
-                trackers.append(TrackerRow(url: "", login: "", password: "", category: ""))
-                selectedTrackerID = trackers.last?.id
-                scheduleAutoSave()
-            } label: {
-                Image(systemName: "plus")
-            }
-            .disabled(!canSetSettings || isSaving)
-
-            Button {
-                guard let selectedTrackerID else { return }
-                trackers.removeAll { $0.id == selectedTrackerID }
-                self.selectedTrackerID = trackers.last?.id
-                scheduleAutoSave()
-            } label: {
-                Image(systemName: "minus")
-            }
-            .disabled(!canSetSettings || isSaving || selectedTrackerID == nil)
+    private func trackerField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
         }
-    }
-
-    private func trackerHeader(_ title: String, width: CGFloat) -> some View {
-        Text(title)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(width: width, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
     }
 
     private func settingsNumericRow(_ label: String, value: Binding<Int>) -> some View {
@@ -1143,7 +1206,7 @@ private struct GeneralServerSettingsView: View {
             message.addParameter(
                 field: "wired.settings.trackers",
                 value: trackers
-                    .map { $0.url.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .map(\.serializedValue)
                     .filter { !$0.isEmpty }
             )
             message.addParameter(field: "wired.tracker.tracker", value: trackerEnabled)
@@ -1200,11 +1263,10 @@ private struct GeneralServerSettingsView: View {
             trackerEnabled = value
         }
         if let value = message.stringList(forField: "wired.settings.trackers") {
-            trackers = value.map { TrackerRow(url: $0, login: "", password: "", category: "") }
+            trackers = value.map(TrackerRow.init(serializedValue:))
             if trackers.isEmpty {
-                trackers = [TrackerRow(url: "", login: "", password: "", category: "")]
+                trackers = [TrackerRow()]
             }
-            selectedTrackerID = trackers.first?.id
         }
         if let value = message.stringList(forField: "wired.tracker.categories") {
             trackerCategories = value
@@ -1264,10 +1326,82 @@ private struct GeneralServerSettingsView: View {
 
 private struct TrackerRow: Identifiable, Equatable {
     let id = UUID()
-    var url: String
-    var login: String
-    var password: String
-    var category: String
+    var host: String = ""
+    var port: String = ""
+    var login: String = ""
+    var password: String = ""
+    var category: String = ""
+
+    init(
+        host: String = "",
+        port: String = "",
+        login: String = "",
+        password: String = "",
+        category: String = ""
+    ) {
+        self.host = host
+        self.port = port
+        self.login = login
+        self.password = password
+        self.category = category
+    }
+
+    init(serializedValue: String) {
+        let trimmed = serializedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            self.init()
+            return
+        }
+
+        let normalized = trimmed.contains("://") ? trimmed : "wired://\(trimmed)"
+        guard let components = URLComponents(string: normalized) else {
+            self.init(host: trimmed)
+            return
+        }
+
+        let host = components.host ?? trimmed
+        let port = components.port.map(String.init) ?? ""
+        let login = components.user ?? ""
+        let password = components.password ?? ""
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        self.init(
+            host: host,
+            port: port,
+            login: login,
+            password: password,
+            category: path
+        )
+    }
+
+    var serializedValue: String {
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedHost.isEmpty else { return "" }
+
+        var components = URLComponents()
+        components.scheme = "wired"
+        components.host = trimmedHost
+
+        let trimmedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let parsedPort = Int(trimmedPort), parsedPort > 0 {
+            components.port = parsedPort
+        }
+
+        let trimmedLogin = login.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLogin.isEmpty {
+            components.user = trimmedLogin
+        }
+
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPassword.isEmpty {
+            components.password = trimmedPassword
+        }
+
+        let trimmedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        components.path = trimmedCategory.isEmpty ? "/" : "/\(trimmedCategory)"
+
+        return components.string ?? "wired://\(trimmedHost)/"
+    }
 }
 
 private struct BansSettingsView: View {
