@@ -1424,6 +1424,43 @@ final class ConnectionRuntime: Identifiable {
         _ = try await send(message)
     }
 
+    func fetchMonitoredUsers() async throws -> [MonitoredUser] {
+        let message = P7Message(withName: "wired.user.get_users", spec: spec)
+        let connection = try requireAsyncConnection()
+
+        do {
+            var users: [MonitoredUser] = []
+
+            for try await response in try connection.sendAndWaitMany(message) {
+                switch response.name {
+                case "wired.user.user_list":
+                    guard let user = monitoredUser(from: response) else { continue }
+                    users.append(user)
+
+                case "wired.error":
+                    throw WiredError(message: response)
+
+                default:
+                    continue
+                }
+            }
+
+            return users.sorted { lhs, rhs in
+                if lhs.isDownloading != rhs.isDownloading {
+                    return lhs.isDownloading && !rhs.isDownloading
+                }
+
+                if lhs.isUploading != rhs.isUploading {
+                    return lhs.isUploading && !rhs.isUploading
+                }
+
+                return lhs.nick.localizedCaseInsensitiveCompare(rhs.nick) == .orderedAscending
+            }
+        } catch {
+            throw normalizedRequestError(error)
+        }
+    }
+
     func banUser(userID: UInt32, reason: String, expirationDate: Date?) async throws {
         let message = P7Message(withName: "wired.user.ban_user", spec: spec)
         message.addParameter(field: "wired.user.id", value: userID)
@@ -1440,6 +1477,48 @@ final class ConnectionRuntime: Identifiable {
         message.addParameter(field: "wired.user.id", value: userID)
         message.addParameter(field: "wired.user.disconnect_message", value: reason)
         _ = try await send(message)
+    }
+
+    private func monitoredUser(from message: P7Message) -> MonitoredUser? {
+        guard
+            let id = message.uint32(forField: "wired.user.id"),
+            let nick = message.string(forField: "wired.user.nick"),
+            let icon = message.data(forField: "wired.user.icon"),
+            let idle = message.bool(forField: "wired.user.idle")
+        else {
+            return nil
+        }
+
+        let activeTransfer: UserActiveTransfer?
+        if let rawType = message.enumeration(forField: "wired.transfer.type")
+            ?? message.uint32(forField: "wired.transfer.type"),
+           let type = UserActiveTransferType(rawValue: rawType),
+           let path = message.string(forField: "wired.file.path") {
+            activeTransfer = UserActiveTransfer(
+                type: type,
+                path: path,
+                dataSize: message.uint64(forField: "wired.transfer.data_size") ?? 0,
+                rsrcSize: message.uint64(forField: "wired.transfer.rsrc_size") ?? 0,
+                transferred: message.uint64(forField: "wired.transfer.transferred") ?? 0,
+                speed: message.uint32(forField: "wired.transfer.speed") ?? 0,
+                queuePosition: Int(message.uint32(forField: "wired.transfer.queue_position") ?? 0)
+            )
+        } else {
+            activeTransfer = nil
+        }
+
+        return MonitoredUser(
+            id: id,
+            nick: nick,
+            status: message.string(forField: "wired.user.status"),
+            icon: icon,
+            idle: idle,
+            color: message.enumeration(forField: "wired.account.color")
+                ?? message.uint32(forField: "wired.account.color")
+                ?? 0,
+            idleTime: message.date(forField: "wired.user.idle_time"),
+            activeTransfer: activeTransfer
+        )
     }
 
     func fetchBans() async throws -> [BanListEntry] {

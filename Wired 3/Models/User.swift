@@ -61,6 +61,29 @@ struct UserActiveTransfer {
     }
 }
 
+struct MonitoredUser: Identifiable {
+    let id: UInt32
+    let nick: String
+    let status: String?
+    let icon: Data
+    let idle: Bool
+    let color: UInt32
+    let idleTime: Date?
+    let activeTransfer: UserActiveTransfer?
+
+    var isDownloading: Bool {
+        activeTransfer?.type == .download
+    }
+
+    var isUploading: Bool {
+        activeTransfer?.type == .upload
+    }
+
+    var transferSpeed: UInt64 {
+        UInt64(activeTransfer?.speed ?? 0)
+    }
+}
+
 struct TransferDisplaySnapshot {
     let typeTitle: String
     let path: String

@@ -125,7 +125,11 @@ struct ServerSettingsView: View {
                 PlaceholderCategoryView(title: "Réglages")
             }
         case .monitor:
-            PlaceholderCategoryView(title: "Moniteur")
+            if let runtime {
+                ServerMonitorSettingsView(runtime: runtime)
+            } else {
+                PlaceholderCategoryView(title: "Moniteur")
+            }
         case .events:
             if let runtime {
                 ServerEventsSettingsView(runtime: runtime)
@@ -150,6 +154,492 @@ struct ServerSettingsView: View {
             } else {
                 PlaceholderCategoryView(title: "Banissements")
             }
+        }
+    }
+}
+
+private enum ServerMonitorTransferFilter: String, CaseIterable, Identifiable {
+    case all
+    case downloading
+    case uploading
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Tous"
+        case .downloading: return "Téléchargements"
+        case .uploading: return "Téléversements"
+        }
+    }
+}
+
+private struct MonitorDisconnectRequest: Identifiable {
+    let user: MonitoredUser
+
+    var id: UInt32 { user.id }
+}
+
+private struct ServerMonitorSettingsView: View {
+    let runtime: ConnectionRuntime
+
+    @State private var users: [MonitoredUser] = []
+    @State private var selectedUserID: UInt32?
+    @State private var filter: ServerMonitorTransferFilter = .all
+    @State private var searchText = ""
+    @State private var isLoading = false
+    @State private var permissionDeniedByServer = false
+    @State private var lastError: Error?
+    @State private var disconnectRequest: MonitorDisconnectRequest?
+
+    private static let byteFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter
+    }()
+
+    private var canViewMonitor: Bool {
+        runtime.hasPrivilege("wired.account.user.get_users")
+    }
+
+    private var canDisconnectUsers: Bool {
+        runtime.hasPrivilege("wired.account.user.disconnect_users")
+    }
+
+    private var selectedUser: MonitoredUser? {
+        users.first(where: { $0.id == selectedUserID })
+    }
+
+    private var filteredUsers: [MonitoredUser] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return users.filter { user in
+            let matchesFilter: Bool
+            switch filter {
+            case .all:
+                matchesFilter = true
+            case .downloading:
+                matchesFilter = user.isDownloading
+            case .uploading:
+                matchesFilter = user.isUploading
+            }
+
+            guard matchesFilter else { return false }
+            guard !query.isEmpty else { return true }
+
+            let haystack = [
+                user.nick,
+                user.status ?? "",
+                user.activeTransfer?.path ?? ""
+            ].joined(separator: "\n")
+
+            return haystack.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var totalDownloadSpeed: UInt64 {
+        users.reduce(into: UInt64(0)) { partialResult, user in
+            guard user.isDownloading else { return }
+            partialResult += user.transferSpeed
+        }
+    }
+
+    private var totalUploadSpeed: UInt64 {
+        users.reduce(into: UInt64(0)) { partialResult, user in
+            guard user.isUploading else { return }
+            partialResult += user.transferSpeed
+        }
+    }
+
+    var body: some View {
+        Group {
+            if !canViewMonitor || permissionDeniedByServer {
+                ContentUnavailableView(
+                    "Accès refusé",
+                    systemImage: "lock",
+                    description: Text("Permission requise: wired.account.user.get_users")
+                )
+            } else {
+                VStack(alignment: .leading, spacing: 16) {
+                    summaryView
+                    controlsView
+                    listView
+                }
+                .padding()
+            }
+        }
+        .overlay {
+            if isLoading && users.isEmpty {
+                ProgressView()
+            }
+        }
+        .task(id: runtime.id) {
+            await pollMonitor()
+        }
+        .sheet(item: $disconnectRequest) { request in
+            MonitorDisconnectSheet(runtime: runtime, user: request.user) {
+                disconnectRequest = nil
+            } onSuccess: {
+                disconnectRequest = nil
+                Task { await loadUsers(showSpinner: false) }
+            } onError: { error in
+                disconnectRequest = nil
+                lastError = error
+            }
+        }
+        .errorAlert(
+            error: $lastError,
+            source: "Server Monitor",
+            serverName: nil,
+            connectionID: runtime.id
+        )
+    }
+
+    private var summaryView: some View {
+        HStack(spacing: 12) {
+            summaryCard(
+                title: "Utilisateurs",
+                value: "\(users.count)",
+                systemImage: "person.3.fill"
+            )
+            summaryCard(
+                title: "Téléchargement",
+                value: speedString(totalDownloadSpeed),
+                systemImage: "arrow.down.circle.fill"
+            )
+            summaryCard(
+                title: "Téléversement",
+                value: speedString(totalUploadSpeed),
+                systemImage: "arrow.up.circle.fill"
+            )
+        }
+    }
+
+    private var controlsView: some View {
+        HStack(spacing: 12) {
+            Picker("Filtre", selection: $filter) {
+                ForEach(ServerMonitorTransferFilter.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            TextField("Rechercher un utilisateur", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Button {
+                Task { await loadUsers(showSpinner: true) }
+            } label: {
+                Label("Rafraîchir", systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                guard let selectedUser else { return }
+                disconnectRequest = MonitorDisconnectRequest(user: selectedUser)
+            } label: {
+                Label("Déconnecter", systemImage: "plug.circle.fill")
+            }
+            .disabled(selectedUser == nil || !canDisconnectUsers)
+        }
+    }
+
+    private var listView: some View {
+        Group {
+            if filteredUsers.isEmpty && !isLoading {
+                ContentUnavailableView(
+                    "Aucun utilisateur",
+                    systemImage: "person.crop.rectangle",
+                    description: Text("Aucun utilisateur ne correspond au filtre courant.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(filteredUsers) { user in
+                    Button {
+                        selectedUserID = user.id
+                    } label: {
+                        MonitorUserRowView(user: user, isSelected: selectedUserID == user.id)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
+                }
+                .listStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func summaryCard(title: String, value: String, systemImage: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.title3.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func speedString(_ bytesPerSecond: UInt64) -> String {
+        "\(Self.byteFormatter.string(fromByteCount: Int64(bytesPerSecond)))/s"
+    }
+
+    private func pollMonitor() async {
+        guard canViewMonitor else { return }
+
+        await loadUsers(showSpinner: true)
+
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            guard runtime.status == .connected else { continue }
+            guard !permissionDeniedByServer else { return }
+            await loadUsers(showSpinner: false)
+        }
+    }
+
+    @MainActor
+    private func loadUsers(showSpinner: Bool) async {
+        guard canViewMonitor else { return }
+        guard runtime.status == .connected else {
+            isLoading = false
+            return
+        }
+
+        if showSpinner && users.isEmpty {
+            isLoading = true
+        }
+
+        do {
+            let fetchedUsers = try await runtime.fetchMonitoredUsers()
+            guard !Task.isCancelled else { return }
+
+            users = fetchedUsers
+            permissionDeniedByServer = false
+            isLoading = false
+
+            if let selectedUserID, !fetchedUsers.contains(where: { $0.id == selectedUserID }) {
+                self.selectedUserID = nil
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+
+            isLoading = false
+
+            if isPermissionDeniedError(error) {
+                permissionDeniedByServer = true
+                users = []
+            } else {
+                lastError = error
+            }
+        }
+    }
+
+    private func isPermissionDeniedError(_ error: Error) -> Bool {
+        if let asyncError = error as? AsyncConnectionError,
+           case let .serverError(message) = asyncError {
+            let messageText = (message.string(forField: "wired.error.string") ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let code = message.uint32(forField: "wired.error")
+            return messageText.contains("permission_denied")
+                || messageText.contains("permission denied")
+                || code == 5
+                || code == 57
+        }
+
+        if let wiredError = error as? WiredError {
+            let messageText = wiredError.message
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return messageText.contains("permission_denied")
+                || messageText.contains("permission denied")
+        }
+
+        return false
+    }
+}
+
+private struct MonitorUserRowView: View {
+    let user: MonitoredUser
+    let isSelected: Bool
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let durationFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.zeroFormattingBehavior = [.pad]
+        return formatter
+    }()
+
+    private var nickColor: Color {
+        switch user.color {
+        case 0: return .black
+        case 1: return .red
+        case 2: return .orange
+        case 3: return .green
+        case 4: return .blue
+        case 5: return .purple
+        default: return .primary
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(data: user.icon)?
+                    .resizable()
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(user.nick)
+                        .foregroundStyle(nickColor)
+                        .font(.headline)
+
+                    if let status = user.status, !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(status)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    if user.activeTransfer == nil {
+                        Text(activityText)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if let transfer = user.activeTransfer {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: transfer.type == .download ? "arrow.down.square.fill" : "arrow.up.square.fill")
+                            .foregroundStyle(transfer.type == .download ? .blue : .red)
+
+                        Text((transfer.path as NSString).lastPathComponent)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Text(transfer.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer(minLength: 0)
+                    }
+
+                    TransferProgressSummaryView(snapshot: transfer.displaySnapshot)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        )
+        .opacity(user.idle ? 0.72 : 1.0)
+        .contentShape(Rectangle())
+    }
+
+    private var activityText: String {
+        if let transfer = user.activeTransfer {
+            return transfer.displaySnapshot.statusText
+        }
+
+        guard let idleTime = user.idleTime else {
+            return user.idle ? "Inactif" : "Connecté"
+        }
+
+        let elapsed = max(0, Date().timeIntervalSince(idleTime))
+        let duration = Self.durationFormatter.string(from: elapsed) ?? "00:00"
+        let formattedDate = Self.dateFormatter.string(from: idleTime)
+
+        if user.idle {
+            return "Inactif \(duration), depuis \(formattedDate)"
+        }
+
+        return "Actif, dernière activité \(formattedDate)"
+    }
+}
+
+private struct MonitorDisconnectSheet: View {
+    let runtime: ConnectionRuntime
+    let user: MonitoredUser
+    let onDismiss: () -> Void
+    let onSuccess: () -> Void
+    let onError: (Error) -> Void
+
+    @State private var reason = ""
+    @State private var isSubmitting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Déconnecter l’utilisateur")
+                .font(.title3.weight(.semibold))
+
+            Text("Cible: \(user.nick)")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Message")
+                    .font(.headline)
+
+                TextField("Message optionnel", text: $reason, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3...6)
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Annuler") {
+                    onDismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Déconnecter") {
+                    Task { await submit() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isSubmitting)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 360)
+    }
+
+    @MainActor
+    private func submit() async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+
+        do {
+            try await runtime.disconnectUser(userID: user.id, reason: reason)
+            isSubmitting = false
+            onSuccess()
+        } catch {
+            isSubmitting = false
+            onError(error)
         }
     }
 }
