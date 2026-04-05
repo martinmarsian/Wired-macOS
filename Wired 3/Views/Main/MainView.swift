@@ -15,6 +15,28 @@ import AppKit
 #endif
 
 struct MainView: View {
+    private enum SidebarSelection: Hashable {
+        case connection(UUID)
+        case trackerBookmark(UUID)
+        case trackerCategory(UUID, String)
+        case trackerServer(UUID, String)
+        case trackerStatus(UUID, String)
+    }
+
+    private struct TrackerSidebarNode: Identifiable, Hashable {
+        enum Kind: Hashable {
+            case bookmark(TrackerBookmark)
+            case category(bookmarkID: UUID, category: TrackerCategoryNode)
+            case server(bookmarkID: UUID, server: TrackerServerNode)
+            case status(bookmarkID: UUID, message: String)
+        }
+
+        let id: String
+        let selection: SidebarSelection
+        let kind: Kind
+        let children: [TrackerSidebarNode]?
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -25,7 +47,7 @@ struct MainView: View {
     @EnvironmentObject private var transfers: TransferManager
 
     @State private var windowConnectionID: UUID? = nil
-    @State private var listSelectionID: UUID? = nil
+    @State private var listSelection: SidebarSelection? = nil
     @State private var editedBookmark: Bookmark? = nil
     @State private var editedTrackerBookmark: TrackerBookmark? = nil
     @State private var showingNewTrackerSheet: Bool = false
@@ -34,8 +56,6 @@ struct MainView: View {
     @State private var bookmarkToDelete: Bookmark? = nil
     @State private var showDeleteTrackerConfirmation: Bool = false
     @State private var trackerBookmarkToDelete: TrackerBookmark? = nil
-    @State private var expandedTrackerIDs: Set<UUID> = []
-
     @AppStorage("transfersHeight") private var transfersHeight: Double = 0
     @AppStorage("CheckActiveConnectionsBeforeClosingWindowTab")
     private var checkActiveConnectionsBeforeClosingWindowTab: Bool = true
@@ -143,19 +163,30 @@ struct MainView: View {
 
     private var listSelectionBinding: Binding<UUID?> {
         Binding(
-            get: { listSelectionID },
+            get: {
+                guard case let .connection(id) = listSelection else { return nil }
+                return id
+            },
             set: { newValue in
-                listSelectionID = newValue
+                listSelection = newValue.map(SidebarSelection.connection)
+            }
+        )
+    }
+
+    private var sidebarSelectionBinding: Binding<SidebarSelection?> {
+        Binding(
+            get: { listSelection },
+            set: { newValue in
+                listSelection = newValue
                 guard let newValue else { return }
+                guard case let .connection(connectionID) = newValue else { return }
 
 #if os(macOS)
-                guard connectionController.hasWindowAssociation(for: newValue) else { return }
-                if connectionController.focusWindow(for: newValue) {
-                    // Keep local selection tied to this window's connection.
-                    listSelectionID = windowConnectionID
+                guard connectionController.hasWindowAssociation(for: connectionID) else { return }
+                if connectionController.focusWindow(for: connectionID) {
+                    listSelection = windowConnectionID.map(SidebarSelection.connection)
                     return
                 }
-                // Do not replace current detail when we cannot focus an existing tab/window.
                 return
 #endif
             }
@@ -174,7 +205,7 @@ struct MainView: View {
                     checkBeforeClosing: checkActiveConnectionsBeforeClosingWindowTab,
                     connectionController: connectionController,
                     onWindowBecameKey: {
-                        listSelectionID = windowConnectionID
+                        listSelection = windowConnectionID.map(SidebarSelection.connection)
                         connectionController.activeConnectionID = windowConnectionID
                     },
                     onWindowChanged: { window in
@@ -207,7 +238,7 @@ struct MainView: View {
                 performInitialLaunchFlowIfNeeded()
                 consumePendingSelectionIfNeeded()
                 restoreWindowConnectionIfNeeded()
-                listSelectionID = windowConnectionID
+                listSelection = windowConnectionID.map(SidebarSelection.connection)
                 connectionController.activeConnectionID = windowConnectionID
             }
             .onChange(of: activeTransfersCount) { oldValue, newValue in
@@ -379,13 +410,8 @@ struct MainView: View {
     @ViewBuilder
     private var connectionList: some View {
         #if os(macOS)
-        List(selection: listSelectionBinding) {
+        List(selection: sidebarSelectionBinding) {
             connectionSections
-        }
-        .contextMenu(forSelectionType: UUID.self) { selection in
-            connectionContextMenu(for: selection)
-        } primaryAction: { selection in
-            handleConnectionPrimaryAction(selection)
         }
         #else
         List(selection: listSelectionBinding) {
@@ -433,24 +459,24 @@ struct MainView: View {
         Section {
             ForEach(bookmarks, id: \.id) { bookmark in
                 connectionRow(connectionID: bookmark.id, name: bookmark.name)
-                    .tag(bookmark.id)
+                    .tag(SidebarSelection.connection(bookmark.id))
             }
         } header: {
             Text("Favorites")
         }
 
-        trackerSection
-
         if !connectionController.temporaryConnections.isEmpty {
             Section {
                 ForEach(connectionController.temporaryConnections, id: \.id) { temporary in
                     connectionRow(connectionID: temporary.id, name: temporary.name)
-                        .tag(temporary.id)
+                        .tag(SidebarSelection.connection(temporary.id))
                 }
             } header: {
                 Text("Connections")
             }
         }
+
+        trackerSection
     }
 
     private var sortedTrackerBookmarks: [TrackerBookmark] {
@@ -472,8 +498,9 @@ struct MainView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                ForEach(sortedTrackerBookmarks, id: \.id) { trackerBookmark in
-                    trackerBookmarkRow(trackerBookmark)
+                OutlineGroup(trackerSidebarRoots, children: \.children) { node in
+                    trackerSidebarNodeRow(node)
+                        .tag(node.selection)
                 }
             }
         } header: {
@@ -486,156 +513,6 @@ struct MainView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func trackerBookmarkRow(_ trackerBookmark: TrackerBookmark) -> some View {
-        let state = trackerBrowser.state(for: trackerBookmark.id)
-
-        return DisclosureGroup(
-            isExpanded: trackerExpansionBinding(for: trackerBookmark)
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                if state.isLoading && !state.hasContent {
-                    ProgressView("Loading tracker...")
-                        .controlSize(.small)
-                }
-
-                if let lastError = state.lastError {
-                    Text(lastError)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Button("Retry") {
-                        trackerBrowser.refresh(trackerBookmark)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                ForEach(state.categories) { category in
-                    trackerCategoryView(category)
-                }
-
-                ForEach(state.rootServers) { server in
-                    trackerServerRow(server)
-                }
-
-                if !state.isLoading && state.lastError == nil && !state.hasContent {
-                    Text("No servers listed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if state.hasContent || state.lastError != nil {
-                    Button("Reload") {
-                        trackerBrowser.refresh(trackerBookmark)
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                }
-            }
-            .padding(.top, 4)
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .foregroundStyle(.secondary)
-                    Text(trackerBookmark.name)
-                    if state.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
-                Text(trackerBookmark.displayAddress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 24)
-            }
-        }
-        .contextMenu {
-            Button("Reload") {
-                expandedTrackerIDs.insert(trackerBookmark.id)
-                trackerBrowser.refresh(trackerBookmark)
-            }
-
-            Divider()
-
-            Button("Edit") {
-                editedTrackerBookmark = trackerBookmark
-            }
-
-            Button("Delete") {
-                trackerBookmarkToDelete = trackerBookmark
-                showDeleteTrackerConfirmation = true
-            }
-        }
-    }
-
-    private func trackerCategoryView(_ category: TrackerCategoryNode) -> AnyView {
-        AnyView(
-            DisclosureGroup(category.name) {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(category.categories) { child in
-                        trackerCategoryView(child)
-                    }
-
-                    ForEach(category.servers) { server in
-                        trackerServerRow(server)
-                    }
-                }
-                .padding(.top, 4)
-            }
-        )
-    }
-
-    private func trackerServerRow(_ server: TrackerServerNode) -> some View {
-        Button {
-            connectToTrackerServer(server)
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: server.isTracker ? "point.3.connected.trianglepath.dotted" : "server.rack")
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(server.name)
-                        .foregroundStyle(.primary)
-
-                    if !server.serverDescription.isEmpty {
-                        Text(server.serverDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    HStack(spacing: 8) {
-                        Text("\(server.users) users")
-                        Text("\(server.filesCount) files")
-                        Text(byteCountFormatter.string(fromByteCount: Int64(server.filesSize)))
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button("Connect") {
-                connectToTrackerServer(server)
-            }
-
-            Button("Add to Favorites") {
-                addTrackerServerToFavorites(server)
-            }
-
-            if server.isTracker {
-                Button("Add to Trackers") {
-                    addTrackerBookmark(from: server)
-                }
             }
         }
     }
@@ -675,12 +552,125 @@ struct MainView: View {
     private func connectionRow(connectionID: UUID, name: String) -> some View {
         ConnectionRowView(connectionID: connectionID, name: name)
             .environment(connectionController)
-#if os(iOS)
-            .contentShape(Rectangle())
             .contextMenu {
                 connectionContextMenu(for: Set([connectionID]))
             }
+#if os(macOS)
+            .onTapGesture(count: 2) {
+                handleConnectionPrimaryAction([connectionID])
+            }
 #endif
+#if os(iOS)
+            .contentShape(Rectangle())
+#endif
+    }
+
+    @ViewBuilder
+    private func trackerSidebarNodeRow(_ node: TrackerSidebarNode) -> some View {
+        switch node.kind {
+        case .bookmark(let trackerBookmark):
+            trackerBookmarkLabel(trackerBookmark)
+                .contextMenu {
+                    Button("Reload") {
+                        trackerBrowser.refresh(trackerBookmark)
+                    }
+
+                    Divider()
+
+                    Button("Edit") {
+                        editedTrackerBookmark = trackerBookmark
+                    }
+
+                    Button("Delete") {
+                        trackerBookmarkToDelete = trackerBookmark
+                        showDeleteTrackerConfirmation = true
+                    }
+                }
+                .task(id: trackerBookmark.id) {
+                    trackerBrowser.refreshIfNeeded(trackerBookmark)
+                }
+
+        case .category(_, let category):
+            Label(category.name, systemImage: "folder")
+
+        case .server(_, let server):
+            trackerServerLabel(server)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    connectToTrackerServer(server)
+                }
+                .contextMenu {
+                    Button("Connect") {
+                        connectToTrackerServer(server)
+                    }
+
+                    Button("Add to Favorites") {
+                        addTrackerServerToFavorites(server)
+                    }
+
+                    if server.isTracker {
+                        Button("Add to Trackers") {
+                            addTrackerBookmark(from: server)
+                        }
+                    }
+                }
+
+        case .status(_, let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func trackerBookmarkLabel(_ trackerBookmark: TrackerBookmark) -> some View {
+        let state = trackerBrowser.state(for: trackerBookmark.id)
+
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .foregroundStyle(.secondary)
+                Text(trackerBookmark.name)
+                if state.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            Text(trackerBookmark.displayAddress)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 24)
+        }
+    }
+
+    private func trackerServerLabel(_ server: TrackerServerNode) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: server.isTracker ? "point.3.connected.trianglepath.dotted" : "server.rack")
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(server.name)
+                    .foregroundStyle(.primary)
+
+                if !server.serverDescription.isEmpty {
+                    Text(server.serverDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 8) {
+                    Text("\(server.users) users")
+                    Text("\(server.filesCount) files")
+                    Text(byteCountFormatter.string(fromByteCount: Int64(server.filesSize)))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     private func detailPane(for connectionID: UUID?) -> some View {
@@ -719,7 +709,7 @@ struct MainView: View {
         ToolbarItem(placement: .topBarLeading) {
             Button {
                 windowConnectionID = nil
-                listSelectionID = nil
+                listSelection = nil
                 connectionController.activeConnectionID = nil
             } label: {
                 Image(systemName: "chevron.left")
@@ -836,7 +826,6 @@ struct MainView: View {
             KeychainSwift().delete(trackerBookmarkToDelete.credentialKey)
             modelContext.delete(trackerBookmarkToDelete)
             trackerBrowser.clear(for: trackerBookmarkToDelete.id)
-            expandedTrackerIDs.remove(trackerBookmarkToDelete.id)
             self.trackerBookmarkToDelete = nil
             try? modelContext.save()
         }
@@ -866,7 +855,7 @@ struct MainView: View {
             return
         }
         windowConnectionID = requested
-        listSelectionID = requested
+        listSelection = .connection(requested)
         connectionController.requestedSelectionID = nil
         connectionController.activeConnectionID = requested
     }
@@ -874,16 +863,16 @@ struct MainView: View {
     private func restoreWindowConnectionIfNeeded() {
         guard windowConnectionID == nil else { return }
 
-        if let listSelectionID,
-           hasConnectionContext(listSelectionID) {
-            windowConnectionID = listSelectionID
-            connectionController.activeConnectionID = listSelectionID
+        if case let .connection(connectionID) = listSelection,
+           hasConnectionContext(connectionID) {
+            windowConnectionID = connectionID
+            connectionController.activeConnectionID = connectionID
             return
         }
 
         if let firstActive = connectionController.firstActiveConnectionID() {
             windowConnectionID = firstActive
-            listSelectionID = firstActive
+            listSelection = .connection(firstActive)
             connectionController.activeConnectionID = firstActive
         }
     }
@@ -902,7 +891,7 @@ struct MainView: View {
 
         if let first = startupBookmarks.first {
             windowConnectionID = first.id
-            listSelectionID = first.id
+            listSelection = .connection(first.id)
             connectionController.activeConnectionID = first.id
             connectionController.connect(first)
         }
@@ -927,7 +916,7 @@ struct MainView: View {
             return
 #else
             windowConnectionID = bookmark.id
-            listSelectionID = bookmark.id
+            listSelection = .connection(bookmark.id)
             connectionController.activeConnectionID = bookmark.id
             return
 #endif
@@ -936,7 +925,7 @@ struct MainView: View {
         // Reuse the empty main window for the first connection.
         if windowConnectionID == nil {
             windowConnectionID = bookmark.id
-            listSelectionID = bookmark.id
+            listSelection = .connection(bookmark.id)
             connectionController.activeConnectionID = bookmark.id
             connectionController.connect(bookmark)
             return
@@ -961,7 +950,7 @@ struct MainView: View {
 
     private func selectConnection(_ id: UUID) {
         windowConnectionID = id
-        listSelectionID = id
+        listSelection = .connection(id)
         connectionController.activeConnectionID = id
     }
 
@@ -1003,20 +992,6 @@ struct MainView: View {
         }
 
         connectionController.markConnectionAsBookmarked(id)
-    }
-
-    private func trackerExpansionBinding(for trackerBookmark: TrackerBookmark) -> Binding<Bool> {
-        Binding(
-            get: { expandedTrackerIDs.contains(trackerBookmark.id) },
-            set: { isExpanded in
-                if isExpanded {
-                    expandedTrackerIDs.insert(trackerBookmark.id)
-                    trackerBrowser.refreshIfNeeded(trackerBookmark)
-                } else {
-                    expandedTrackerIDs.remove(trackerBookmark.id)
-                }
-            }
-        )
     }
 
     private func draft(for server: TrackerServerNode) -> NewConnectionDraft? {
@@ -1083,6 +1058,79 @@ struct MainView: View {
         try? modelContext.save()
     }
 
+    private var trackerSidebarRoots: [TrackerSidebarNode] {
+        sortedTrackerBookmarks.map(makeTrackerBookmarkNode)
+    }
+
+    private func makeTrackerBookmarkNode(_ trackerBookmark: TrackerBookmark) -> TrackerSidebarNode {
+        let state = trackerBrowser.state(for: trackerBookmark.id)
+        let bookmarkID = trackerBookmark.id
+
+        var children: [TrackerSidebarNode] = []
+        children.append(contentsOf: state.categories.map { makeTrackerCategoryNode(bookmarkID: bookmarkID, category: $0) })
+        children.append(contentsOf: state.rootServers.map { makeTrackerServerNode(bookmarkID: bookmarkID, server: $0) })
+
+        if state.isLoading && children.isEmpty {
+            children.append(
+                TrackerSidebarNode(
+                    id: "tracker-status-\(bookmarkID)-loading",
+                    selection: .trackerStatus(bookmarkID, "loading"),
+                    kind: .status(bookmarkID: bookmarkID, message: "Loading tracker…"),
+                    children: nil
+                )
+            )
+        } else if let lastError = state.lastError, children.isEmpty {
+            children.append(
+                TrackerSidebarNode(
+                    id: "tracker-status-\(bookmarkID)-error",
+                    selection: .trackerStatus(bookmarkID, "error"),
+                    kind: .status(bookmarkID: bookmarkID, message: lastError),
+                    children: nil
+                )
+            )
+        } else if !state.isLoading && children.isEmpty {
+            children.append(
+                TrackerSidebarNode(
+                    id: "tracker-status-\(bookmarkID)-empty",
+                    selection: .trackerStatus(bookmarkID, "empty"),
+                    kind: .status(bookmarkID: bookmarkID, message: "No servers listed"),
+                    children: nil
+                )
+            )
+        }
+
+        return TrackerSidebarNode(
+            id: "tracker-bookmark-\(bookmarkID)",
+            selection: .trackerBookmark(bookmarkID),
+            kind: .bookmark(trackerBookmark),
+            children: children
+        )
+    }
+
+    private func makeTrackerCategoryNode(bookmarkID: UUID, category: TrackerCategoryNode) -> TrackerSidebarNode {
+        let nestedChildren = category.categories.map {
+            makeTrackerCategoryNode(bookmarkID: bookmarkID, category: $0)
+        } + category.servers.map {
+            makeTrackerServerNode(bookmarkID: bookmarkID, server: $0)
+        }
+
+        return TrackerSidebarNode(
+            id: "tracker-category-\(bookmarkID)-\(category.path)",
+            selection: .trackerCategory(bookmarkID, category.path),
+            kind: .category(bookmarkID: bookmarkID, category: category),
+            children: nestedChildren
+        )
+    }
+
+    private func makeTrackerServerNode(bookmarkID: UUID, server: TrackerServerNode) -> TrackerSidebarNode {
+        TrackerSidebarNode(
+            id: "tracker-server-\(bookmarkID)-\(server.id)",
+            selection: .trackerServer(bookmarkID, server.id),
+            kind: .server(bookmarkID: bookmarkID, server: server),
+            children: nil
+        )
+    }
+
     @ViewBuilder
     private func connectionContextMenu(for selection: Set<UUID>) -> some View {
         if let id = selection.first {
@@ -1142,7 +1190,7 @@ struct MainView: View {
             }
 #endif
             windowConnectionID = id
-            listSelectionID = id
+            listSelection = .connection(id)
             connectionController.activeConnectionID = id
             connectionController.connect(bookmark)
             return
@@ -1159,7 +1207,7 @@ struct MainView: View {
 #endif
 
         windowConnectionID = id
-        listSelectionID = id
+        listSelection = .connection(id)
         connectionController.activeConnectionID = id
         connectionController.connect(configuration)
     }
@@ -1192,7 +1240,7 @@ struct MainView: View {
         }
 
         windowConnectionID = id
-        listSelectionID = id
+        listSelection = .connection(id)
         connectionController.activeConnectionID = id
     }
 
@@ -1215,7 +1263,7 @@ struct MainView: View {
 #else
         if let requested = connectionController.requestedSelectionID {
             windowConnectionID = requested
-            listSelectionID = requested
+            listSelection = .connection(requested)
             connectionController.activeConnectionID = requested
         }
 #endif
@@ -1262,7 +1310,7 @@ struct MainView: View {
         openMainWindow()
 #else
         windowConnectionID = bookmark.id
-        listSelectionID = bookmark.id
+        listSelection = .connection(bookmark.id)
         connectionController.activeConnectionID = bookmark.id
 #endif
         connectionController.connect(bookmark)
@@ -1274,7 +1322,7 @@ struct MainView: View {
         openMainTab()
 #else
         windowConnectionID = bookmark.id
-        listSelectionID = bookmark.id
+        listSelection = .connection(bookmark.id)
         connectionController.activeConnectionID = bookmark.id
 #endif
         connectionController.connect(bookmark)
