@@ -37,6 +37,13 @@ struct MainView: View {
         let children: [TrackerSidebarNode]?
     }
 
+    private struct TrackerServerInfoPresentation: Identifiable {
+        let bookmarkID: UUID
+        let server: TrackerServerNode
+
+        var id: String { "\(bookmarkID)|\(server.id)" }
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -56,6 +63,7 @@ struct MainView: View {
     @State private var bookmarkToDelete: Bookmark? = nil
     @State private var showDeleteTrackerConfirmation: Bool = false
     @State private var trackerBookmarkToDelete: TrackerBookmark? = nil
+    @State private var inspectedTrackerServer: TrackerServerInfoPresentation? = nil
     @AppStorage("transfersHeight") private var transfersHeight: Double = 0
     @AppStorage("CheckActiveConnectionsBeforeClosingWindowTab")
     private var checkActiveConnectionsBeforeClosingWindowTab: Bool = true
@@ -413,6 +421,11 @@ struct MainView: View {
         List(selection: sidebarSelectionBinding) {
             connectionSections
         }
+        .contextMenu(forSelectionType: SidebarSelection.self) { _ in
+            EmptyView()
+        } primaryAction: { selection in
+            handleSidebarPrimaryAction(selection)
+        }
         #else
         List(selection: listSelectionBinding) {
             connectionSections
@@ -555,11 +568,6 @@ struct MainView: View {
             .contextMenu {
                 connectionContextMenu(for: Set([connectionID]))
             }
-#if os(macOS)
-            .onTapGesture(count: 2) {
-                handleConnectionPrimaryAction([connectionID])
-            }
-#endif
 #if os(iOS)
             .contentShape(Rectangle())
 #endif
@@ -596,12 +604,16 @@ struct MainView: View {
         case .server(_, let server):
             trackerServerLabel(server)
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    connectToTrackerServer(server)
-                }
                 .contextMenu {
                     Button("Connect") {
                         connectToTrackerServer(server)
+                    }
+
+                    Button("Get Info") {
+                        inspectedTrackerServer = TrackerServerInfoPresentation(
+                            bookmarkID: bookmarkID(for: node),
+                            server: server
+                        )
                     }
 
                     Button("Add to Favorites") {
@@ -614,11 +626,62 @@ struct MainView: View {
                         }
                     }
                 }
+                .popover(
+                    isPresented: Binding(
+                        get: {
+                            inspectedTrackerServer?.id == TrackerServerInfoPresentation(
+                                bookmarkID: bookmarkID(for: node),
+                                server: server
+                            ).id
+                        },
+                        set: { isPresented in
+                            if !isPresented,
+                               inspectedTrackerServer?.id == TrackerServerInfoPresentation(
+                                bookmarkID: bookmarkID(for: node),
+                                server: server
+                               ).id {
+                                inspectedTrackerServer = nil
+                            }
+                        }
+                    ),
+                    attachmentAnchor: .rect(.bounds),
+                    arrowEdge: .trailing
+                ) {
+                    TrackerServerInfoView(server: server)
+                        .frame(minWidth: 360, idealWidth: 420)
+                }
 
         case .status(_, let message):
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func handleSidebarPrimaryAction(_ selection: Set<SidebarSelection>) {
+        guard let first = selection.first else { return }
+
+        switch first {
+        case .connection(let id):
+            handleConnectionPrimaryAction([id])
+        case .trackerServer(let bookmarkID, let serverID):
+            guard let server = trackerServer(for: bookmarkID, serverID: serverID) else { return }
+            connectToTrackerServer(server)
+        case .trackerBookmark, .trackerCategory, .trackerStatus:
+            break
+        }
+    }
+
+    private func bookmarkID(for node: TrackerSidebarNode) -> UUID {
+        switch node.kind {
+        case .bookmark(let trackerBookmark):
+            return trackerBookmark.id
+        case .category(let bookmarkID, _):
+            return bookmarkID
+        case .server(let bookmarkID, _):
+            return bookmarkID
+        case .status(let bookmarkID, _):
+            return bookmarkID
         }
     }
 
@@ -1056,6 +1119,27 @@ struct MainView: View {
         }
 
         try? modelContext.save()
+    }
+
+    private func trackerServer(for bookmarkID: UUID, serverID: String) -> TrackerServerNode? {
+        let state = trackerBrowser.state(for: bookmarkID)
+        if let rootMatch = state.rootServers.first(where: { $0.id == serverID }) {
+            return rootMatch
+        }
+
+        func search(categories: [TrackerCategoryNode]) -> TrackerServerNode? {
+            for category in categories {
+                if let match = category.servers.first(where: { $0.id == serverID }) {
+                    return match
+                }
+                if let nested = search(categories: category.categories) {
+                    return nested
+                }
+            }
+            return nil
+        }
+
+        return search(categories: state.categories)
     }
 
     private var trackerSidebarRoots: [TrackerSidebarNode] {
@@ -1630,3 +1714,56 @@ private final class WindowCloseDelegate: NSObject, NSWindowDelegate {
     }
 }
 #endif
+
+private struct TrackerServerInfoView: View {
+    let server: TrackerServerNode
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Name") {
+                    Text(server.name)
+                }
+
+                if !server.serverDescription.isEmpty {
+                    LabeledContent("Description") {
+                        Text(server.serverDescription)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                LabeledContent("URL") {
+                    Text(server.urlString)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                }
+
+                LabeledContent("Category") {
+                    Text(server.categoryPath.isEmpty ? "None" : server.categoryPath)
+                        .foregroundStyle(.secondary)
+                }
+
+                LabeledContent("Tracker") {
+                    Text(server.isTracker ? "Yes" : "No")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                LabeledContent("Users") {
+                    Text("\(server.users)")
+                }
+
+                LabeledContent("Files") {
+                    Text("\(server.filesCount)")
+                }
+
+                LabeledContent("Size") {
+                    Text(byteCountFormatter.string(fromByteCount: Int64(server.filesSize)))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
