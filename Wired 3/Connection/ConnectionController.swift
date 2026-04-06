@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import KeychainSwift
 import WiredSwift
 import UserNotifications
 #if os(macOS)
@@ -519,6 +520,22 @@ final class ConnectionController {
         withStateLock { configurationsByID[id] }
     }
 
+    func refreshStoredConfiguration(for bookmark: Bookmark, password: String?) {
+        let trimmedPassword = password?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPassword: String? = {
+            guard let trimmedPassword, !trimmedPassword.isEmpty else { return nil }
+            return trimmedPassword
+        }()
+
+        withStateLock {
+            guard configurationsByID[bookmark.id] != nil else { return }
+            configurationsByID[bookmark.id] = ConnectionConfiguration(
+                bookmark: bookmark,
+                password: normalizedPassword
+            )
+        }
+    }
+
     func hasConnectionIssue(_ id: UUID) -> Bool {
         withStateLock { connectionIssueIDs.contains(id) }
     }
@@ -785,7 +802,12 @@ final class ConnectionController {
     // MARK: - Public API
 
     func connect(_ bookmark: Bookmark) {
-        connect(ConnectionConfiguration(bookmark: bookmark), initiatedByAutoReconnect: false)
+        let credentialKey = "\(bookmark.login)@\(bookmark.hostname)"
+        let password = KeychainSwift().get(credentialKey)
+        connect(
+            ConnectionConfiguration(bookmark: bookmark, password: password),
+            initiatedByAutoReconnect: false
+        )
     }
 
     func connect(_ configuration: ConnectionConfiguration) {

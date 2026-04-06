@@ -11,6 +11,10 @@ import KeychainSwift
 import WiredSwift
 
 struct BookmarkFormView: View {
+    private enum Field: Hashable {
+        case password
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
     @Environment(ConnectionController.self) private var connectionController
@@ -32,6 +36,7 @@ struct BookmarkFormView: View {
 
     @AppStorage("UserNick") private var userNick: String = "Wired Swift"
     @AppStorage("UserStatus") private var userStatus: String = ""
+    @FocusState private var focusedField: Field?
     
     var bookmark: Bookmark? = nil
 
@@ -54,6 +59,7 @@ struct BookmarkFormView: View {
 #endif
                     
                     SecureField("Password", text: $password)
+                        .focused($focusedField, equals: .password)
                 } header: {
                     Text("Authentication")
                 }
@@ -133,7 +139,14 @@ struct BookmarkFormView: View {
                 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        save()
+                        if focusedField != nil {
+                            focusedField = nil
+                            DispatchQueue.main.async {
+                                save()
+                            }
+                        } else {
+                            save()
+                        }
                     } label: {
                         Text("Save")
                     }
@@ -141,35 +154,60 @@ struct BookmarkFormView: View {
             }
             .formStyle(.grouped)
         }
-        .onAppear {
-            let keychain = KeychainSwift()
-            
-            if let bookmark {
-                name = bookmark.name
-                hostname = bookmark.hostname
-                login = bookmark.login
-                connectAtStartup = bookmark.connectAtStartup
-                autoReconnect = bookmark.autoReconnect
-                useCustomIdentity = bookmark.useCustomIdentity
-                customNick = bookmark.customNick
-                customStatus = bookmark.customStatus
-                compression = bookmark.compressionRawValue
-                checksum = bookmark.checksumRawValue
-                cipher = bookmark.cipherRawValue
-                password = keychain.get("\(login)@\(hostname)") ?? ""
-            }
+        .task(id: bookmark?.id) {
+            loadBookmark()
         }
+    }
+
+    private func loadBookmark() {
+        let keychain = KeychainSwift()
+
+        guard let bookmark else {
+            name = ""
+            hostname = ""
+            login = ""
+            password = ""
+            connectAtStartup = false
+            autoReconnect = false
+            useCustomIdentity = false
+            customNick = ""
+            customStatus = ""
+            compression = P7Socket.Compression.LZ4.rawValue
+            checksum = P7Socket.Checksum.HMAC_256.rawValue
+            cipher = P7Socket.CipherType.ECDH_CHACHA20_POLY1305.rawValue
+            return
+        }
+
+        name = bookmark.name
+        hostname = bookmark.hostname
+        login = bookmark.login
+        connectAtStartup = bookmark.connectAtStartup
+        autoReconnect = bookmark.autoReconnect
+        useCustomIdentity = bookmark.useCustomIdentity
+        customNick = bookmark.customNick
+        customStatus = bookmark.customStatus
+        compression = bookmark.compressionRawValue
+        checksum = bookmark.checksumRawValue
+        cipher = bookmark.cipherRawValue
+        password = keychain.get("\(bookmark.login)@\(bookmark.hostname)") ?? ""
     }
     
     func save() {
         let keychain = KeychainSwift()
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLogin = login.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCustomNick = useCustomIdentity ? customNick.trimmingCharacters(in: .whitespacesAndNewlines) : ""
         let normalizedCustomStatus = useCustomIdentity ? customStatus : ""
+        let effectiveName = trimmedName.isEmpty ? trimmedHostname : trimmedName
+        let previousCredentialKey = bookmark.map { "\($0.login)@\($0.hostname)" }
+        let credentialKey = "\(trimmedLogin)@\(trimmedHostname)"
         
         if let bookmark {
-            bookmark.name = name
-            bookmark.hostname = hostname
-            bookmark.login = login
+            bookmark.name = effectiveName
+            bookmark.hostname = trimmedHostname
+            bookmark.login = trimmedLogin
             bookmark.connectAtStartup = connectAtStartup
             bookmark.autoReconnect = autoReconnect
             bookmark.useCustomIdentity = useCustomIdentity
@@ -178,7 +216,7 @@ struct BookmarkFormView: View {
             bookmark.compressionRawValue = compression
             bookmark.cipherRawValue = cipher
             bookmark.checksumRawValue = checksum
-            
+
             try? modelContext.save()
 
             connectionController.applyIdentityUpdateIfConnected(
@@ -189,9 +227,14 @@ struct BookmarkFormView: View {
                 fallbackNick: userNick,
                 fallbackStatus: userStatus
             )
+
+            connectionController.refreshStoredConfiguration(
+                for: bookmark,
+                password: trimmedPassword
+            )
             
         } else {
-            let newBookmark = Bookmark(name: name, hostname: hostname, login: login)
+            let newBookmark = Bookmark(name: effectiveName, hostname: trimmedHostname, login: trimmedLogin)
             newBookmark.connectAtStartup = connectAtStartup
             newBookmark.autoReconnect = autoReconnect
             newBookmark.useCustomIdentity = useCustomIdentity
@@ -202,10 +245,25 @@ struct BookmarkFormView: View {
             newBookmark.checksumRawValue = checksum
             
             modelContext.insert(newBookmark)
+
+            connectionController.refreshStoredConfiguration(
+                for: newBookmark,
+                password: trimmedPassword
+            )
         }
         
-        if !password.isEmpty {
-            keychain.set(password, forKey: "\(login)@\(hostname)")
+        if let previousCredentialKey, previousCredentialKey != credentialKey {
+            print("Keychain delete 1")
+            password = ""
+            keychain.delete(previousCredentialKey)
+        }
+
+        if !trimmedPassword.isEmpty {
+            keychain.set(trimmedPassword, forKey: credentialKey)
+        } else {
+            print("Keychain delete 2 \(credentialKey)")
+            password = ""
+            keychain.delete(credentialKey)
         }
         
         dismiss()

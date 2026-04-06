@@ -301,7 +301,7 @@ final class TrackerBrowserController {
     }
 }
 
-private enum KeychainProvider {
+enum KeychainProvider {
     static func password(for key: String) -> String {
         KeychainSwift().get(key) ?? ""
     }

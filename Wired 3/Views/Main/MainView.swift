@@ -621,6 +621,8 @@ struct MainView: View {
                             server: server
                         )
                     }
+                    
+                    Divider()
 
                     Button("Add to Favorites") {
                         addTrackerServerToFavorites(server)
