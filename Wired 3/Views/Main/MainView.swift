@@ -329,12 +329,15 @@ struct MainView: View {
         }
         .sheet(item: $editedBookmark) { bookmark in
             BookmarkFormView(bookmark: bookmark)
+                .id(bookmark.id)
         }
         .sheet(item: $editedTrackerBookmark) { trackerBookmark in
             TrackerBookmarkFormView(trackerBookmark: trackerBookmark)
+                .id(trackerBookmark.id)
         }
         .sheet(isPresented: $showingNewTrackerSheet) {
             TrackerBookmarkFormView()
+                .id("new-tracker-bookmark")
         }
         .alert("Delete Bookmark", isPresented: $showDeleteBookmarkConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -375,12 +378,15 @@ struct MainView: View {
         }
         .sheet(item: $editedBookmark) { bookmark in
             BookmarkFormView(bookmark: bookmark)
+                .id(bookmark.id)
         }
         .sheet(item: $editedTrackerBookmark) { trackerBookmark in
             TrackerBookmarkFormView(trackerBookmark: trackerBookmark)
+                .id(trackerBookmark.id)
         }
         .sheet(isPresented: $showingNewTrackerSheet) {
             TrackerBookmarkFormView()
+                .id("new-tracker-bookmark")
         }
         .alert("Delete Bookmark", isPresented: $showDeleteBookmarkConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -1219,7 +1225,7 @@ struct MainView: View {
     private func connectionContextMenu(for selection: Set<UUID>) -> some View {
         if let id = selection.first {
             if let bookmark = bookmark(for: id) {
-                if connectionController.isConnected(id) {
+                if isConnectionActive(id) {
                     Button("Disconnect") {
                         disconnect(id)
                     }
@@ -1244,7 +1250,7 @@ struct MainView: View {
             } else {
                 let hasConfiguration = connectionController.configuration(for: id) != nil
 
-                if connectionController.isConnected(id) {
+                if isConnectionActive(id) {
                     Button("Disconnect") {
                         disconnect(id)
                     }
@@ -1299,7 +1305,7 @@ struct MainView: View {
     private func handleConnectionPrimaryAction(_ selection: Set<UUID>) {
         guard let id = selection.first else { return }
         if let bookmark = bookmark(for: id) {
-            if connectionController.isConnected(id) {
+            if isConnectionActive(id) {
                 openOrSelectBookmark(bookmark)
             } else {
                 connectInNewTab(bookmark)
@@ -1328,8 +1334,13 @@ struct MainView: View {
         connectionController.activeConnectionID = id
     }
 
+    private func isConnectionActive(_ id: UUID) -> Bool {
+        guard let runtime = connectionController.runtime(for: id) else { return false }
+        return runtime.status != .disconnected
+    }
+
     private func hasConnectionContext(_ id: UUID) -> Bool {
-        connectionController.runtime(for: id) != nil || connectionController.isConnected(id)
+        connectionController.runtime(for: id) != nil
     }
 
     private func openMainWindow() {
