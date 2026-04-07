@@ -20,7 +20,12 @@ final class Chat: Identifiable {
     var users : [User] = []
     var messages : [ChatEvent] = []
     var typingUsersByID: [UInt32: Date] = [:]
-    
+
+    /// Reserved for future local history persistence.
+    /// When true, older messages exist on disk that haven't been loaded into `messages` yet.
+    /// Always false in the current in-memory model.
+    var hasMoreHistory: Bool = false
+
     var unreadMessagesCount : Int = 0
     
     init(id: UInt32, name: String, isPrivate: Bool = false) {

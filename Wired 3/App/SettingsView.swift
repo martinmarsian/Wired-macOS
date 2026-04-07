@@ -344,7 +344,8 @@ struct ChatSettingsView: View {
     @AppStorage("TimestampInChat") var timestampInChat: Bool = false
     @AppStorage("TimestampEveryMin") var timestampEveryMin = 5
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
-    
+    @AppStorage("ChatMaxDisplayedMessages") var chatMaxMessages: Int = 100
+
     @AppStorage("SubstituteEmoji") var substituteEmoji: Bool = true
 
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
@@ -371,7 +372,15 @@ struct ChatSettingsView: View {
                 }, set: { string, _ in
                     timestampEveryMin = max(Int(string) ?? 5, 1)
                 }))
-                
+                LabeledContent("Messages displayed") {
+                    Stepper(
+                        "\(chatMaxMessages)",
+                        value: $chatMaxMessages,
+                        in: 50...2000,
+                        step: 50
+                    )
+                    .frame(width: 130)
+                }
             }
             Section {
                 Toggle("Timestamp every message", isOn: $timestampEveryMessage)

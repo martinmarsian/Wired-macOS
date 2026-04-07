@@ -24,7 +24,10 @@ struct ChatMessagesView: View {
     @State private var liveSlotClearTask: Task<Void, Never>?
     @State private var scrollToBottomTask: Task<Void, Never>?
     @State private var pendingLiveSlotTimestampDate: Date?
-    
+    @AppStorage("ChatMaxDisplayedMessages") private var chatMaxMessages: Int = 100
+    @State private var displayedMessageCount: Int = 100
+    @State private var isLoadingMore = false
+
     var chat: Chat
     var searchText: String = ""
     var topOverlayInset: CGFloat = 0
@@ -47,8 +50,24 @@ struct ChatMessagesView: View {
         !normalizedSearchText.isEmpty
     }
 
+    /// Windowed slice of chat.messages: always the last `displayedMessageCount` messages.
+    private var windowedMessages: [ChatEvent] {
+        let all = chat.messages
+        guard displayedMessageCount < all.count else { return all }
+        return Array(all.suffix(displayedMessageCount))
+    }
+
+    /// True when older messages exist in memory (or on disk) but aren't currently displayed.
+    private var hasOlderMessages: Bool {
+        !isSearching && (displayedMessageCount < chat.messages.count || chat.hasMoreHistory)
+    }
+
+    /// When searching: scan all messages. Otherwise: use the windowed slice.
     private var filteredMessages: [ChatEvent] {
-        chat.filteredMessages(matching: normalizedSearchText)
+        if isSearching {
+            return chat.filteredMessages(matching: normalizedSearchText)
+        }
+        return windowedMessages
     }
 
     private var visibleMessageIDs: Set<UUID> {
@@ -136,41 +155,60 @@ struct ChatMessagesView: View {
     }
     
     var body: some View {
-        if isSearching && filteredMessages.isEmpty {
-            ContentUnavailableView(
-                "No Matching Messages",
-                systemImage: "magnifyingglass",
-                description: Text("No message in \"\(chat.name)\" matches \"\(normalizedSearchText)\".")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            messagesList
+        Group {
+            if isSearching && filteredMessages.isEmpty {
+                ContentUnavailableView(
+                    "No Matching Messages",
+                    systemImage: "magnifyingglass",
+                    description: Text("No message in \"\(chat.name)\" matches \"\(normalizedSearchText)\".")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                messagesList
+            }
         }
+        .onChange(of: chat.id) {
+            displayedMessageCount = chatMaxMessages
+        }
+        .onChange(of: chatMaxMessages) { _, newMax in
+            if displayedMessageCount < newMax {
+                displayedMessageCount = newMax
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lazyVStackContent(proxy: ScrollViewProxy) -> some View {
+        if hasOlderMessages {
+            loadMoreIndicatorView(proxy: proxy)
+        }
+
+        if topOverlayInset > 0 {
+            Color.clear
+                .frame(height: topOverlayInset)
+        }
+
+        ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
+            switch item {
+            case .timestamp(_, let date):
+                ChatInlineTimestampView(date: date)
+            case .message(let message):
+                messageView(for: message, index: index)
+            case .liveSlot(let presentation):
+                liveSlotView(for: presentation, index: index)
+            }
+        }
+
+        Color.clear
+            .frame(height: max(bottomOverlayInset + scrollIndicatorBottomInset, 0.1))
+            .id(bottomAnchorID)
     }
 
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if topOverlayInset > 0 {
-                        Color.clear
-                            .frame(height: topOverlayInset)
-                    }
-
-                    ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
-                        switch item {
-                        case .timestamp(_, let date):
-                            ChatInlineTimestampView(date: date)
-                        case .message(let message):
-                            messageView(for: message, index: index)
-                        case .liveSlot(let presentation):
-                            liveSlotView(for: presentation, index: index)
-                        }
-                    }
-
-                    Color.clear
-                        .frame(height: max(bottomOverlayInset + scrollIndicatorBottomInset, 0.1))
-                        .id(bottomAnchorID)
+                    lazyVStackContent(proxy: proxy)
                 }
                 .padding(.horizontal, 10)
             }
@@ -221,6 +259,7 @@ struct ChatMessagesView: View {
                 }
             }
             .onAppear {
+                displayedMessageCount = chatMaxMessages
                 syncLiveSlotTyping(animated: false)
                 scheduleScrollToBottom(with: proxy)
             }
@@ -310,6 +349,58 @@ struct ChatMessagesView: View {
                 .environment(runtime)
                 .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
                 .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+        }
+    }
+
+    @ViewBuilder
+    private func loadMoreIndicatorView(proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            if isLoadingMore {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Button {
+                    loadMoreMessages(with: proxy)
+                } label: {
+                    Label("Load older messages", systemImage: "arrow.up.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        // Auto-trigger when scrolled into view. Using .task so it's cancelled
+        // automatically if the view leaves the viewport (LazyVStack deallocation).
+        .task {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                loadMoreMessages(with: proxy)
+            }
+        }
+    }
+
+    @MainActor
+    private func loadMoreMessages(with proxy: ScrollViewProxy) {
+        guard hasOlderMessages, !isLoadingMore else { return }
+        isLoadingMore = true
+
+        // Capture the ID of the topmost message item currently displayed so we can
+        // restore the scroll position after the new (older) messages are prepended.
+        let anchorID = displayItems.first(where: { $0.chatMessage != nil })?.id
+
+        displayedMessageCount = min(displayedMessageCount + 100, chat.messages.count)
+
+        Task { @MainActor in
+            // Give SwiftUI one layout pass to insert the new rows above.
+            try? await Task.sleep(for: .milliseconds(50))
+            isLoadingMore = false
+            if let anchorID {
+                proxy.scrollTo(anchorID, anchor: .top)
+            }
         }
     }
 
