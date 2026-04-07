@@ -21,6 +21,7 @@ struct ChatsView: View {
     @State private var isShowingSearchProgress = false
     @State var showEditPublicChatSheet = false
     @State var showDeletePublicChatConfirm = false
+    @State private var chatIDToDelete: UInt32? = nil
     
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -123,8 +124,8 @@ struct ChatsView: View {
                                     // TODO: add `wired.account.chat.edit_public_chats` message ?
 
                                     Button("Delete") {
+                                        chatIDToDelete = UInt32(Int(first))
                                         showDeletePublicChatConfirm.toggle()
-                                        
                                     }
                                     .disabled(chat.id == 1 || !runtime.hasPrivilege("wired.account.chat.delete_public_chats"))
                                 }
@@ -173,8 +174,8 @@ struct ChatsView: View {
                     .alert("Delete Public Chat", isPresented: $showDeletePublicChatConfirm) {
                         Button("OK", role: .destructive) {
                             Task {
-                                if  let selectedChatID = runtime.selectedChatID,
-                                    let chat = runtime.chat(withID: selectedChatID)
+                                if  let chatID = chatIDToDelete,
+                                    let chat = runtime.chat(withID: chatID)
                                 {
                                     try await runtime.deletePublicChat(chat.id)
                                     runtime.selectedChatID = 1
