@@ -70,10 +70,6 @@ struct ChatMessagesView: View {
         return windowedMessages
     }
 
-    private var visibleMessageIDs: Set<UUID> {
-        Set(filteredMessages.map(\.id))
-    }
-
     private var displayItems: [ChatDisplayItem] {
         guard timestampInChat else {
             var items = transcriptMessages.map(ChatDisplayItem.message)
@@ -223,8 +219,11 @@ struct ChatMessagesView: View {
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
             .onChange(of: chat.messages.last?.id) {
-                if let lastMessage = chat.messages.last,
-                   visibleMessageIDs.contains(lastMessage.id) {
+                // When not searching: the last message is always in the windowed suffix.
+                // When searching: check directly — avoids building an O(n) Set on every call.
+                guard let lastMessage = chat.messages.last else { return }
+                let isVisible = !isSearching || lastMessage.matchesSearch(normalizedSearchText)
+                if isVisible {
                     let lastID = lastMessage.id
                     let bridgeTyping =
                         liveSlotTypingUserID == lastMessage.user.id

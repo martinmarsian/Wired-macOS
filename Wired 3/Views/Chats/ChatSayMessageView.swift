@@ -25,7 +25,7 @@ struct ChatSayMessageView: View {
     @State var isHovered: Bool = false
 
     private var primaryImageURL: URL? {
-        message.text.detectedHTTPImageURLs().first
+        message.cachedPrimaryHTTPImageURL
     }
 
     private var trimmedMessageText: String {

@@ -35,6 +35,13 @@ extension String {
         options: [.caseInsensitive]
     )
 
+    /// Shared NSDataDetector for link detection — created once at startup.
+    /// NSDataDetector compilation is expensive (~microseconds); sharing avoids
+    /// recreating it on every message render or URL scan.
+    private static let sharedLinkDetector: NSDataDetector? = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
     func replacingEmoticons(using map: [String: String]) -> String {
         var result = self
         for (key, value) in map {
@@ -48,7 +55,7 @@ extension String {
         underlineLinks: Bool = true
     ) -> AttributedString {
         var attributed = AttributedString(self)
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let detector = Self.sharedLinkDetector
         let fullRange = NSRange(self.startIndex..<self.endIndex, in: self)
 
         detector?.matches(in: self, options: [], range: fullRange).forEach { match in
@@ -89,7 +96,7 @@ extension String {
             ?? AttributedString(self)
 
         let renderedString = String(attributed.characters)
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let detector = Self.sharedLinkDetector
         let fullRange = NSRange(renderedString.startIndex..<renderedString.endIndex, in: renderedString)
 
         detector?.matches(in: renderedString, options: [], range: fullRange).forEach { match in
@@ -124,7 +131,7 @@ extension String {
         var urls: [URL] = []
         var seen: Set<String> = []
 
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let detector = Self.sharedLinkDetector
         let fullRange = NSRange(self.startIndex..<self.endIndex, in: self)
         detector?.matches(in: self, options: [], range: fullRange).forEach { match in
             guard let url = match.url else { return }
