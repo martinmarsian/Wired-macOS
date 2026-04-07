@@ -1697,6 +1697,11 @@ final class ConnectionRuntime: Identifiable {
                 return nil
             }
 
+            if text == "/generate" {
+                await MainActor.run { self.generateDebugMessages(chatID) }
+                return nil
+            }
+
             if let message = self.chatCommand(chatID, text) {
                 return try await self.send(message)
             }
@@ -1715,6 +1720,35 @@ final class ConnectionRuntime: Identifiable {
         guard let chat = chat(withID: chatID) else { return }
         chat.messages.removeAll()
         chat.clearAllTyping()
+    }
+
+    @MainActor
+    private func generateDebugMessages(_ chatID: UInt32) {
+        guard let chat = chat(withID: chatID) else { return }
+
+        let sender = chat.users.first(where: { $0.id == userID })
+            ?? User(id: userID, nick: "Debug", icon: Data(), idle: false)
+        let others = chat.users.filter { $0.id != userID }
+
+        let words = [
+            "lorem", "ipsum", "dolor", "sit", "amet", "consectetur",
+            "adipiscing", "elit", "sed", "do", "eiusmod", "tempor",
+            "incididunt", "ut", "labore", "et", "dolore", "magna",
+            "aliqua", "enim", "ad", "minim", "veniam", "quis",
+            "nostrud", "exercitation", "ullamco", "laboris", "nisi"
+        ]
+
+        var date = Date().addingTimeInterval(-Double(100 * 35))
+
+        for i in 0..<100 {
+            let wordCount = Int.random(in: 3...14)
+            let text = (0..<wordCount).map { _ in words.randomElement()! }.joined(separator: " ")
+            let user: User = (i % 3 == 0) ? (others.randomElement() ?? sender) : sender
+            let event = ChatEvent(chat: chat, user: user, type: .say, text: text)
+            event.date = date
+            date = date.addingTimeInterval(Double.random(in: 15...60))
+            chat.messages.append(event)
+        }
     }
     
     
