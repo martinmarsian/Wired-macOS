@@ -6,7 +6,7 @@
 [![Version](https://img.shields.io/github/v/tag/nark/Wired-macOS?sort=semver)](https://github.com/nark/Wired-macOS/tags)
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](https://github.com/nark/Wired-macOS/blob/main/LICENSE)
 
-**Wired Client** is a modern macOS client for the **Wired 3.0** ecosystem.
+**Wired Client** is a modern macOS client for the **Wired 3.0** protocol.
 
 The project is currently in **beta**. It is already usable, but it is still evolving quickly. If you want the latest macOS version, always download the newest beta build from the project's [GitHub Releases](https://github.com/nark/Wired-macOS/releases).
 
