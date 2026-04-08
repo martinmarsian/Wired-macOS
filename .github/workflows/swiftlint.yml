@@ -1,0 +1,56 @@
+name: SwiftLint
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/swiftlint.yml"
+      - ".swiftlint.yml"
+      - "scripts/run-swiftlint-ci.sh"
+      - "Wired 3/**/*.swift"
+      - "wiredsyncd/**/*.swift"
+  push:
+    paths:
+      - ".github/workflows/swiftlint.yml"
+      - ".swiftlint.yml"
+      - "scripts/run-swiftlint-ci.sh"
+      - "Wired 3/**/*.swift"
+      - "wiredsyncd/**/*.swift"
+  workflow_dispatch:
+
+jobs:
+  swiftlint:
+    name: SwiftLint changed files
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Show SwiftLint version
+        run: swiftlint version
+
+      - name: Run SwiftLint on changed Swift files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          chmod +x scripts/run-swiftlint-ci.sh
+          BASE_SHA=""
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            BASE_SHA="${PR_BASE_SHA}"
+          elif [ "${EVENT_NAME}" = "push" ]; then
+            BASE_SHA="${PUSH_BASE_SHA}"
+          fi
+
+          if [ -n "${BASE_SHA:-}" ] && [ "${BASE_SHA}" != "0000000000000000000000000000000000000000" ]; then
+            scripts/run-swiftlint-ci.sh changed "${BASE_SHA}" "${HEAD_SHA}"
+          else
+            scripts/run-swiftlint-ci.sh all
+          fi
