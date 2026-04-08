@@ -1494,6 +1494,7 @@ final class ConnectionController {
                     if let chat = runtime.chat(withID: chatID) {
                         chat.joined = true
                         runtime.refreshPrivateChatName(chat)
+                        runtime.checkArchiveAvailability(for: chat)
                     }
                 }
                 
@@ -1664,9 +1665,10 @@ final class ConnectionController {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
                                         ChatEvent(chat: chat, user: user, type: .say, text: say),
-                                        to: chat
+                                        to: chat,
+                                        runtime: runtime
                                     )
-                                    
+
                                     if userID != runtime.userID {
                                         if self.shouldIncrementUnreadForChatMessage(in: runtime, chatID: chat.id) {
                                             chat.unreadMessagesCount += 1
@@ -1714,9 +1716,10 @@ final class ConnectionController {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
                                         ChatEvent(chat: chat, user: user, type: .me, text: say),
-                                        to: chat
+                                        to: chat,
+                                        runtime: runtime
                                     )
-                                    
+
                                     if userID != runtime.userID {
                                         if self.shouldIncrementUnreadForChatMessage(in: runtime, chatID: chat.id) {
                                             chat.unreadMessagesCount += 1
@@ -2501,8 +2504,13 @@ final class ConnectionController {
     }
 
     @MainActor
-    private func appendChatMessage(_ message: ChatEvent, to chat: Chat) {
+    private func appendChatMessage(_ message: ChatEvent, to chat: Chat, runtime: ConnectionRuntime? = nil) {
         chat.messages.append(message)
+        if let runtime,
+           (message.type == .say || message.type == .me),
+           UserDefaults.standard.bool(forKey: "ArchiveChatHistory") {
+            runtime.archiveChatMessage(message, chatID: chat.id, chatName: chat.name)
+        }
     }
 
     @MainActor

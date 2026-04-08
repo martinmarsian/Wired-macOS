@@ -9,7 +9,27 @@
 import SwiftUI
 
 public enum ChatEventType {
-case say, me, join, leave, event
+    case say, me, join, leave, event
+
+    var rawStorageValue: Int {
+        switch self {
+        case .say: return 0
+        case .me: return 1
+        case .join: return 2
+        case .leave: return 3
+        case .event: return 4
+        }
+    }
+
+    init(rawStorageValue: Int) {
+        switch rawStorageValue {
+        case 0: self = .say
+        case 1: self = .me
+        case 2: self = .join
+        case 3: self = .leave
+        default: self = .event
+        }
+    }
 }
 
 @Observable
@@ -22,6 +42,10 @@ final class ChatEvent: Identifiable {
     var text: String
     var type: ChatEventType
     var date = Date()
+
+    /// When non-nil, overrides `user.id == runtime.userID` for display alignment.
+    /// Set for archived messages where the original userID may differ from the current session.
+    var isFromCurrentUser: Bool?
 
     /// Lazily computed on first access and cached for the lifetime of the event.
     /// `text` is effectively immutable after init, so the cache is always valid.
@@ -37,11 +61,12 @@ final class ChatEvent: Identifiable {
         return _cachedPrimaryImageURL
     }
 
-    init(chat: Chat, user: User, type: ChatEventType, text: String) {
+    init(chat: Chat, user: User, type: ChatEventType, text: String, date: Date = Date()) {
         self.id = UUID()
         self.chat = chat
         self.user = user
         self.text = text
         self.type = type
+        self.date = date
     }
 }

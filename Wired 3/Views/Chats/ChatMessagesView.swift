@@ -27,6 +27,7 @@ struct ChatMessagesView: View {
     @AppStorage("ChatMaxDisplayedMessages") private var chatMaxMessages: Int = 100
     @State private var displayedMessageCount: Int = 100
     @State private var isLoadingMore = false
+    @State private var archiveBoundaryMessageID: UUID?
 
     var chat: Chat
     var searchText: String = ""
@@ -57,15 +58,24 @@ struct ChatMessagesView: View {
         return Array(all.suffix(displayedMessageCount))
     }
 
-    /// True when older messages exist in memory (or on disk) but aren't currently displayed.
+    /// True when older messages exist in memory but aren't currently displayed.
+    private var hasOlderInMemoryMessages: Bool {
+        !isSearching && displayedMessageCount < chat.messages.count
+    }
+
+    /// True when older messages exist (in memory or on disk) but aren't currently displayed.
     private var hasOlderMessages: Bool {
         !isSearching && (displayedMessageCount < chat.messages.count || chat.hasMoreHistory)
     }
 
-    /// When searching: scan all messages. Otherwise: use the windowed slice.
+    /// When searching: scan all in-memory messages + archived messages. Otherwise: use the windowed slice.
     private var filteredMessages: [ChatEvent] {
         if isSearching {
-            return chat.filteredMessages(matching: normalizedSearchText)
+            let live = chat.filteredMessages(matching: normalizedSearchText)
+            let liveIDs = Set(live.map(\.id))
+            let archived = runtime.searchArchivedMessages(for: chat, matching: normalizedSearchText)
+            let uniqueArchived = archived.filter { !liveIDs.contains($0.id) }
+            return (uniqueArchived + live).sorted { $0.date < $1.date }
         }
         return windowedMessages
     }
@@ -110,6 +120,30 @@ struct ChatMessagesView: View {
         } else {
             items = transcriptMessages.map {
                 .message($0, showNickname: true, showAvatar: true, isGroupedWithNext: false)
+            }
+        }
+
+        // Insert archive separator at the boundary between archived and live messages.
+        // `archiveBoundaryMessageID` is set to the first live message ID when archives were prepended,
+        // or to the last archived message ID if the chat was empty.
+        if let boundaryID = archiveBoundaryMessageID {
+            if let idx = items.firstIndex(where: {
+                if case .message(let msg, _, _, _) = $0, msg.id == boundaryID { return true }
+                return false
+            }) {
+                // If the boundary message has isFromCurrentUser set, it's an archived message
+                // (chat was empty when archives were loaded). Insert separator AFTER it.
+                // Otherwise it's the first live message — insert BEFORE it.
+                let boundaryMsg = items[idx].chatMessage
+                let isArchivedBoundary = boundaryMsg?.isFromCurrentUser != nil
+                let insertionIndex = isArchivedBoundary ? idx + 1 : idx
+                let separatorDate = items[0..<insertionIndex]
+                    .reversed()
+                    .compactMap(\.chatMessage?.date)
+                    .first ?? Date()
+                if insertionIndex <= items.count {
+                    items.insert(.archiveSeparator(id: "archive-separator", date: separatorDate), at: insertionIndex)
+                }
             }
         }
 
@@ -180,6 +214,11 @@ struct ChatMessagesView: View {
         return nil
     }
     
+    /// True when archive history is available but not yet loaded into the chat.
+    private var showArchiveBanner: Bool {
+        !isSearching && chat.hasMoreHistory && archiveBoundaryMessageID == nil
+    }
+
     var body: some View {
         Group {
             if isSearching && filteredMessages.isEmpty {
@@ -195,6 +234,7 @@ struct ChatMessagesView: View {
         }
         .onChange(of: chat.id) {
             displayedMessageCount = chatMaxMessages
+            archiveBoundaryMessageID = nil
         }
         .onChange(of: chatMaxMessages) { _, newMax in
             if displayedMessageCount < newMax {
@@ -205,13 +245,17 @@ struct ChatMessagesView: View {
 
     @ViewBuilder
     private func lazyVStackContent(proxy: ScrollViewProxy) -> some View {
-        if hasOlderMessages {
+        if hasOlderInMemoryMessages {
             loadMoreIndicatorView(proxy: proxy)
         }
 
         if topOverlayInset > 0 {
             Color.clear
                 .frame(height: topOverlayInset)
+        }
+
+        if showArchiveBanner {
+            archiveAvailableBanner
         }
 
         ForEach(displayItems, id: \.id) { item in
@@ -222,6 +266,8 @@ struct ChatMessagesView: View {
                 messageView(for: message, showNickname: showNickname, showAvatar: showAvatar, isGroupedWithNext: isGroupedWithNext)
             case .liveSlot(let presentation, let isGroupedWithPrevious):
                 liveSlotView(for: presentation, isGroupedWithPrevious: isGroupedWithPrevious)
+            case .archiveSeparator(_, let date):
+                archiveSeparatorView(date: date)
             }
         }
 
@@ -409,6 +455,54 @@ struct ChatMessagesView: View {
         }
     }
 
+    private var archiveAvailableBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "archivebox")
+            Text("Chat history available —")
+            Button("Load") {
+                loadArchiveHistory()
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    @MainActor
+    private func loadArchiveHistory() {
+        let oldestDate = chat.messages.first?.date ?? Date()
+        let (archived, hasMore) = runtime.loadArchivedChatMessages(for: chat, before: oldestDate)
+        if !archived.isEmpty {
+            archiveBoundaryMessageID = chat.messages.first?.id ?? archived.last!.id
+            chat.messages.insert(contentsOf: archived, at: 0)
+            displayedMessageCount += archived.count
+        }
+        chat.hasMoreHistory = hasMore
+    }
+
+    @ViewBuilder
+    private func archiveSeparatorView(date: Date) -> some View {
+        HStack {
+            Rectangle()
+                .fill(Color.orange.opacity(0.5))
+                .frame(height: 1)
+            Text("Archived messages up to \(date.formatted(date: .abbreviated, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize()
+            Rectangle()
+                .fill(Color.orange.opacity(0.5))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+    }
+
     @MainActor
     private func loadMoreMessages(with proxy: ScrollViewProxy) {
         guard hasOlderMessages, !isLoadingMore else { return }
@@ -418,7 +512,21 @@ struct ChatMessagesView: View {
         // restore the scroll position after the new (older) messages are prepended.
         let anchorID = displayItems.first(where: { $0.chatMessage != nil })?.id
 
-        displayedMessageCount = min(displayedMessageCount + 100, chat.messages.count)
+        if displayedMessageCount < chat.messages.count {
+            // Still have in-memory messages to show
+            displayedMessageCount = min(displayedMessageCount + 100, chat.messages.count)
+        } else if chat.hasMoreHistory {
+            // Load from archive
+            let oldestDate = chat.messages.first?.date ?? Date()
+            let (archived, hasMore) = runtime.loadArchivedChatMessages(for: chat, before: oldestDate)
+            if !archived.isEmpty {
+                // Mark the boundary between archived and live messages
+                archiveBoundaryMessageID = chat.messages.first?.id
+                chat.messages.insert(contentsOf: archived, at: 0)
+                displayedMessageCount += archived.count
+            }
+            chat.hasMoreHistory = hasMore
+        }
 
         Task { @MainActor in
             // Give SwiftUI one layout pass to insert the new rows above.
@@ -593,6 +701,7 @@ private enum ChatDisplayItem: Identifiable {
     case message(ChatEvent, showNickname: Bool, showAvatar: Bool, isGroupedWithNext: Bool)
     case timestamp(id: String, date: Date)
     case liveSlot(LiveSlotPresentation, isGroupedWithPrevious: Bool)
+    case archiveSeparator(id: String, date: Date)
 
     var id: String {
         switch self {
@@ -602,6 +711,8 @@ private enum ChatDisplayItem: Identifiable {
             return "message-\(message.id.uuidString)"
         case .liveSlot:
             return "live-slot"
+        case .archiveSeparator(let id, _):
+            return id
         }
     }
 
@@ -612,6 +723,8 @@ private enum ChatDisplayItem: Identifiable {
         case .message(let message, _, _, _):
             return message
         case .liveSlot:
+            return nil
+        case .archiveSeparator:
             return nil
         }
     }
@@ -632,7 +745,7 @@ private enum LiveSlotPresentation {
     }
 }
 
-private struct ChatInlineTimestampView: View {
+struct ChatInlineTimestampView: View {
     let date: Date
 
     var body: some View {

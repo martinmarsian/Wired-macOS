@@ -1350,6 +1350,135 @@ final class ConnectionRuntime: Identifiable {
         return nil
     }
 
+    // MARK: - Chat History Archiving
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    func archiveChatMessage(_ event: ChatEvent, chatID: UInt32, chatName: String) {
+        guard let modelContext, let key = persistenceKey() else { return }
+        let stored = StoredChatMessage(
+            eventID: event.id,
+            connectionKey: key,
+            chatID: chatID,
+            chatName: chatName,
+            senderNick: event.user.nick,
+            senderUserID: event.user.id,
+            senderIcon: event.user.icon,
+            senderColor: event.user.color,
+            text: event.text,
+            type: event.type.rawStorageValue,
+            date: event.date,
+            dayKey: Self.dayKeyFormatter.string(from: event.date),
+            isFromCurrentUser: event.user.id == userID
+        )
+        modelContext.insert(stored)
+        do {
+            try modelContext.save()
+        } catch {
+            print("[ChatHistory] archive failed:", error)
+        }
+    }
+
+    func checkArchiveAvailability(for chat: Chat) {
+        guard let modelContext, let key = persistenceKey() else { return }
+        guard UserDefaults.standard.bool(forKey: "ArchiveChatHistory") else { return }
+        let chatID = chat.id
+        do {
+            var descriptor = FetchDescriptor<StoredChatMessage>(
+                predicate: #Predicate<StoredChatMessage> {
+                    $0.connectionKey == key && $0.chatID == chatID
+                }
+            )
+            descriptor.fetchLimit = 1
+            let count = try modelContext.fetchCount(descriptor)
+            chat.hasMoreHistory = count > 0
+        } catch {
+            print("[ChatHistory] checkArchiveAvailability failed:", error)
+        }
+    }
+
+    func loadArchivedChatMessages(for chat: Chat, before date: Date, limit: Int = 100) -> (messages: [ChatEvent], hasMore: Bool) {
+        guard let modelContext, let key = persistenceKey() else { return ([], false) }
+        let chatID = chat.id
+        do {
+            var descriptor = FetchDescriptor<StoredChatMessage>(
+                predicate: #Predicate<StoredChatMessage> {
+                    $0.connectionKey == key && $0.chatID == chatID && $0.date < date
+                },
+                sortBy: [SortDescriptor(\StoredChatMessage.date, order: .reverse)]
+            )
+            descriptor.fetchLimit = limit + 1
+            let results = try modelContext.fetch(descriptor)
+            let hasMore = results.count > limit
+            let batch = Array((hasMore ? Array(results.prefix(limit)) : results).reversed())
+            let events = batch.map { stored -> ChatEvent in
+                let user = User(
+                    id: stored.senderUserID,
+                    nick: stored.senderNick,
+                    icon: stored.senderIcon ?? Data(),
+                    idle: false
+                )
+                user.color = stored.senderColor
+                let event = ChatEvent(
+                    chat: chat,
+                    user: user,
+                    type: ChatEventType(rawStorageValue: stored.type),
+                    text: stored.text,
+                    date: stored.date
+                )
+                event.isFromCurrentUser = stored.isFromCurrentUser
+                return event
+            }
+            return (events, hasMore)
+        } catch {
+            print("[ChatHistory] loadArchivedChatMessages failed:", error)
+            return ([], false)
+        }
+    }
+
+    func searchArchivedMessages(for chat: Chat, matching query: String, limit: Int = 200) -> [ChatEvent] {
+        guard let modelContext, let key = persistenceKey() else { return [] }
+        let chatID = chat.id
+        do {
+            let descriptor = FetchDescriptor<StoredChatMessage>(
+                predicate: #Predicate<StoredChatMessage> {
+                    $0.connectionKey == key && $0.chatID == chatID
+                },
+                sortBy: [SortDescriptor(\StoredChatMessage.date, order: .forward)]
+            )
+            let results = try modelContext.fetch(descriptor)
+            let matched = results.filter {
+                $0.senderNick.localizedStandardContains(query) || $0.text.localizedStandardContains(query)
+            }
+            return matched.prefix(limit).map { stored in
+                let user = User(
+                    id: stored.senderUserID,
+                    nick: stored.senderNick,
+                    icon: stored.senderIcon ?? Data(),
+                    idle: false
+                )
+                user.color = stored.senderColor
+                let event = ChatEvent(
+                    chat: chat,
+                    user: user,
+                    type: ChatEventType(rawStorageValue: stored.type),
+                    text: stored.text,
+                    date: stored.date
+                )
+                event.isFromCurrentUser = stored.isFromCurrentUser
+                return event
+            }
+        } catch {
+            print("[ChatHistory] searchArchivedMessages failed:", error)
+            return []
+        }
+    }
+
     private func onlineUser(withID userID: UInt32) -> User? {
         (chats + private_chats)
             .flatMap(\.users)

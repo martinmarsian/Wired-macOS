@@ -113,6 +113,13 @@ private struct MainAppCommands: Commands {
             .keyboardShortcut(",", modifiers: .command)
         }
 
+        CommandGroup(before: .windowList) {
+            Button("Chat History") {
+                openWindow(id: "chat-history")
+            }
+            .keyboardShortcut("h", modifiers: [.command, .option])
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Connection") {
                 controller.presentedNewConnectionWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
@@ -657,6 +664,7 @@ struct Wired_3App: App {
             StoredBroadcastConversation.self,
             StoredBroadcastMessage.self,
             StoredMessageSelection.self,
+            StoredChatMessage.self,
         ])
         let storeURL = Self.swiftDataStoreURL()
         Self.migrateLegacySandboxStoreIfNeeded(to: storeURL)
@@ -746,6 +754,12 @@ struct Wired_3App: App {
         }
         .defaultSize(width: 980, height: 640)
         .windowResizability(.contentSize)
+
+        Window("Chat History", id: "chat-history") {
+            ChatHistoryWindow()
+        }
+        .modelContainer(sharedModelContainer)
+        .defaultSize(width: 1000, height: 700)
 #else
         WindowGroup {
             AppRootView()

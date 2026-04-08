@@ -46,7 +46,7 @@ struct ChatSayMessageView: View {
     }
 
     var body: some View {
-        let isFromYou = message.user.id == runtime.userID
+        let isFromYou = message.isFromCurrentUser ?? (message.user.id == runtime.userID)
         let matchedRule = matchedHighlightRule(in: message.text)
         let bubbleFillColor = matchedRule?.color.swiftUIColor
         let bubbleTextColor = matchedRule?.color.contrastTextColor

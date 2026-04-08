@@ -345,6 +345,7 @@ struct ChatSettingsView: View {
     @AppStorage("TimestampEveryMin") var timestampEveryMin = 5
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
     @AppStorage("ChatMaxDisplayedMessages") var chatMaxMessages: Int = 100
+    @AppStorage("ArchiveChatHistory") var archiveChatHistory: Bool = false
 
     @AppStorage("SubstituteEmoji") var substituteEmoji: Bool = true
 
@@ -399,6 +400,13 @@ struct ChatSettingsView: View {
                         }
                     }
                 }
+            }
+
+            Section("History") {
+                Toggle("Archive Chat Messages", isOn: $archiveChatHistory)
+                Text("When enabled, chat messages are saved locally for later browsing in Chat History.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Highlights") {

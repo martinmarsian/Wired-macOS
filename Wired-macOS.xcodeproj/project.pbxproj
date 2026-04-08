@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CC100007FA00000100213277 /* ChatHistoryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100002FA00000100213277 /* ChatHistoryWindow.swift */; };
+		CC100008FA00000100213277 /* ChatHistoryConnectionList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100003FA00000100213277 /* ChatHistoryConnectionList.swift */; };
+		CC100009FA00000100213277 /* ChatHistoryDayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100004FA00000100213277 /* ChatHistoryDayList.swift */; };
+		CC10000AFA00000100213277 /* ChatHistoryMessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */; };
+		CC10000BFA00000100213277 /* ArchiveMessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */; };
 		18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */; };
 		AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000112F90010000213277 /* TrackerBookmark.swift */; };
 		AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000122F90010000213277 /* TrackerBrowserController.swift */; };
@@ -66,6 +71,7 @@
 		4C8A826B2F5ED07200C271A8 /* MessageConversationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */; };
 		4C8D11012F30000100213277 /* StoredPrivateConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11112F30000100213277 /* StoredPrivateConversation.swift */; };
 		4C8D11022F30000100213277 /* StoredPrivateMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11122F30000100213277 /* StoredPrivateMessage.swift */; };
+		4C8D11062F30000100213277 /* StoredChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11162F30000100213277 /* StoredChatMessage.swift */; };
 		4C8D11032F30000100213277 /* StoredBroadcastConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11132F30000100213277 /* StoredBroadcastConversation.swift */; };
 		4C8D11042F30000100213277 /* StoredBroadcastMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11142F30000100213277 /* StoredBroadcastMessage.swift */; };
 		4C8D11052F30000100213277 /* StoredMessageSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8D11152F30000100213277 /* StoredMessageSelection.swift */; };
@@ -106,6 +112,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		CC100002FA00000100213277 /* ChatHistoryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryWindow.swift; sourceTree = "<group>"; };
+		CC100003FA00000100213277 /* ChatHistoryConnectionList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryConnectionList.swift; sourceTree = "<group>"; };
+		CC100004FA00000100213277 /* ChatHistoryDayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryDayList.swift; sourceTree = "<group>"; };
+		CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryMessagesView.swift; sourceTree = "<group>"; };
+		CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMessageBubbleView.swift; sourceTree = "<group>"; };
 		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
 		AA1000112F90010000213277 /* TrackerBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBookmark.swift; sourceTree = "<group>"; };
 		AA1000122F90010000213277 /* TrackerBrowserController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBrowserController.swift; sourceTree = "<group>"; };
@@ -167,6 +178,7 @@
 		4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageConversationDetailView.swift; sourceTree = "<group>"; };
 		4C8D11112F30000100213277 /* StoredPrivateConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateConversation.swift; sourceTree = "<group>"; };
 		4C8D11122F30000100213277 /* StoredPrivateMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredPrivateMessage.swift; sourceTree = "<group>"; };
+		4C8D11162F30000100213277 /* StoredChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredChatMessage.swift; sourceTree = "<group>"; };
 		4C8D11132F30000100213277 /* StoredBroadcastConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredBroadcastConversation.swift; sourceTree = "<group>"; };
 		4C8D11142F30000100213277 /* StoredBroadcastMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredBroadcastMessage.swift; sourceTree = "<group>"; };
 		4C8D11152F30000100213277 /* StoredMessageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredMessageSelection.swift; sourceTree = "<group>"; };
@@ -247,6 +259,7 @@
 			children = (
 				4C0C2E252EFDB8DA00213277 /* Main */,
 				4C0C2E162EFD454500213277 /* Chats */,
+				CC100001FA00000100213277 /* ChatHistory */,
 				4C8D12212F30000200213277 /* Messages */,
 				4C95F16B2F56CB7D005CD1BA /* Boards */,
 				4C0C2E522F110DB600213277 /* Files */,
@@ -255,6 +268,18 @@
 				4C7E10032F21000100213277 /* Settings */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		CC100001FA00000100213277 /* ChatHistory */ = {
+			isa = PBXGroup;
+			children = (
+				CC100002FA00000100213277 /* ChatHistoryWindow.swift */,
+				CC100003FA00000100213277 /* ChatHistoryConnectionList.swift */,
+				CC100004FA00000100213277 /* ChatHistoryDayList.swift */,
+				CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */,
+				CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */,
+			);
+			path = ChatHistory;
 			sourceTree = "<group>";
 		};
 		4C0C2E032EF5659100213277 /* Connection */ = {
@@ -277,6 +302,7 @@
 				AA1000112F90010000213277 /* TrackerBookmark.swift */,
 				4C8D11112F30000100213277 /* StoredPrivateConversation.swift */,
 				4C8D11122F30000100213277 /* StoredPrivateMessage.swift */,
+				4C8D11162F30000100213277 /* StoredChatMessage.swift */,
 				4C8D11132F30000100213277 /* StoredBroadcastConversation.swift */,
 				4C8D11142F30000100213277 /* StoredBroadcastMessage.swift */,
 				4C8D11152F30000100213277 /* StoredMessageSelection.swift */,
@@ -690,6 +716,7 @@
 				4C8D12042F30000200213277 /* MessageConversationMessagesView.swift in Sources */,
 				4C8D11012F30000100213277 /* StoredPrivateConversation.swift in Sources */,
 				4C8D11022F30000100213277 /* StoredPrivateMessage.swift in Sources */,
+				4C8D11062F30000100213277 /* StoredChatMessage.swift in Sources */,
 				4C8D11032F30000100213277 /* StoredBroadcastConversation.swift in Sources */,
 				4C8D11042F30000100213277 /* StoredBroadcastMessage.swift in Sources */,
 				4C8D11052F30000100213277 /* StoredMessageSelection.swift in Sources */,
@@ -709,6 +736,11 @@
 				4C0C2E692F17AC2100213277 /* TransfersView.swift in Sources */,
 				4C0C2E402F012F3E00213277 /* UserListRowView.swift in Sources */,
 				4C0C2DF32EF482D800213277 /* SocketClient.swift in Sources */,
+				CC100007FA00000100213277 /* ChatHistoryWindow.swift in Sources */,
+				CC100008FA00000100213277 /* ChatHistoryConnectionList.swift in Sources */,
+				CC100009FA00000100213277 /* ChatHistoryDayList.swift in Sources */,
+				CC10000AFA00000100213277 /* ChatHistoryMessagesView.swift in Sources */,
+				CC10000BFA00000100213277 /* ArchiveMessageBubbleView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
