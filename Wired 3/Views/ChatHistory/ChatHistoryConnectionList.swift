@@ -69,7 +69,7 @@ struct ChatHistoryConnectionList: View {
                         count: existing.count + 1
                     )
                 } else {
-                    let name = displayName(from: msg.connectionKey, chatName: msg.chatName)
+                    let name = displayName(from: msg.connectionKey)
                     grouped[msg.connectionKey] = (
                         displayName: name,
                         lastDate: msg.date,
@@ -92,13 +92,28 @@ struct ChatHistoryConnectionList: View {
         }
     }
 
-    private func displayName(from connectionKey: String, chatName: String) -> String {
+    private func displayName(from connectionKey: String) -> String {
         let parts = connectionKey.split(separator: "|", maxSplits: 1)
         let hostname = parts.first.map(String.init) ?? connectionKey
         let login = parts.count > 1 ? String(parts[1]) : ""
+
+        // Try to find a matching bookmark by hostname+login for a friendly name
+        if let bookmark = matchingBookmark(hostname: hostname, login: login) {
+            return bookmark.name.isEmpty ? hostname : bookmark.name
+        }
+
         if !login.isEmpty {
             return "\(hostname) (\(login))"
         }
         return hostname
+    }
+
+    private func matchingBookmark(hostname: String, login: String) -> Bookmark? {
+        let descriptor = FetchDescriptor<Bookmark>()
+        guard let bookmarks = try? modelContext.fetch(descriptor) else { return nil }
+        return bookmarks.first {
+            $0.hostname.lowercased() == hostname.lowercased()
+            && $0.login.lowercased() == login.lowercased()
+        }
     }
 }
