@@ -1,0 +1,806 @@
+#if os(macOS)
+import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+import ObjectiveC
+
+struct AppKitFilesTreeView: NSViewRepresentable {
+    let rootPath: String
+    let treeChildrenByPath: [String: [FileItem]]
+    let expandedPaths: Set<String>
+    let connectionID: UUID
+    let transferManager: TransferManager
+    let onDownloadTransferError: (FileItem, String) -> Void
+    let onUploadURLs: ([URL], FileItem) -> Void
+    @Binding var selectedPaths: Set<String>
+    let onSelectionChange: (Set<String>) -> Void
+    let onSetDirectoryExpanded: (String, Bool) -> Void
+    let onDownloadSingleFile: (FileItem) -> Void
+    let onOpenDirectory: (FileItem) -> Void
+    let onRequestCreateFolder: () -> Void
+    let onRequestUploadInDirectory: (FileItem) -> Void
+    let onRequestDeleteSelection: () -> Void
+    let onRequestDownloadSelection: () -> Void
+    let onRequestGetInfo: (FileItem) -> Void
+    let onRequestSyncNow: (FileItem) -> Void
+    let onRequestActivateSync: (FileItem) -> Void
+    let onRequestDeactivateSync: (FileItem) -> Void
+    let syncPairStatusForPath: (String) -> SyncPairStatusDisplay
+    let syncPairExistsForPath: (String) -> Bool
+    let syncPairStatusVersion: Int
+    let canSetFileType: Bool
+    let canGetInfoForItem: (FileItem) -> Bool
+    let canDownloadForItem: (FileItem) -> Bool
+    let canDeleteForItem: (FileItem) -> Bool
+    let canUploadToDirectory: (FileItem) -> Bool
+    let canCreateFolderInDirectory: (FileItem) -> Bool
+    let savedScrollOffset: CGPoint
+    let onScrollOffsetChange: (CGPoint) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+
+        let outlineView = NSOutlineView()
+        outlineView.usesAlternatingRowBackgroundColors = false
+        outlineView.backgroundColor = .clear
+        outlineView.headerView = nil
+        outlineView.allowsMultipleSelection = true
+        outlineView.allowsEmptySelection = true
+        outlineView.rowHeight = 26
+        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        outlineView.setDraggingSourceOperationMask(.copy, forLocal: true)
+        outlineView.usesAlternatingRowBackgroundColors = true
+        outlineView.registerForDraggedTypes([.fileURL])
+        outlineView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
+        outlineView.target = context.coordinator
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TreeColumn"))
+        column.title = "Name"
+        column.minWidth = 220
+        column.width = 420
+        column.resizingMask = .autoresizingMask
+        outlineView.addTableColumn(column)
+        outlineView.outlineTableColumn = column
+
+        let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("SizeColumn"))
+        sizeColumn.title = "Size"
+        sizeColumn.minWidth = 90
+        sizeColumn.width = 120
+        sizeColumn.resizingMask = []
+        outlineView.addTableColumn(sizeColumn)
+
+        outlineView.delegate = context.coordinator
+        outlineView.dataSource = context.coordinator
+        let menu = context.coordinator.makeContextMenu()
+        menu.delegate = context.coordinator
+        outlineView.menu = menu
+
+        scrollView.documentView = outlineView
+        context.coordinator.outlineView = outlineView
+        context.coordinator.scrollView = scrollView
+        context.coordinator.syncFromModel(
+            rootPath: rootPath,
+            childrenByPath: treeChildrenByPath,
+            expandedPaths: expandedPaths,
+            selectedPaths: selectedPaths,
+            syncPairStatusVersion: syncPairStatusVersion
+        )
+
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleScrollChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
+        let offsetToRestore = savedScrollOffset
+        DispatchQueue.main.async {
+            scrollView.contentView.scroll(to: offsetToRestore)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.syncFromModel(
+            rootPath: rootPath,
+            childrenByPath: treeChildrenByPath,
+            expandedPaths: expandedPaths,
+            selectedPaths: selectedPaths,
+            syncPairStatusVersion: syncPairStatusVersion
+        )
+    }
+
+    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
+        final class OutlineNode: NSObject {
+            let item: FileItem
+            var children: [OutlineNode] = []
+
+            init(item: FileItem) {
+                self.item = item
+            }
+        }
+
+        var parent: AppKitFilesTreeView
+        weak var outlineView: NSOutlineView?
+        weak var scrollView: NSScrollView?
+        private let rootNode = OutlineNode(item: FileItem("/", path: "/", type: .directory))
+        private var nodesByPath: [String: OutlineNode] = [:]
+        private var currentRootPath: String = "/"
+        private var isApplyingSelectionFromSwiftUI = false
+        private var isApplyingExpandedStateFromSwiftUI = false
+        private var suppressDisclosureCallbacks = false
+        private var pendingExpansionState: [String: Bool] = [:]
+        private var contextDirectoryTarget: FileItem = FileItem("/", path: "/", type: .directory)
+        private var contextSyncTarget: FileItem?
+        private var clickedRowHadSelection = false
+        private var lastChildrenPaths: [String: [String]] = [:]
+        private var lastSyncPairStatusVersion: Int = -1
+
+        init(parent: AppKitFilesTreeView) {
+            self.parent = parent
+            self.currentRootPath = parent.rootPath
+            let normalizedRoot: String = {
+                if parent.rootPath == "/" { return "/" }
+                let trimmed = parent.rootPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                return trimmed.isEmpty ? "/" : "/" + trimmed
+            }()
+            let rootName = normalizedRoot == "/" ? "/" : (normalizedRoot as NSString).lastPathComponent
+            self.contextDirectoryTarget = FileItem(rootName, path: normalizedRoot, type: .directory)
+        }
+
+        @objc func handleScrollChange(_ notification: Notification) {
+            guard let sv = scrollView else { return }
+            parent.onScrollOffsetChange(sv.contentView.bounds.origin)
+        }
+
+        private func isDirectory(_ item: FileItem) -> Bool {
+            item.type.isDirectoryLike
+        }
+
+        private func sortedItems(_ items: [FileItem]) -> [FileItem] {
+            items.sorted {
+                let lhsDir = isDirectory($0)
+                let rhsDir = isDirectory($1)
+                if lhsDir != rhsDir { return lhsDir }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        }
+
+        private func fileSizeString(_ item: FileItem) -> String {
+            guard item.type == .file else { return "-" }
+            let total = Int64(item.dataSize + item.rsrcSize)
+            return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        }
+
+        private func ancestorPaths(for path: String) -> [String] {
+            var result: [String] = []
+            var current = (path as NSString).deletingLastPathComponent
+            while !current.isEmpty && current != "/" {
+                result.append(current)
+                current = (current as NSString).deletingLastPathComponent
+            }
+            result.append("/")
+            return result
+        }
+
+        private func ensureExpandedAncestors(in expanded: inout Set<String>) {
+            let snapshot = Array(expanded)
+            for path in snapshot {
+                for ancestor in ancestorPaths(for: path) {
+                    expanded.insert(ancestor)
+                }
+            }
+        }
+
+        private func treeDepth(for path: String) -> Int {
+            if path == "/" { return 0 }
+            return path.split(separator: "/").count
+        }
+
+        private func normalizedRemotePath(_ path: String) -> String {
+            if path == "/" { return "/" }
+            let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if trimmed.isEmpty { return "/" }
+            return "/" + trimmed
+        }
+
+        private func directoryItem(for path: String) -> FileItem {
+            let normalized = normalizedRemotePath(path)
+            let name = normalized == "/" ? "/" : (normalized as NSString).lastPathComponent
+            return FileItem(name, path: normalized, type: .directory)
+        }
+
+        func refreshTree(rootPath: String, childrenByPath: [String: [FileItem]]) {
+            lastChildrenPaths = childrenByPath.mapValues { $0.map(\.path) }
+            nodesByPath.removeAll()
+            currentRootPath = normalizedRemotePath(rootPath)
+
+            func node(for item: FileItem) -> OutlineNode {
+                if let existing = nodesByPath[item.path] { return existing }
+                let created = OutlineNode(item: item)
+                nodesByPath[item.path] = created
+                return created
+            }
+
+            func buildChildren(parentPath: String, visiting: inout Set<String>) -> [OutlineNode] {
+                guard !visiting.contains(parentPath) else { return [] }
+                visiting.insert(parentPath)
+                defer { visiting.remove(parentPath) }
+
+                let children = sortedItems(childrenByPath[parentPath] ?? [])
+                return children.map { childItem in
+                    let childNode = node(for: childItem)
+                    if isDirectory(childItem), childrenByPath[childItem.path] != nil {
+                        childNode.children = buildChildren(parentPath: childItem.path, visiting: &visiting)
+                    } else {
+                        childNode.children = []
+                    }
+                    return childNode
+                }
+            }
+
+            var visiting: Set<String> = []
+            rootNode.children = buildChildren(parentPath: currentRootPath, visiting: &visiting)
+            outlineView?.reloadData()
+        }
+
+        func syncFromModel(
+            rootPath: String,
+            childrenByPath: [String: [FileItem]],
+            expandedPaths: Set<String>,
+            selectedPaths: Set<String>,
+            syncPairStatusVersion: Int
+        ) {
+            for (path, desiredExpanded) in pendingExpansionState {
+                let modelExpanded = expandedPaths.contains(path)
+                if modelExpanded == desiredExpanded {
+                    pendingExpansionState.removeValue(forKey: path)
+                }
+            }
+
+            var effectiveExpandedPaths = expandedPaths
+            for (path, desiredExpanded) in pendingExpansionState {
+                if desiredExpanded {
+                    effectiveExpandedPaths.insert(path)
+                } else {
+                    effectiveExpandedPaths.remove(path)
+                }
+            }
+            ensureExpandedAncestors(in: &effectiveExpandedPaths)
+
+            suppressDisclosureCallbacks = true
+            defer { suppressDisclosureCallbacks = false }
+
+            let newRoot = normalizedRemotePath(rootPath)
+            let treeChanged = newRoot != currentRootPath || treeStructureDidChange(childrenByPath)
+            let syncStatusChanged = syncPairStatusVersion != lastSyncPairStatusVersion
+            if treeChanged {
+                refreshTree(rootPath: rootPath, childrenByPath: childrenByPath)
+            } else if syncStatusChanged {
+                refreshSyncIndicators()
+            }
+            lastSyncPairStatusVersion = syncPairStatusVersion
+            applyExpandedState(effectiveExpandedPaths)
+            updateSelection(selectedPaths)
+        }
+
+        private func treeStructureDidChange(_ newChildren: [String: [FileItem]]) -> Bool {
+            guard newChildren.count == lastChildrenPaths.count else { return true }
+            for (key, items) in newChildren {
+                guard let cached = lastChildrenPaths[key], cached == items.map(\.path) else { return true }
+            }
+            return false
+        }
+
+        private func refreshSyncIndicators() {
+            guard let outlineView else { return }
+            for node in nodesByPath.values where node.item.type == .sync {
+                outlineView.reloadItem(node, reloadChildren: false)
+            }
+        }
+
+        func applyExpandedState(_ expandedPaths: Set<String>) {
+            guard let outlineView else { return }
+            isApplyingExpandedStateFromSwiftUI = true
+            defer { isApplyingExpandedStateFromSwiftUI = false }
+
+            let expandableNodes = nodesByPath.values
+                .filter { isDirectory($0.item) }
+                .sorted {
+                    let lhsDepth = treeDepth(for: $0.item.path)
+                    let rhsDepth = treeDepth(for: $1.item.path)
+                    if lhsDepth != rhsDepth { return lhsDepth < rhsDepth }
+                    return $0.item.path < $1.item.path
+                }
+
+            for node in expandableNodes {
+                let path = node.item.path
+                if expandedPaths.contains(path), !outlineView.isItemExpanded(node) {
+                    outlineView.expandItem(node, expandChildren: false)
+                }
+            }
+
+            for node in expandableNodes.reversed() {
+                let path = node.item.path
+                if !expandedPaths.contains(path), outlineView.isItemExpanded(node) {
+                    outlineView.collapseItem(node, collapseChildren: false)
+                }
+            }
+        }
+
+        func updateSelection(_ selectedPaths: Set<String>) {
+            guard let outlineView else { return }
+            var indexSet = IndexSet()
+            for path in selectedPaths {
+                guard let node = nodesByPath[path] else { continue }
+                let row = outlineView.row(forItem: node)
+                if row >= 0 {
+                    indexSet.insert(row)
+                }
+            }
+            if outlineView.selectedRowIndexes != indexSet {
+                isApplyingSelectionFromSwiftUI = true
+                outlineView.selectRowIndexes(indexSet, byExtendingSelection: false)
+                isApplyingSelectionFromSwiftUI = false
+            }
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+            let node = (item as? OutlineNode) ?? rootNode
+            return node.children.count
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+            let node = (item as? OutlineNode) ?? rootNode
+            return node.children[index]
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+            guard let node = item as? OutlineNode else { return false }
+            return isDirectory(node.item)
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+            guard let node = item as? OutlineNode else { return nil }
+            let item = node.item
+            let columnID = tableColumn?.identifier ?? NSUserInterfaceItemIdentifier("TreeColumn")
+
+            if columnID == NSUserInterfaceItemIdentifier("SizeColumn") {
+                let id = NSUserInterfaceItemIdentifier("TreeSizeCell")
+                let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
+                    let cell = NSTableCellView()
+                    cell.identifier = id
+                    let tf = NSTextField(labelWithString: "")
+                    tf.translatesAutoresizingMaskIntoConstraints = false
+                    tf.alignment = .right
+                    tf.textColor = .secondaryLabelColor
+                    tf.lineBreakMode = .byClipping
+                    cell.addSubview(tf)
+                    cell.textField = tf
+                    NSLayoutConstraint.activate([
+                        tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                        tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                        tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                    ])
+                    return cell
+                }()
+                cell.textField?.stringValue = fileSizeString(item)
+                return cell
+            }
+
+            let id = NSUserInterfaceItemIdentifier("TreeCell")
+            let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
+                let cell = NSTableCellView()
+                cell.identifier = id
+                let icon = NSImageView()
+                icon.translatesAutoresizingMaskIntoConstraints = false
+                icon.imageScaling = .scaleProportionallyUpOrDown
+                cell.imageView = icon
+
+                let tf = NSTextField(labelWithString: "")
+                tf.translatesAutoresizingMaskIntoConstraints = false
+                tf.lineBreakMode = .byTruncatingMiddle
+                cell.addSubview(tf)
+                cell.textField = tf
+                cell.addSubview(icon)
+
+                let statusIcon = NSImageView()
+                statusIcon.identifier = NSUserInterfaceItemIdentifier("SyncStatusIcon")
+                statusIcon.translatesAutoresizingMaskIntoConstraints = false
+                statusIcon.imageScaling = .scaleProportionallyUpOrDown
+                cell.addSubview(statusIcon)
+
+                let statusSpinner = NSProgressIndicator()
+                statusSpinner.identifier = NSUserInterfaceItemIdentifier("SyncStatusSpinner")
+                statusSpinner.translatesAutoresizingMaskIntoConstraints = false
+                statusSpinner.controlSize = .regular
+                statusSpinner.style = .spinning
+                statusSpinner.isDisplayedWhenStopped = false
+                cell.addSubview(statusSpinner)
+
+                NSLayoutConstraint.activate([
+                    icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                    icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    icon.widthAnchor.constraint(equalToConstant: 16),
+                    icon.heightAnchor.constraint(equalToConstant: 16),
+                    tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusIcon.leadingAnchor, constant: -6),
+                    tf.trailingAnchor.constraint(lessThanOrEqualTo: statusSpinner.leadingAnchor, constant: -6),
+                    tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusIcon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusIcon.widthAnchor.constraint(equalToConstant: 16),
+                    statusIcon.heightAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusSpinner.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    statusSpinner.widthAnchor.constraint(equalToConstant: 16),
+                    statusSpinner.heightAnchor.constraint(equalToConstant: 16)
+                ])
+                return cell
+            }()
+            cell.textField?.stringValue = item.name
+            cell.imageView?.image = remoteItemIconImage(for: item, size: 16)
+
+            let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
+            let statusSpinner = cell.subviews.compactMap { $0 as? NSProgressIndicator }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusSpinner") })
+            let syncStatus: SyncPairStatusDisplay = item.type == .sync
+                ? parent.syncPairStatusForPath(item.path)
+                : .hidden
+            switch syncStatus {
+            case .hidden:
+                statusIcon?.isHidden = true
+                statusSpinner?.stopAnimation(nil)
+                cell.toolTip = nil
+            case .checking:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+                cell.toolTip = "Sync status pending"
+            case .paused:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "Pair paused")
+                cell.toolTip = "Sync paused"
+            case .connecting, .syncing, .reconnecting:
+                statusIcon?.isHidden = true
+                statusSpinner?.isHidden = false
+                statusSpinner?.startAnimation(nil)
+                cell.toolTip = syncStatus == .reconnecting ? "Sync reconnecting" : "Sync in progress"
+            case .connected:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemGreen
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle.fill", accessibilityDescription: "Pair connected")
+                cell.toolTip = "Sync connected"
+            case .error(let message):
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .systemOrange
+                statusIcon?.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Pair error")
+                cell.toolTip = message ?? "Sync error"
+            case .inactive:
+                statusSpinner?.stopAnimation(nil)
+                statusIcon?.isHidden = false
+                statusIcon?.contentTintColor = .secondaryLabelColor
+                statusIcon?.image = NSImage(systemSymbolName: "link.circle", accessibilityDescription: "Pair inactive")
+                cell.toolTip = "Sync inactive"
+            }
+            return cell
+        }
+
+        func outlineViewSelectionDidChange(_ notification: Notification) {
+            if isApplyingSelectionFromSwiftUI { return }
+            guard let outlineView else { return }
+            var paths = Set<String>()
+            for index in outlineView.selectedRowIndexes {
+                guard index >= 0,
+                      let node = outlineView.item(atRow: index) as? OutlineNode else { continue }
+                paths.insert(node.item.path)
+            }
+            parent.selectedPaths = paths
+            parent.onSelectionChange(paths)
+        }
+
+        func outlineViewItemDidExpand(_ notification: Notification) {
+            if isApplyingExpandedStateFromSwiftUI || suppressDisclosureCallbacks { return }
+            guard let node = notification.userInfo?["NSObject"] as? OutlineNode else { return }
+            pendingExpansionState[node.item.path] = true
+            for ancestor in ancestorPaths(for: node.item.path) {
+                pendingExpansionState[ancestor] = true
+            }
+            DispatchQueue.main.async {
+                self.parent.onSetDirectoryExpanded(node.item.path, true)
+            }
+        }
+
+        func outlineViewItemDidCollapse(_ notification: Notification) {
+            if isApplyingExpandedStateFromSwiftUI || suppressDisclosureCallbacks { return }
+            guard let node = notification.userInfo?["NSObject"] as? OutlineNode else { return }
+            pendingExpansionState[node.item.path] = false
+            let prefix = node.item.path == "/" ? "/" : node.item.path + "/"
+            for (key, _) in pendingExpansionState where key.hasPrefix(prefix) {
+                pendingExpansionState[key] = false
+            }
+            DispatchQueue.main.async {
+                self.parent.onSetDirectoryExpanded(node.item.path, false)
+            }
+        }
+
+        @objc
+        func didDoubleClick(_ sender: Any?) {
+            guard let outlineView else { return }
+            let row = outlineView.clickedRow >= 0 ? outlineView.clickedRow : outlineView.selectedRow
+            guard row >= 0, let node = outlineView.item(atRow: row) as? OutlineNode else { return }
+            let item = node.item
+            let isDir = isDirectory(item)
+            if isDir {
+                parent.onOpenDirectory(item)
+            } else if parent.canDownloadForItem(item) {
+                parent.onDownloadSingleFile(item)
+            }
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem itemRef: Any) -> NSPasteboardWriting? {
+            guard let node = itemRef as? OutlineNode else { return nil }
+            let item = node.item
+            let isDir = isDirectory(item)
+            let fileType: String
+            if isDir {
+                fileType = UTType.folder.identifier
+            } else {
+                let ext = (dragExportFileName(for: item) as NSString).pathExtension
+                fileType = UTType(filenameExtension: ext)?.identifier ?? UTType.data.identifier
+            }
+
+            let delegate = DragPlaceholderPromiseDelegate(item: item)
+            delegate.connectionID = parent.connectionID
+            delegate.transferManager = parent.transferManager
+            delegate.onDownloadTransferError = parent.onDownloadTransferError
+            let provider = NSFilePromiseProvider(fileType: fileType, delegate: delegate)
+            objc_setAssociatedObject(
+                provider,
+                &dragPromiseDelegateAssociationKey,
+                delegate,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            return provider
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+            .copy
+        }
+
+        private func finderDroppedURLs(from info: NSDraggingInfo) -> [URL] {
+            let classes: [AnyClass] = [NSURL.self]
+            let options: [NSPasteboard.ReadingOptionKey: Any] = [
+                .urlReadingFileURLsOnly: true
+            ]
+            return info.draggingPasteboard.readObjects(forClasses: classes, options: options) as? [URL] ?? []
+        }
+
+        private func dropDestination(for itemRef: Any?) -> FileItem? {
+            guard let node = itemRef as? OutlineNode else {
+                return directoryItem(for: currentRootPath)
+            }
+
+            let item = node.item
+            guard isDirectory(item) else { return nil }
+            return item
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+            let urls = finderDroppedURLs(from: info)
+            guard !urls.isEmpty else { return [] }
+            guard let destination = dropDestination(for: item) else { return [] }
+
+            if item == nil || destination.path == currentRootPath {
+                outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
+            } else {
+                outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
+            }
+            return .copy
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+            let urls = finderDroppedURLs(from: info)
+            guard !urls.isEmpty else { return false }
+            guard let destination = dropDestination(for: item) else { return false }
+
+            DispatchQueue.main.async {
+                self.parent.onUploadURLs(urls, destination)
+            }
+            return true
+        }
+
+        func makeContextMenu() -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
+            menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
+            menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
+            menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
+            menu.addItem(NSMenuItem.separator())
+            let statusItem = menu.addItem(withTitle: "Sync Status: Pair inactive", action: nil, keyEquivalent: "")
+            statusItem.tag = SyncContextMenuItemTag.status
+            let toggleItem = menu.addItem(withTitle: "Activate Sync Pair", action: #selector(contextToggleSyncPair), keyEquivalent: "")
+            toggleItem.tag = SyncContextMenuItemTag.toggle
+            let syncNowItem = menu.addItem(withTitle: "Sync Now", action: #selector(contextSyncNow), keyEquivalent: "")
+            syncNowItem.tag = SyncContextMenuItemTag.syncNow
+            menu.addItem(NSMenuItem.separator())
+            menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
+            for item in menu.items {
+                item.target = self
+            }
+            return menu
+        }
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            guard let outlineView else { return }
+            let point = outlineView.convert(outlineView.window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
+            let row = outlineView.row(at: point)
+            let hasSelectionBefore = !outlineView.selectedRowIndexes.isEmpty
+
+            if row >= 0 {
+                clickedRowHadSelection = outlineView.selectedRowIndexes.contains(row)
+                if !clickedRowHadSelection {
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                }
+
+                if let node = outlineView.item(atRow: row) as? OutlineNode {
+                    let item = node.item
+                    if isDirectory(item) {
+                        contextDirectoryTarget = item
+                    } else {
+                        let parentPath = item.path.stringByDeletingLastPathComponent
+                        contextDirectoryTarget = FileItem(parentPath.lastPathComponent, path: parentPath, type: .directory)
+                    }
+                } else {
+                    contextDirectoryTarget = directoryItem(for: currentRootPath)
+                }
+            } else {
+                clickedRowHadSelection = false
+                if hasSelectionBefore {
+                    outlineView.deselectAll(nil)
+                }
+                contextDirectoryTarget = directoryItem(for: currentRootPath)
+            }
+
+            let selectedRows = outlineView.selectedRowIndexes.compactMap { row -> Int? in
+                row >= 0 ? row : nil
+            }
+            let selectedItems = selectedRows.compactMap { row -> FileItem? in
+                (outlineView.item(atRow: row) as? OutlineNode)?.item
+            }
+            if let downloadItem = menu.item(withTitle: "Download") {
+                downloadItem.isEnabled = selectedItems.contains(where: { parent.canDownloadForItem($0) })
+            }
+            if let deleteItem = menu.item(withTitle: "Delete") {
+                deleteItem.isEnabled = selectedItems.contains(where: { parent.canDeleteForItem($0) })
+            }
+            if let uploadItem = menu.item(withTitle: "Upload…") {
+                uploadItem.isEnabled = parent.canUploadToDirectory(contextDirectoryTarget)
+            }
+            if let infoItem = menu.item(withTitle: "Get Info") {
+                let canGetSelectedInfo: Bool = {
+                    guard selectedItems.count == 1, let item = selectedItems.first else { return false }
+                    return parent.canGetInfoForItem(item)
+                }()
+                infoItem.isEnabled = canGetSelectedInfo
+            }
+            let selectedSyncItem: FileItem? = {
+                guard selectedItems.count == 1, let item = selectedItems.first, item.type == .sync else { return nil }
+                return item
+            }()
+            contextSyncTarget = selectedSyncItem
+            let syncState: SyncPairStatusDisplay = selectedSyncItem.map { parent.syncPairStatusForPath($0.path) } ?? .hidden
+            let pairExists = selectedSyncItem.map { parent.syncPairExistsForPath($0.path) } ?? false
+
+            if let syncStatusItem = menu.item(withTag: SyncContextMenuItemTag.status) {
+                switch syncState {
+                case .paused:
+                    syncStatusItem.title = "Sync Status: Paused"
+                case .connecting:
+                    syncStatusItem.title = "Sync Status: Connecting…"
+                case .connected:
+                    syncStatusItem.title = "Sync Status: Connected"
+                case .syncing:
+                    syncStatusItem.title = "Sync Status: Syncing…"
+                case .reconnecting:
+                    syncStatusItem.title = "Sync Status: Reconnecting…"
+                case .error(let message):
+                    syncStatusItem.title = "Sync Status: Error\(message.map { " - \($0)" } ?? "")"
+                case .inactive:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                case .checking:
+                    syncStatusItem.title = "Sync Status: Updating…"
+                case .hidden:
+                    syncStatusItem.title = "Sync Status: Pair inactive"
+                }
+                syncStatusItem.isHidden = selectedSyncItem == nil
+                syncStatusItem.isEnabled = false
+            }
+
+            if let toggleItem = menu.item(withTag: SyncContextMenuItemTag.toggle) {
+                if selectedSyncItem == nil {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if syncState == .checking {
+                    toggleItem.title = pairExists ? "Deactivate Sync Pair" : "Activate Sync Pair"
+                    toggleItem.isEnabled = false
+                } else if pairExists {
+                    toggleItem.title = "Deactivate Sync Pair"
+                    toggleItem.isEnabled = true
+                } else {
+                    toggleItem.title = "Activate Sync Pair"
+                    toggleItem.isEnabled = true
+                }
+                toggleItem.isHidden = selectedSyncItem == nil
+            }
+            if let syncItem = menu.item(withTag: SyncContextMenuItemTag.syncNow) {
+                let canSyncNow = selectedSyncItem != nil && pairExists && syncState != .checking
+                syncItem.isHidden = selectedSyncItem == nil
+                syncItem.isEnabled = canSyncNow
+            }
+            if let newFolderItem = menu.item(withTitle: "New Folder") {
+                newFolderItem.isEnabled = parent.canCreateFolderInDirectory(contextDirectoryTarget)
+            }
+        }
+
+        @objc private func contextDownload() { parent.onRequestDownloadSelection() }
+        @objc private func contextDelete() { parent.onRequestDeleteSelection() }
+        @objc private func contextUpload() {
+            guard parent.canUploadToDirectory(contextDirectoryTarget) else { return }
+            parent.onRequestUploadInDirectory(contextDirectoryTarget)
+        }
+        @objc private func contextGetInfo() {
+            guard let item = contextSyncTarget ?? selectedItem() else { return }
+            guard parent.canGetInfoForItem(item) else { return }
+            parent.onRequestGetInfo(item)
+        }
+        @objc private func contextSyncNow() {
+            guard let item = contextSyncTarget else { return }
+            parent.onRequestSyncNow(item)
+        }
+        @objc private func contextToggleSyncPair() {
+            guard let item = contextSyncTarget, item.type == .sync else { return }
+            if parent.syncPairStatusForPath(item.path) == .checking {
+                return
+            }
+            if parent.syncPairExistsForPath(item.path) {
+                parent.onRequestDeactivateSync(item)
+            } else {
+                parent.onRequestActivateSync(item)
+            }
+        }
+        private func selectedItem() -> FileItem? {
+            guard let outlineView else { return nil }
+            let selectedRows = outlineView.selectedRowIndexes.compactMap { row -> Int? in row >= 0 ? row : nil }
+            let selectedItems = selectedRows.compactMap { row -> FileItem? in
+                (outlineView.item(atRow: row) as? OutlineNode)?.item
+            }
+            guard selectedItems.count == 1 else { return nil }
+            return selectedItems.first
+        }
+        @objc private func contextNewFolder() {
+            guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
+            parent.onRequestCreateFolder()
+        }
+    }
+}
+#endif

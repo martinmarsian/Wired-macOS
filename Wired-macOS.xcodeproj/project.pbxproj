@@ -16,6 +16,19 @@
 		AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000112F90010000213277 /* TrackerBookmark.swift */; };
 		AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000122F90010000213277 /* TrackerBrowserController.swift */; };
 		AA1000032F90010000213277 /* TrackerBookmarkFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */; };
+		AA200011FA00000100213277 /* FilesTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200010FA00000100213277 /* FilesTreeView.swift */; };
+		AA200013FA00000100213277 /* FilesColumnsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200012FA00000100213277 /* FilesColumnsView.swift */; };
+		AA200015FA00000100213277 /* FilePreviewColumn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200014FA00000100213277 /* FilePreviewColumn.swift */; };
+		AA200017FA00000100213277 /* FinderFileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200016FA00000100213277 /* FinderFileIconView.swift */; };
+		AA200019FA00000100213277 /* ColumnResizeHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200018FA00000100213277 /* ColumnResizeHandle.swift */; };
+		AA20001BFA00000100213277 /* RemoteItemIconSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA20001AFA00000100213277 /* RemoteItemIconSupport.swift */; };
+		AA20001DFA00000100213277 /* FileDragAndDropSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA20001CFA00000100213277 /* FileDragAndDropSupport.swift */; };
+		AA20001FFA00000100213277 /* FileSyncSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA20001EFA00000100213277 /* FileSyncSupport.swift */; };
+		AA200021FA00000100213277 /* FinderDragPromiseSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200020FA00000100213277 /* FinderDragPromiseSupport.swift */; };
+		AA200023FA00000100213277 /* AppKitFileBrowserSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200022FA00000100213277 /* AppKitFileBrowserSupport.swift */; };
+		AA200025FA00000100213277 /* AppKitFilesTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200024FA00000100213277 /* AppKitFilesTreeView.swift */; };
+		AA200027FA00000100213277 /* AppKitFileColumnTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */; };
+		AA200029FA00000100213277 /* FilesView+Operations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200028FA00000100213277 /* FilesView+Operations.swift */; };
 		4C0C2DDF2EF4372200213277 /* WiredSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DDE2EF4372200213277 /* WiredSwift */; };
 		4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE02EF437DE00213277 /* Assets.xcassets */; };
 		4C0C2DE72EF437DE00213277 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE12EF437DE00213277 /* MainView.swift */; };
@@ -121,6 +134,19 @@
 		AA1000112F90010000213277 /* TrackerBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBookmark.swift; sourceTree = "<group>"; };
 		AA1000122F90010000213277 /* TrackerBrowserController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBrowserController.swift; sourceTree = "<group>"; };
 		AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBookmarkFormView.swift; sourceTree = "<group>"; };
+		AA200010FA00000100213277 /* FilesTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesTreeView.swift; sourceTree = "<group>"; };
+		AA200012FA00000100213277 /* FilesColumnsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesColumnsView.swift; sourceTree = "<group>"; };
+		AA200014FA00000100213277 /* FilePreviewColumn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewColumn.swift; sourceTree = "<group>"; };
+		AA200016FA00000100213277 /* FinderFileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderFileIconView.swift; sourceTree = "<group>"; };
+		AA200018FA00000100213277 /* ColumnResizeHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnResizeHandle.swift; sourceTree = "<group>"; };
+		AA20001AFA00000100213277 /* RemoteItemIconSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteItemIconSupport.swift; sourceTree = "<group>"; };
+		AA20001CFA00000100213277 /* FileDragAndDropSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDragAndDropSupport.swift; sourceTree = "<group>"; };
+		AA20001EFA00000100213277 /* FileSyncSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSyncSupport.swift; sourceTree = "<group>"; };
+		AA200020FA00000100213277 /* FinderDragPromiseSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderDragPromiseSupport.swift; sourceTree = "<group>"; };
+		AA200022FA00000100213277 /* AppKitFileBrowserSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitFileBrowserSupport.swift; sourceTree = "<group>"; };
+		AA200024FA00000100213277 /* AppKitFilesTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitFilesTreeView.swift; sourceTree = "<group>"; };
+		AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitFileColumnTableView.swift; sourceTree = "<group>"; };
+		AA200028FA00000100213277 /* FilesView+Operations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FilesView+Operations.swift"; sourceTree = "<group>"; };
 		4C0C2DB42EF436FE00213277 /* Wired Client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired Client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -244,6 +270,7 @@
 				4CF01A972F200A1100213277 /* DropBoxBadge.icns */,
 				4C90D0022FA1000100213277 /* SyncBadge.icns */,
 				4C0C2E242EFDB8CB00213277 /* App */,
+				AA200001FA00000100213277 /* Features */,
 				4C0C2E022EF5658500213277 /* Views */,
 				4C0C2E042EF5659700213277 /* SwiftData */,
 				4C0C2E272EFDB90600213277 /* Models */,
@@ -258,6 +285,14 @@
 			isa = PBXGroup;
 			children = (
 				4C0C2E252EFDB8DA00213277 /* Main */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AA200001FA00000100213277 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				AA200002FA00000100213277 /* Bookmarks */,
 				4C0C2E162EFD454500213277 /* Chats */,
 				CC100001FA00000100213277 /* ChatHistory */,
 				4C8D12212F30000200213277 /* Messages */,
@@ -267,7 +302,17 @@
 				4C0C2E4E2F0EDB5900213277 /* ServerInfo */,
 				4C7E10032F21000100213277 /* Settings */,
 			);
-			path = Views;
+			path = Features;
+			sourceTree = "<group>";
+		};
+		AA200002FA00000100213277 /* Bookmarks */ = {
+			isa = PBXGroup;
+			children = (
+				4C0C2DFF2EF5649C00213277 /* ConnectionRowView.swift */,
+				4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */,
+				AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */,
+			);
+			path = Bookmarks/Views;
 			sourceTree = "<group>";
 		};
 		CC100001FA00000100213277 /* ChatHistory */ = {
@@ -279,7 +324,7 @@
 				CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */,
 				CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */,
 			);
-			path = ChatHistory;
+			path = ChatHistory/Views;
 			sourceTree = "<group>";
 		};
 		4C0C2E032EF5659100213277 /* Connection */ = {
@@ -328,7 +373,7 @@
 				4C0C2E172EFD455300213277 /* MessageBubble.swift */,
 				4CDBA0022F80000100213277 /* RelativeDateText.swift */,
 			);
-			path = Chats;
+			path = Chats/Views;
 			sourceTree = "<group>";
 		};
 		4C0C2E232EFDB8BF00213277 /* Additions */ = {
@@ -357,10 +402,7 @@
 			isa = PBXGroup;
 			children = (
 				4C0C2DE12EF437DE00213277 /* MainView.swift */,
-				4C0C2DFF2EF5649C00213277 /* ConnectionRowView.swift */,
 				4C0C2DFB2EF558DF00213277 /* TabsView.swift */,
-				4C0C2DEB2EF43B7200213277 /* BookmarkFormView.swift */,
-				AA1000132F90010000213277 /* TrackerBookmarkFormView.swift */,
 				4CAB00012F900001AB213277 /* ChangePasswordView.swift */,
 			);
 			path = Main;
@@ -388,13 +430,26 @@
 			children = (
 				4C0C2E4F2F0EDB6400213277 /* ServerInfoView.swift */,
 			);
-			path = ServerInfo;
+			path = ServerInfo/Views;
 			sourceTree = "<group>";
 		};
 		4C0C2E522F110DB600213277 /* Files */ = {
 			isa = PBXGroup;
 			children = (
 				4C0C2E532F110DC400213277 /* FilesView.swift */,
+				AA200010FA00000100213277 /* FilesTreeView.swift */,
+				AA200012FA00000100213277 /* FilesColumnsView.swift */,
+				AA200014FA00000100213277 /* FilePreviewColumn.swift */,
+				AA200016FA00000100213277 /* FinderFileIconView.swift */,
+				AA200018FA00000100213277 /* ColumnResizeHandle.swift */,
+				AA20001AFA00000100213277 /* RemoteItemIconSupport.swift */,
+				AA20001CFA00000100213277 /* FileDragAndDropSupport.swift */,
+				AA20001EFA00000100213277 /* FileSyncSupport.swift */,
+				AA200020FA00000100213277 /* FinderDragPromiseSupport.swift */,
+				AA200022FA00000100213277 /* AppKitFileBrowserSupport.swift */,
+				AA200024FA00000100213277 /* AppKitFilesTreeView.swift */,
+				AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */,
+				AA200028FA00000100213277 /* FilesView+Operations.swift */,
 				4C0C2E5B2F14026A00213277 /* FileServiceProtocol.swift */,
 				4C0C2E5D2F14029B00213277 /* FilesViewModel.swift */,
 				4C0C2E602F1583CB00213277 /* FileItem.swift */,
@@ -443,7 +498,7 @@
 				4C62A8532F747E9600FB42E3 /* AccountsSettingsView.swift */,
 				4C7E10012F21000100213277 /* ServerSettingsView.swift */,
 			);
-			path = Settings;
+			path = ServerSettings/Views;
 			sourceTree = "<group>";
 		};
 		4C8D12212F30000200213277 /* Messages */ = {
@@ -454,7 +509,7 @@
 				4C8A826A2F5ED07100C271A8 /* MessageConversationDetailView.swift */,
 				4C8D12142F30000200213277 /* MessageConversationMessagesView.swift */,
 			);
-			path = Messages;
+			path = Messages/Views;
 			sourceTree = "<group>";
 		};
 		4C95F16B2F56CB7D005CD1BA /* Boards */ = {
@@ -465,7 +520,7 @@
 				4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */,
 				4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */,
 			);
-			path = Boards;
+			path = Boards/Views;
 			sourceTree = "<group>";
 		};
 		4CF6736B2403F48000A8EDC2 /* Frameworks */ = {
@@ -700,6 +755,19 @@
 				4C0C2E632F15840000213277 /* TransferConnection.swift in Sources */,
 				4C62A8542F747E9600FB42E3 /* AccountsSettingsView.swift in Sources */,
 				4C0C2E542F110DC400213277 /* FilesView.swift in Sources */,
+				AA200011FA00000100213277 /* FilesTreeView.swift in Sources */,
+				AA200013FA00000100213277 /* FilesColumnsView.swift in Sources */,
+				AA200015FA00000100213277 /* FilePreviewColumn.swift in Sources */,
+				AA200017FA00000100213277 /* FinderFileIconView.swift in Sources */,
+				AA200019FA00000100213277 /* ColumnResizeHandle.swift in Sources */,
+				AA20001BFA00000100213277 /* RemoteItemIconSupport.swift in Sources */,
+				AA20001DFA00000100213277 /* FileDragAndDropSupport.swift in Sources */,
+				AA20001FFA00000100213277 /* FileSyncSupport.swift in Sources */,
+				AA200021FA00000100213277 /* FinderDragPromiseSupport.swift in Sources */,
+				AA200023FA00000100213277 /* AppKitFileBrowserSupport.swift in Sources */,
+				AA200025FA00000100213277 /* AppKitFilesTreeView.swift in Sources */,
+				AA200027FA00000100213277 /* AppKitFileColumnTableView.swift in Sources */,
+				AA200029FA00000100213277 /* FilesView+Operations.swift in Sources */,
 				4C0C2E2D2EFDB93B00213277 /* Topic.swift in Sources */,
 				AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */,
 				AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */,
