@@ -76,6 +76,11 @@ protocol FileServiceProtocol {
         connection: AsyncConnection
     ) async throws -> FileItem
 
+    func previewFile(
+        path: String,
+        connection: AsyncConnection
+    ) async throws -> Data
+
     func listUserNames(connection: AsyncConnection) async throws -> [String]
     func listGroupNames(connection: AsyncConnection) async throws -> [String]
 
@@ -287,6 +292,33 @@ final class FileService: FileServiceProtocol {
         }
 
         return FileItem(response, connection: connection)
+    }
+
+    func previewFile(
+        path: String,
+        connection: AsyncConnection
+    ) async throws -> Data {
+        let message = P7Message(
+            withName: "wired.file.preview_file",
+            spec: spec
+        )
+
+        message.addParameter(field: "wired.file.path", value: path)
+
+        guard let response = try await connection.sendAsync(message) else {
+            throw WiredError(withTitle: "Quick Look Error", message: "No response from server")
+        }
+
+        if response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+
+        guard response.name == "wired.file.preview",
+              let data = response.data(forField: "wired.file.preview") else {
+            throw WiredError(withTitle: "Quick Look Error", message: "Invalid response: \(response.name ?? "unknown")")
+        }
+
+        return data
     }
 
     func listUserNames(connection: AsyncConnection) async throws -> [String] {

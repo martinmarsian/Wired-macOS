@@ -94,6 +94,10 @@ final class FilesViewModel: ObservableObject {
         self.runtime = runtime
     }
 
+    var activeConnection: AsyncConnection? {
+        runtime?.connection as? AsyncConnection
+    }
+
     var isPerformingFileNetworkActivity: Bool {
         fileNetworkActivityCount > 0
     }

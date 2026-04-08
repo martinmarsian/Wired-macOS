@@ -85,6 +85,7 @@ struct FilesColumnsView: View {
 #if os(macOS)
         return AppKitFileColumnTableView(
             bookmarkID: connectionID,
+            quickLookConnection: filesViewModel.activeConnection,
             transferManager: transfers,
             onDownloadTransferError: { item, message in
                 filesViewModel.error = WiredError(

@@ -104,6 +104,60 @@ struct Wired_3Tests {
     }
 
     @Test
+    func remoteQuickLookSupportKeepsOnlyPreviewableSelectedFiles() {
+        let selected = RemoteQuickLookSupport.selectedPreviewableItems(
+            from: [
+                FileItem("Folder", path: "/Folder", type: .directory),
+                FileItem("Small.txt", path: "/Small.txt", type: .file),
+                oversizedPreviewItem(path: "/Huge.mov"),
+                FileItem("Image.jpg", path: "/Image.jpg", type: .file)
+            ],
+            selectedPaths: ["/Folder", "/Small.txt", "/Huge.mov", "/Image.jpg"]
+        )
+
+        #expect(selected.map(\.path) == ["/Small.txt", "/Image.jpg"])
+    }
+
+    @Test
+    func remoteQuickLookSupportBuildsStableCacheURLsThatPreserveExtensions() throws {
+        let baseDirectory = try TestData.makeTemporaryDirectory(prefix: "ql-cache")
+        defer { try? FileManager.default.removeItem(at: baseDirectory) }
+
+        let item = FileItem("Picture.final.png", path: "/Media/Picture.final.png", type: .file)
+        let url = RemoteQuickLookSupport.previewURL(
+            baseDirectory: baseDirectory,
+            connectionID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
+            item: item
+        )
+
+        #expect(url.deletingLastPathComponent().lastPathComponent == "RemoteQuickLook")
+        #expect(url.lastPathComponent.hasPrefix("Picture.final-"))
+        #expect(url.pathExtension == "png")
+    }
+
+    @Test
+    func remoteQuickLookSupportInitialSelectionPrefersMatchingPathAndFallsBackToZero() {
+        let items = [
+            FileItem("One.txt", path: "/One.txt", type: .file),
+            FileItem("Two.txt", path: "/Two.txt", type: .file)
+        ]
+
+        #expect(RemoteQuickLookSupport.initialSelectionIndex(items: items, preferredPath: "/Two.txt") == 1)
+        #expect(RemoteQuickLookSupport.initialSelectionIndex(items: items, preferredPath: "/Missing.txt") == 0)
+        #expect(RemoteQuickLookSupport.initialSelectionIndex(items: items, preferredPath: nil) == 0)
+    }
+
+    @Test
+    func remoteQuickLookSupportRequestsConfirmationOnlyForLargeUncachedFiles() {
+        let regular = FileItem("Small.txt", path: "/Small.txt", type: .file)
+        let oversized = oversizedPreviewItem(path: "/Huge.mov")
+
+        #expect(!RemoteQuickLookSupport.shouldConfirmDownload(for: regular, hasCachedPreview: false))
+        #expect(RemoteQuickLookSupport.shouldConfirmDownload(for: oversized, hasCachedPreview: false))
+        #expect(!RemoteQuickLookSupport.shouldConfirmDownload(for: oversized, hasCachedPreview: true))
+    }
+
+    @Test
     func serverTrustStoreCreatesStorageKeysAndPersistsFingerprints() {
         let host = "trust.example.org"
         let port = 4871
@@ -957,6 +1011,8 @@ private final class TestFileService: @preconcurrency FileServiceProtocol {
     var subscribedPaths: [String] = []
     var unsubscribedPaths: [String] = []
     var unsubscribeErrors: [String: Error] = [:]
+    var previewData: [String: Data] = [:]
+    var previewErrors: [String: Error] = [:]
 
     func listDirectory(
         path: String,
@@ -1019,6 +1075,16 @@ private final class TestFileService: @preconcurrency FileServiceProtocol {
         FileItem(path.split(separator: "/").last.map(String.init) ?? path, path: path)
     }
 
+    func previewFile(
+        path: String,
+        connection: AsyncConnection
+    ) async throws -> Data {
+        if let error = previewErrors[path] {
+            throw error
+        }
+        return previewData[path] ?? Data()
+    }
+
     func listUserNames(connection: AsyncConnection) async throws -> [String] { [] }
     func listGroupNames(connection: AsyncConnection) async throws -> [String] { [] }
 
@@ -1056,4 +1122,10 @@ private final class TestFileService: @preconcurrency FileServiceProtocol {
             continuation.finish()
         }
     }
+}
+
+private func oversizedPreviewItem(path: String) -> FileItem {
+    var item = FileItem((path as NSString).lastPathComponent, path: path, type: .file)
+    item.dataSize = RemoteQuickLookSupport.maxPreviewSizeBytes + 1
+    return item
 }

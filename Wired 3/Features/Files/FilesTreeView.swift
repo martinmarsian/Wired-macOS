@@ -39,6 +39,7 @@ struct FilesTreeView: View {
             treeChildrenByPath: filesViewModel.treeChildrenByPath,
             expandedPaths: filesViewModel.expandedTreePaths,
             connectionID: connectionID,
+            quickLookConnection: filesViewModel.activeConnection,
             transferManager: transfers,
             onDownloadTransferError: { item, message in
                 filesViewModel.error = WiredError(

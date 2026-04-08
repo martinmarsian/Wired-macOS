@@ -3,7 +3,23 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import ObjectiveC
+import WiredSwift
 
+private final class QuickLookOutlineView: NSOutlineView {
+    var onQuickLook: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+           event.keyCode == 49 {
+            onQuickLook?()
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
+
+// swiftlint:disable type_body_length
 struct AppKitFilesTreeView: NSViewRepresentable {
     private enum ColumnID {
         static let name = NSUserInterfaceItemIdentifier("TreeColumn")
@@ -16,6 +32,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
     let treeChildrenByPath: [String: [FileItem]]
     let expandedPaths: Set<String>
     let connectionID: UUID
+    let quickLookConnection: AsyncConnection?
     let transferManager: TransferManager
     let onDownloadTransferError: (FileItem, String) -> Void
     let onUploadURLs: ([URL], FileItem) -> Void
@@ -56,7 +73,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        let outlineView = NSOutlineView()
+        let outlineView = QuickLookOutlineView()
         outlineView.usesAlternatingRowBackgroundColors = false
         outlineView.backgroundColor = .clear
         outlineView.allowsMultipleSelection = true
@@ -70,6 +87,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         outlineView.registerForDraggedTypes([.fileURL])
         outlineView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
         outlineView.target = context.coordinator
+        outlineView.onQuickLook = { [weak coordinator = context.coordinator] in
+            coordinator?.presentQuickLook()
+        }
         outlineView.allowsColumnReordering = false
         outlineView.allowsColumnResizing = true
 
@@ -182,6 +202,18 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         private var lastSelectedPaths: Set<String> = []
         private var activeSortKey: String = "name"
         private var activeSortAscending = true
+        private lazy var quickLookController = FilesQuickLookController(
+            connectionID: parent.connectionID,
+            sourceFrameProvider: { [weak self] path in
+                self?.sourceFrameOnScreen(for: path)
+            },
+            windowProvider: { [weak self] in
+                self?.outlineView?.window
+            },
+            connectionProvider: { [weak self] in
+                self?.parent.quickLookConnection
+            }
+        )
 
         init(parent: AppKitFilesTreeView) {
             self.parent = parent
@@ -701,6 +733,62 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
         }
 
+        func presentQuickLook() {
+            let orderedItems = visibleItemsInDisplayOrder()
+            let selectedPaths = Set(selectedItems().map(\.path))
+            let preferredPath = primarySelectionPath()
+            Task { @MainActor [quickLookController] in
+                quickLookController.present(
+                    orderedItems: orderedItems,
+                    selectedPaths: selectedPaths,
+                    preferredPath: preferredPath
+                )
+            }
+        }
+
+        private func visibleItemsInDisplayOrder() -> [FileItem] {
+            guard let outlineView else { return [] }
+            return (0..<outlineView.numberOfRows).compactMap { row in
+                (outlineView.item(atRow: row) as? OutlineNode)?.item
+            }
+        }
+
+        private func primarySelectionPath() -> String? {
+            guard let outlineView else { return nil }
+            let selectedRows = outlineView.selectedRowIndexes
+            if outlineView.clickedRow >= 0,
+               selectedRows.contains(outlineView.clickedRow),
+               let node = outlineView.item(atRow: outlineView.clickedRow) as? OutlineNode {
+                return node.item.path
+            }
+            if let first = selectedRows.first,
+               let node = outlineView.item(atRow: first) as? OutlineNode {
+                return node.item.path
+            }
+            return nil
+        }
+
+        private func sourceFrameOnScreen(for path: String) -> NSRect? {
+            guard let outlineView,
+                  let node = nodesByPath[path] else { return nil }
+            let row = outlineView.row(forItem: node)
+            guard row >= 0 else { return nil }
+            let rowRect = outlineView.rect(ofRow: row)
+            guard !rowRect.isEmpty else { return nil }
+            let rectInWindow = outlineView.convert(rowRect, to: nil)
+            return outlineView.window?.convertToScreen(rectInWindow)
+        }
+
+        private func selectedItems() -> [FileItem] {
+            guard let outlineView else { return [] }
+            let selectedRows = outlineView.selectedRowIndexes.compactMap { row -> Int? in
+                row >= 0 ? row : nil
+            }
+            return selectedRows.compactMap { row -> FileItem? in
+                (outlineView.item(atRow: row) as? OutlineNode)?.item
+            }
+        }
+
         func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem itemRef: Any) -> NSPasteboardWriting? {
             guard let node = itemRef as? OutlineNode else { return nil }
             let item = node.item
@@ -776,6 +864,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         func makeContextMenu() -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
+            menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            menu.addItem(NSMenuItem.separator())
             menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
             menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
             menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
@@ -831,6 +921,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
             let selectedItems = selectedRows.compactMap { row -> FileItem? in
                 (outlineView.item(atRow: row) as? OutlineNode)?.item
+            }
+            if let quickLookItem = menu.item(withTitle: "Quick Look") {
+                quickLookItem.isEnabled = selectedItems.contains(where: { RemoteQuickLookSupport.isPreviewable($0) })
             }
             if let downloadItem = menu.item(withTitle: "Download") {
                 downloadItem.isEnabled = selectedItems.contains(where: { parent.canDownloadForItem($0) })
@@ -907,6 +1000,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
         }
 
+        @objc private func contextQuickLook() { presentQuickLook() }
         @objc private func contextDownload() { parent.onRequestDownloadSelection() }
         @objc private func contextDelete() { parent.onRequestDeleteSelection() }
         @objc private func contextUpload() {
@@ -934,13 +1028,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
         }
         private func selectedItem() -> FileItem? {
-            guard let outlineView else { return nil }
-            let selectedRows = outlineView.selectedRowIndexes.compactMap { row -> Int? in row >= 0 ? row : nil }
-            let selectedItems = selectedRows.compactMap { row -> FileItem? in
-                (outlineView.item(atRow: row) as? OutlineNode)?.item
-            }
-            guard selectedItems.count == 1 else { return nil }
-            return selectedItems.first
+            let items = selectedItems()
+            guard items.count == 1 else { return nil }
+            return items.first
         }
         @objc private func contextNewFolder() {
             guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
@@ -948,4 +1038,5 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         }
     }
 }
+// swiftlint:enable type_body_length
 #endif

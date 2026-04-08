@@ -3,9 +3,25 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import ObjectiveC
+import WiredSwift
+
+private final class QuickLookTableView: NSTableView {
+    var onQuickLook: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+           event.keyCode == 49 {
+            onQuickLook?()
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
 
 struct AppKitFileColumnTableView: NSViewRepresentable {
     let bookmarkID: UUID
+    let quickLookConnection: AsyncConnection?
     let transferManager: TransferManager
     let onDownloadTransferError: (FileItem, String) -> Void
     let column: FileColumn
@@ -46,7 +62,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        let tableView = NSTableView()
+        let tableView = QuickLookTableView()
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = .clear
         tableView.headerView = nil
@@ -60,6 +76,9 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         tableView.registerForDraggedTypes([.fileURL, wiredRemotePathPasteboardType])
         tableView.target = context.coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
+        tableView.onQuickLook = { [weak coordinator = context.coordinator] in
+            coordinator?.presentQuickLook()
+        }
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ColumnName"))
         column.title = "Name"
@@ -110,6 +129,18 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         private var lastSyncPairStatusVersion: Int = -1
         private var isApplyingSelectionFromSwiftUI = false
         private var contextDirectoryTarget: FileItem
+        private lazy var quickLookController = FilesQuickLookController(
+            connectionID: parent.bookmarkID,
+            sourceFrameProvider: { [weak self] path in
+                self?.sourceFrameOnScreen(for: path)
+            },
+            windowProvider: { [weak self] in
+                self?.tableView?.window
+            },
+            connectionProvider: { [weak self] in
+                self?.parent.quickLookConnection
+            }
+        )
 
         init(parent: AppKitFileColumnTableView) {
             self.parent = parent
@@ -323,6 +354,43 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             }
         }
 
+        func presentQuickLook() {
+            let orderedItems = items
+            let selectedPaths = Set(selectedItems().map(\.path))
+            let preferredPath = primarySelectionPath()
+            Task { @MainActor [quickLookController] in
+                quickLookController.present(
+                    orderedItems: orderedItems,
+                    selectedPaths: selectedPaths,
+                    preferredPath: preferredPath
+                )
+            }
+        }
+
+        private func primarySelectionPath() -> String? {
+            guard let tableView else { return nil }
+            let selectedRows = tableView.selectedRowIndexes
+            if tableView.clickedRow >= 0,
+               tableView.clickedRow < items.count,
+               selectedRows.contains(tableView.clickedRow) {
+                return items[tableView.clickedRow].path
+            }
+            if let first = selectedRows.first, first >= 0, first < items.count {
+                return items[first].path
+            }
+            return nil
+        }
+
+        private func sourceFrameOnScreen(for path: String) -> NSRect? {
+            guard let tableView,
+                  let row = byPath[path],
+                  row >= 0 else { return nil }
+            let rowRect = tableView.rect(ofRow: row)
+            guard !rowRect.isEmpty else { return nil }
+            let rectInWindow = tableView.convert(rowRect, to: nil)
+            return tableView.window?.convertToScreen(rectInWindow)
+        }
+
         func tableView(_ tableView: NSTableView, writeRowsWith rowIndexes: IndexSet, to pboard: NSPasteboard) -> Bool {
             let selectedRows = rowIndexes.compactMap { ($0 >= 0 && $0 < items.count) ? $0 : nil }
             guard !selectedRows.isEmpty else { return false }
@@ -443,6 +511,8 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         func makeContextMenu() -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
+            menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            menu.addItem(NSMenuItem.separator())
             menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
             menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
             menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
@@ -485,6 +555,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             }
 
             let selected = selectedItems()
+            menu.item(withTitle: "Quick Look")?.isEnabled = selected.contains(where: { RemoteQuickLookSupport.isPreviewable($0) })
             menu.item(withTitle: "Download")?.isEnabled = selected.contains(where: { parent.canDownloadForItem($0) })
             menu.item(withTitle: "Delete")?.isEnabled = selected.contains(where: { parent.canDeleteForItem($0) })
             menu.item(withTitle: "Upload…")?.isEnabled = parent.canUploadToDirectory(contextDirectoryTarget)
@@ -550,6 +621,10 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
                 guard row >= 0 && row < items.count else { return nil }
                 return items[row]
             }
+        }
+
+        @objc private func contextQuickLook() {
+            presentQuickLook()
         }
 
         @objc private func contextDownload() {

@@ -100,6 +100,8 @@
 		AA200025FA00000100213277 /* AppKitFilesTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200024FA00000100213277 /* AppKitFilesTreeView.swift */; };
 		AA200027FA00000100213277 /* AppKitFileColumnTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */; };
 		AA200029FA00000100213277 /* FilesView+Operations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200028FA00000100213277 /* FilesView+Operations.swift */; };
+		AA200031FA00000100213277 /* RemoteQuickLookSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200030FA00000100213277 /* RemoteQuickLookSupport.swift */; };
+		AA200033FA00000100213277 /* FilesQuickLookController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA200032FA00000100213277 /* FilesQuickLookController.swift */; };
 		CC100007FA00000100213277 /* ChatHistoryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100002FA00000100213277 /* ChatHistoryWindow.swift */; };
 		CC100008FA00000100213277 /* ChatHistoryConnectionList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100003FA00000100213277 /* ChatHistoryConnectionList.swift */; };
 		CC100009FA00000100213277 /* ChatHistoryDayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100004FA00000100213277 /* ChatHistoryDayList.swift */; };
@@ -222,6 +224,8 @@
 		AA200024FA00000100213277 /* AppKitFilesTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitFilesTreeView.swift; sourceTree = "<group>"; };
 		AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitFileColumnTableView.swift; sourceTree = "<group>"; };
 		AA200028FA00000100213277 /* FilesView+Operations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FilesView+Operations.swift"; sourceTree = "<group>"; };
+		AA200030FA00000100213277 /* RemoteQuickLookSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteQuickLookSupport.swift; sourceTree = "<group>"; };
+		AA200032FA00000100213277 /* FilesQuickLookController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesQuickLookController.swift; sourceTree = "<group>"; };
 		CC100002FA00000100213277 /* ChatHistoryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryWindow.swift; sourceTree = "<group>"; };
 		CC100003FA00000100213277 /* ChatHistoryConnectionList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryConnectionList.swift; sourceTree = "<group>"; };
 		CC100004FA00000100213277 /* ChatHistoryDayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryDayList.swift; sourceTree = "<group>"; };
@@ -412,6 +416,8 @@
 				AA200024FA00000100213277 /* AppKitFilesTreeView.swift */,
 				AA200026FA00000100213277 /* AppKitFileColumnTableView.swift */,
 				AA200028FA00000100213277 /* FilesView+Operations.swift */,
+				AA200030FA00000100213277 /* RemoteQuickLookSupport.swift */,
+				AA200032FA00000100213277 /* FilesQuickLookController.swift */,
 				4C0C2E5B2F14026A00213277 /* FileServiceProtocol.swift */,
 				4C0C2E5D2F14029B00213277 /* FilesViewModel.swift */,
 				4C0C2E602F1583CB00213277 /* FileItem.swift */,
@@ -768,6 +774,8 @@
 				AA200025FA00000100213277 /* AppKitFilesTreeView.swift in Sources */,
 				AA200027FA00000100213277 /* AppKitFileColumnTableView.swift in Sources */,
 				AA200029FA00000100213277 /* FilesView+Operations.swift in Sources */,
+				AA200031FA00000100213277 /* RemoteQuickLookSupport.swift in Sources */,
+				AA200033FA00000100213277 /* FilesQuickLookController.swift in Sources */,
 				4C0C2E2D2EFDB93B00213277 /* Topic.swift in Sources */,
 				AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */,
 				AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */,
