@@ -71,51 +71,81 @@ struct ChatMessagesView: View {
     }
 
     private var displayItems: [ChatDisplayItem] {
-        guard timestampInChat else {
-            var items = transcriptMessages.map(ChatDisplayItem.message)
-            if let liveSlotPresentation {
-                items.append(.liveSlot(liveSlotPresentation))
-            }
-            return items
-        }
-
+        // ── Pass 1: build flat list ──────────────────────────────────────────────
         var items: [ChatDisplayItem] = []
-        var lastInsertedTimestampDate: Date?
-        var didInsertPendingLiveSlotTimestamp = false
 
-        for message in transcriptMessages {
+        if timestampInChat {
+            var lastInsertedTimestampDate: Date?
+            var didInsertPendingLiveSlotTimestamp = false
+
+            for message in transcriptMessages {
+                if let pendingLiveSlotTimestampDate,
+                   !didInsertPendingLiveSlotTimestamp,
+                   pendingLiveSlotTimestampDate <= message.date,
+                   shouldInsertTimestamp(
+                        at: pendingLiveSlotTimestampDate,
+                        lastTimestampDate: lastInsertedTimestampDate
+                   ) {
+                    items.append(.timestamp(id: "live-slot-timestamp", date: pendingLiveSlotTimestampDate))
+                    lastInsertedTimestampDate = pendingLiveSlotTimestampDate
+                    didInsertPendingLiveSlotTimestamp = true
+                }
+
+                if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
+                    items.append(.timestamp(id: "timestamp-\(message.id.uuidString)", date: message.date))
+                    lastInsertedTimestampDate = message.date
+                }
+
+                items.append(.message(message, showNickname: true, showAvatar: true, isGroupedWithNext: false))
+            }
+
             if let pendingLiveSlotTimestampDate,
                !didInsertPendingLiveSlotTimestamp,
-               pendingLiveSlotTimestampDate <= message.date,
                shouldInsertTimestamp(
                     at: pendingLiveSlotTimestampDate,
                     lastTimestampDate: lastInsertedTimestampDate
                ) {
                 items.append(.timestamp(id: "live-slot-timestamp", date: pendingLiveSlotTimestampDate))
-                lastInsertedTimestampDate = pendingLiveSlotTimestampDate
-                didInsertPendingLiveSlotTimestamp = true
             }
-
-            if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
-                items.append(.timestamp(id: "timestamp-\(message.id.uuidString)", date: message.date))
-                lastInsertedTimestampDate = message.date
+        } else {
+            items = transcriptMessages.map {
+                .message($0, showNickname: true, showAvatar: true, isGroupedWithNext: false)
             }
-
-            items.append(.message(message))
-        }
-
-        if let pendingLiveSlotTimestampDate,
-           !didInsertPendingLiveSlotTimestamp,
-           shouldInsertTimestamp(
-                at: pendingLiveSlotTimestampDate,
-                lastTimestampDate: lastInsertedTimestampDate
-           ) {
-            items.append(.timestamp(id: "live-slot-timestamp", date: pendingLiveSlotTimestampDate))
-            lastInsertedTimestampDate = pendingLiveSlotTimestampDate
         }
 
         if let liveSlotPresentation {
-            items.append(.liveSlot(liveSlotPresentation))
+            items.append(.liveSlot(liveSlotPresentation, isGroupedWithPrevious: false))
+        }
+
+        // ── Pass 2: compute grouping flags ───────────────────────────────────────
+        for i in items.indices {
+            guard case .message(let event, _, _, _) = items[i], event.type == .say else { continue }
+
+            let prevMsg = i > 0 ? items[i - 1].chatMessage : nil
+            let sameAsPrev = prevMsg?.type == .say && prevMsg?.user.id == event.user.id
+
+            let sameAsNext: Bool
+            if i < items.count - 1 {
+                let nextItem = items[i + 1]
+                if let nextMsg = nextItem.chatMessage {
+                    sameAsNext = nextMsg.type == .say && nextMsg.user.id == event.user.id
+                } else if case .liveSlot(let pres, _) = nextItem {
+                    sameAsNext = pres.userID == event.user.id
+                } else {
+                    sameAsNext = false
+                }
+            } else {
+                sameAsNext = false
+            }
+
+            items[i] = .message(event, showNickname: !sameAsPrev, showAvatar: !sameAsNext, isGroupedWithNext: sameAsNext)
+        }
+
+        // Fix liveSlot grouping (always last when present)
+        if let lastIdx = items.indices.last, case .liveSlot(let pres, _) = items[lastIdx] {
+            let prevEvent = items[0..<lastIdx].reversed().compactMap(\.chatMessage).first
+            let groupedWithPrev = prevEvent?.type == .say && prevEvent?.user.id == pres.userID
+            items[lastIdx] = .liveSlot(pres, isGroupedWithPrevious: groupedWithPrev)
         }
 
         return items
@@ -184,14 +214,14 @@ struct ChatMessagesView: View {
                 .frame(height: topOverlayInset)
         }
 
-        ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
+        ForEach(displayItems, id: \.id) { item in
             switch item {
             case .timestamp(_, let date):
                 ChatInlineTimestampView(date: date)
-            case .message(let message):
-                messageView(for: message, index: index)
-            case .liveSlot(let presentation):
-                liveSlotView(for: presentation, index: index)
+            case .message(let message, let showNickname, let showAvatar, let isGroupedWithNext):
+                messageView(for: message, showNickname: showNickname, showAvatar: showAvatar, isGroupedWithNext: isGroupedWithNext)
+            case .liveSlot(let presentation, let isGroupedWithPrevious):
+                liveSlotView(for: presentation, isGroupedWithPrevious: isGroupedWithPrevious)
             }
         }
 
@@ -317,21 +347,18 @@ struct ChatMessagesView: View {
     }
 
     @ViewBuilder
-    private func messageView(for message: ChatEvent, index: Int) -> some View {
+    private func messageView(
+        for message: ChatEvent,
+        showNickname: Bool,
+        showAvatar: Bool,
+        isGroupedWithNext: Bool
+    ) -> some View {
         if message.type == .say {
-            let previous = index > 0 ? displayItems[index - 1].chatMessage : nil
-            let nextItem = index < (displayItems.count - 1) ? displayItems[index + 1] : nil
-            let next = nextItem?.chatMessage
-            let sameAsPrevious = previous?.type == .say && previous?.user.id == message.user.id
-            let sameAsNext =
-                (next?.type == .say && next?.user.id == message.user.id)
-                || nextItem?.continuesGrouping(forUserID: message.user.id) == true
-
             ChatSayMessageView(
                 message: message,
-                showNickname: !sameAsPrevious,
-                showAvatar: !sameAsNext,
-                isGroupedWithNext: sameAsNext
+                showNickname: showNickname,
+                showAvatar: showAvatar,
+                isGroupedWithNext: isGroupedWithNext
             )
             .environment(runtime)
             .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
@@ -551,10 +578,7 @@ struct ChatMessagesView: View {
     }
 
     @ViewBuilder
-    private func liveSlotView(for presentation: LiveSlotPresentation, index: Int) -> some View {
-        let previous = index > 0 ? displayItems[index - 1].chatMessage : nil
-        let isGroupedWithPrevious = previous?.type == .say && previous?.user.id == presentation.userID
-
+    private func liveSlotView(for presentation: LiveSlotPresentation, isGroupedWithPrevious: Bool) -> some View {
         ChatIncomingLiveSlotView(
             presentation: presentation,
             user: chat.users.first(where: { $0.id == presentation.userID }),
@@ -565,15 +589,16 @@ struct ChatMessagesView: View {
 }
 
 private enum ChatDisplayItem: Identifiable {
+    /// A chat event with pre-computed avatar/nickname/grouping flags.
+    case message(ChatEvent, showNickname: Bool, showAvatar: Bool, isGroupedWithNext: Bool)
     case timestamp(id: String, date: Date)
-    case message(ChatEvent)
-    case liveSlot(LiveSlotPresentation)
+    case liveSlot(LiveSlotPresentation, isGroupedWithPrevious: Bool)
 
     var id: String {
         switch self {
         case .timestamp(let id, _):
             return id
-        case .message(let message):
+        case .message(let message, _, _, _):
             return "message-\(message.id.uuidString)"
         case .liveSlot:
             return "live-slot"
@@ -584,25 +609,10 @@ private enum ChatDisplayItem: Identifiable {
         switch self {
         case .timestamp:
             return nil
-        case .message(let message):
+        case .message(let message, _, _, _):
             return message
         case .liveSlot:
             return nil
-        }
-    }
-
-    @MainActor
-    func continuesGrouping(forUserID userID: UInt32) -> Bool {
-        switch self {
-        case .liveSlot(let presentation):
-            switch presentation {
-            case .typing(let typingUserID, _):
-                return typingUserID == userID
-            case .message(let message, _):
-                return message.user.id == userID
-            }
-        case .message, .timestamp:
-            return false
         }
     }
 }
