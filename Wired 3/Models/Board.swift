@@ -33,8 +33,8 @@ final class Board: Identifiable, Equatable, Hashable {
 
     var threads: [BoardThread] = []
     var threadsLoaded: Bool = false
-    var children: [Board]? = nil  // nil = leaf, [] = loaded empty, [...] = sub-boards
-    
+    var children: [Board]?  // nil = leaf, [] = loaded empty, [...] = sub-boards
+
     var unreadPostsCount: Int {
         let threadsUnread = threads.reduce(0) { $0 + $1.unreadPostsCount + $1.unreadReactionCount }
         let childrenUnread = (children ?? []).reduce(0) { $0 + $1.unreadPostsCount }
@@ -51,13 +51,13 @@ final class Board: Identifiable, Equatable, Hashable {
     }
 
     func apply(_ message: P7Message) {
-        if let v = message.string(forField: "wired.board.owner")         { owner       = v }
-        if let v = message.string(forField: "wired.board.group")         { group       = v }
-        if let v = message.bool(forField: "wired.board.owner.read")      { ownerRead   = v }
-        if let v = message.bool(forField: "wired.board.owner.write")     { ownerWrite  = v }
-        if let v = message.bool(forField: "wired.board.group.read")      { groupRead   = v }
-        if let v = message.bool(forField: "wired.board.group.write")     { groupWrite  = v }
-        if let v = message.bool(forField: "wired.board.everyone.read")   { everyoneRead  = v; readable = v }
-        if let v = message.bool(forField: "wired.board.everyone.write")  { everyoneWrite = v; writable = v }
+        if let v = message.string(forField: "wired.board.owner") { owner       = v }
+        if let v = message.string(forField: "wired.board.group") { group       = v }
+        if let v = message.bool(forField: "wired.board.owner.read") { ownerRead   = v }
+        if let v = message.bool(forField: "wired.board.owner.write") { ownerWrite  = v }
+        if let v = message.bool(forField: "wired.board.group.read") { groupRead   = v }
+        if let v = message.bool(forField: "wired.board.group.write") { groupWrite  = v }
+        if let v = message.bool(forField: "wired.board.everyone.read") { everyoneRead  = v; readable = v }
+        if let v = message.bool(forField: "wired.board.everyone.write") { everyoneWrite = v; writable = v }
     }
 }

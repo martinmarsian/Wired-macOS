@@ -127,7 +127,7 @@ func dragExportFileName(for item: FileItem) -> String {
 }
 
 func dragExportTemporaryURL(for item: FileItem, connectionID: UUID) -> URL {
-    let _ = connectionID
+    _ = connectionID
     let fileName = dragExportFileName(for: item)
     let unique = UUID().uuidString
     let base = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)

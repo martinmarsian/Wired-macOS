@@ -27,7 +27,6 @@ extension Image {
     }
 }
 
-
 enum AppImageCodec {
 
     static func image(fromBase64 base64: String) -> Image? {

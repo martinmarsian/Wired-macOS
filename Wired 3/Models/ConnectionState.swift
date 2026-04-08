@@ -14,7 +14,7 @@ final class ConnectionState: Identifiable {
     let id: UUID
     var status: Status = .disconnected
     var lastError: Error?
-    
+
     init(id: UUID, status: Status, lastError: Error? = nil) {
         self.id = id
         self.status = status

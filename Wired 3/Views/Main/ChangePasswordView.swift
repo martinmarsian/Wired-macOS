@@ -19,7 +19,7 @@ struct ChangePasswordView: View {
     @State private var newPassword: String = ""
     @State private var confirmPassword: String = ""
     @State private var isLoading: Bool = false
-    @State private var errorMessage: String? = nil
+    @State private var errorMessage: String?
 
     private var canSave: Bool {
         !newPassword.isEmpty && newPassword == confirmPassword

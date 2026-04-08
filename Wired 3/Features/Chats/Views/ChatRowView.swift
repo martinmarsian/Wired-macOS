@@ -10,7 +10,7 @@ import SwiftUI
 
 struct ChatRowView: View {
     @Environment(ConnectionRuntime.self) private var runtime
-    
+
     var chat: Chat
     var searchText: String = ""
 
@@ -21,7 +21,7 @@ struct ChatRowView: View {
     private var previewText: String? {
         chat.previewText(matching: searchText)
     }
-    
+
     var body: some View {
         HStack {
             Image(systemName: "message.fill")
@@ -37,7 +37,7 @@ struct ChatRowView: View {
                         .lineLimit(1)
                 }
             }
-            
+
             Spacer()
 
             UnreadCountBadge(count: chat.unreadMessagesCount)

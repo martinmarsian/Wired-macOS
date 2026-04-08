@@ -208,16 +208,16 @@ private extension String {
 final class ConnectionRuntime: Identifiable {
     let id: UUID
     let connectionController: ConnectionController
-    
-    var connection : Connection? = nil
-    
+
+    var connection: Connection?
+
     var selectedTab: MainTab = .chats
     var selectedChatID: UInt32? = 1
     var chatDrafts: [UInt32: String] = [:]
     var messageDrafts: [UUID: String] = [:]
     var userID: UInt32 = 0
     var privileges: [String: Any] = [:]
-    
+
     var status: Status = .disconnected
     var joined = false
     var lastError: Error?
@@ -226,7 +226,7 @@ final class ConnectionRuntime: Identifiable {
     var isAutoReconnectScheduled: Bool = false
     var autoReconnectAttempt: Int = 0
     var autoReconnectInterval: TimeInterval = 0
-    var autoReconnectNextAttemptAt: Date? = nil
+    var autoReconnectNextAttemptAt: Date?
 
     private let incomingTypingTimeout: TimeInterval = 6.5
     @ObservationIgnored
@@ -235,13 +235,13 @@ final class ConnectionRuntime: Identifiable {
     private var activeOutgoingTypingChatIDs: Set<UInt32> = []
     private var didLoadPersistedMessages: Bool = false
     private var modelContext: ModelContext?
-    
-    var serverInfo: ServerInfo? = nil
+
+    var serverInfo: ServerInfo?
     var chats: [Chat] = []
     var private_chats: [Chat] = []
 
-    var pendingChatInvitation: ChatInvitation? = nil
-    var selectedMessageConversationID: UUID? = nil
+    var pendingChatInvitation: ChatInvitation?
+    var selectedMessageConversationID: UUID?
     var messageConversations: [MessageConversation] = []
 
     // Boards
@@ -266,16 +266,16 @@ final class ConnectionRuntime: Identifiable {
     var isSearchingBoards: Bool = false
     var boardNetworkActivityCount: Int = 0
     var pendingBoardPostScrollTarget: PendingBoardPostScrollTarget?
-    
+
     var showInfos: Bool = false
     var showInfosUserID: UInt32 = 0
-        
+
     private let defaults = UserDefaults.standard
 
     var substituteEmoji: Bool {
         defaults.bool(forKey: "SubstituteEmoji")
     }
-    
+
     var totalUnreadMessages: Int {
         totalUnreadChatMessages + totalUnreadPrivateMessages
     }
@@ -287,7 +287,7 @@ final class ConnectionRuntime: Identifiable {
     var totalUnreadNotifications: Int {
         totalUnreadMessages + totalUnreadBoardPosts
     }
-    
+
     var totalUnreadChatMessages: Int {
         (chats + private_chats).reduce(0) { $0 + $1.unreadMessagesCount }
     }
@@ -306,16 +306,15 @@ final class ConnectionRuntime: Identifiable {
     var isPerformingBoardNetworkActivity: Bool {
         boardNetworkActivityCount > 0
     }
-    
+
     enum Status {
         case disconnected
         case connecting
         case connected
     }
-    
-    
+
     // MARK: -
-    
+
     init(id: UUID, connectionController: ConnectionController) {
         self.id = id
         self.connectionController = connectionController
@@ -326,7 +325,6 @@ final class ConnectionRuntime: Identifiable {
         self.modelContext = modelContext
         loadPersistedMessagesIfNeeded()
     }
-    
 
     // MARK: - Connection State
 
@@ -364,7 +362,7 @@ final class ConnectionRuntime: Identifiable {
         serverInfo = nil
         status = .disconnected
         pendingChatInvitation = nil
-        
+
         if let error {
             lastError = error
             hasConnectionIssue = true
@@ -373,7 +371,7 @@ final class ConnectionRuntime: Identifiable {
             lastError = nil
             hasConnectionIssue = false
         }
-        
+
         resetChats()
         resetBoards()
     }
@@ -396,7 +394,7 @@ final class ConnectionRuntime: Identifiable {
         autoReconnectInterval = 0
         autoReconnectNextAttemptAt = nil
     }
-    
+
     // MARK: - Typing Indicator
 
     private func startTypingCleanupTimer() {
@@ -488,11 +486,8 @@ final class ConnectionRuntime: Identifiable {
         chat.clearTyping(userID: userID)
     }
 
-
-    
-
     // MARK: - Chat Models
-    
+
     func resetChats() {
         clearAllTypingState()
         chats = []
@@ -532,7 +527,7 @@ final class ConnectionRuntime: Identifiable {
         }
         boardsByPath[board.path] = board
     }
-    
+
     /// Pending path remaps from in-place board moves/renames.
     /// The view reads and clears these to update expansion state.
     @ObservationIgnored
@@ -1505,10 +1500,9 @@ final class ConnectionRuntime: Identifiable {
 
         return nil
     }
-    
-    
+
     // MARK: -
-    
+
     func send(_ message: P7Message) async throws -> P7Message? {
         guard connection != nil else {
             throw AsyncConnectionError.notConnected
@@ -1520,9 +1514,9 @@ final class ConnectionRuntime: Identifiable {
             throw normalizedRequestError(error)
         }
     }
-    
+
     // MARK: -
-    
+
     func getUserInfo(_ userID: UInt32) {
         Task {
             showInfosUserID = userID
@@ -1778,7 +1772,6 @@ final class ConnectionRuntime: Identifiable {
         }
     }
 
-
     // MARK: - Log (wired.log.*)
 
     /// Fetch the server log buffer via `wired.log.get_log`.
@@ -1814,9 +1807,8 @@ final class ConnectionRuntime: Identifiable {
         _ = try await send(message)
     }
 
-
     // MARK: -
-    
+
     func sendChatMessage( _ chatID: UInt32, _ text: String) async throws -> P7Message? {
         if text.starts(with: "/") {
             if text == ChatCommand.clear.rawValue {
@@ -1840,7 +1832,7 @@ final class ConnectionRuntime: Identifiable {
             message.addParameter(field: "wired.chat.say", value: text)
             return try await self.send(message)
         }
-        
+
         return nil
     }
 
@@ -1879,13 +1871,12 @@ final class ConnectionRuntime: Identifiable {
             chat.messages.append(event)
         }
     }
-    
-    
+
     // MARK: - Chat Messages
-    
+
     func joinChat(_ chatID: UInt32) async throws {
         let message = P7Message(withName: "wired.chat.join_chat", spec: spec)
-        
+
         message.addParameter(field: "wired.chat.id", value: chatID)
 
         _ = try await self.send(message)
@@ -1893,9 +1884,9 @@ final class ConnectionRuntime: Identifiable {
 
     func leaveChat(_ chatID: UInt32) async throws {
         let message = P7Message(withName: "wired.chat.leave_chat", spec: spec)
-        
+
         message.addParameter(field: "wired.chat.id", value: chatID)
-        
+
         let response = try await self.send(message)
 
         // Keep server as source of truth: update local state only on explicit success.
@@ -2015,10 +2006,10 @@ final class ConnectionRuntime: Identifiable {
 
         return false
     }
-    
+
     func deletePublicChat(_ chatID: UInt32) async throws {
         let message = P7Message(withName: "wired.chat.delete_public_chat", spec: spec)
-        
+
         message.addParameter(field: "wired.chat.id", value: chatID)
 
         _ = try await self.send(message)
@@ -2029,38 +2020,36 @@ final class ConnectionRuntime: Identifiable {
 
         message.addParameter(field: "wired.chat.id", value: chatID)
         message.addParameter(field: "wired.chat.topic.topic", value: topic)
-        
+
         _ = try await self.send(message)
     }
-    
-    
+
     // MARK: - User Status Messages
-    
-    func setNickMessage(_ nick:String) -> P7Message? {
+
+    func setNickMessage(_ nick: String) -> P7Message? {
         let message = P7Message(withName: "wired.user.set_nick", spec: spec)
         message.addParameter(field: "wired.user.nick", value: nick)
 
         return message
     }
-    
-    func setStatusMessage(_ status:String) -> P7Message? {
+
+    func setStatusMessage(_ status: String) -> P7Message? {
         let message = P7Message(withName: "wired.user.set_status", spec: spec)
         message.addParameter(field: "wired.user.status", value: status)
 
         return message
     }
-    
-    func setIconMessage(_ icon:Data) -> P7Message? {
+
+    func setIconMessage(_ icon: Data) -> P7Message? {
         let message = P7Message(withName: "wired.user.set_icon", spec: spec)
-        
+
         message.addParameter(field: "wired.user.icon", value: icon)
-        
+
         return message
     }
-    
-    
+
     // MARK: -
-    
+
     private func chatCommand(_ chatID: UInt32, _ command: String) -> P7Message? {
         let comps = command.split(separator: " ", maxSplits: 1)
         guard let cmd = ChatCommand(rawValue: String(comps[0])) else { return nil }
@@ -2118,7 +2107,7 @@ final class ConnectionRuntime: Identifiable {
             return nil
         }
     }
-    
+
     // MARK: - Board Messages
 
     func getBoards() async throws {
@@ -2233,9 +2222,9 @@ final class ConnectionRuntime: Identifiable {
     func addThread(toBoard board: Board, subject: String, text: String) async throws {
         try await withBoardNetworkActivity {
             let m = P7Message(withName: "wired.board.add_thread", spec: spec)
-            m.addParameter(field: "wired.board.board",   value: board.path)
+            m.addParameter(field: "wired.board.board", value: board.path)
             m.addParameter(field: "wired.board.subject", value: subject)
-            m.addParameter(field: "wired.board.text",    value: text)
+            m.addParameter(field: "wired.board.text", value: text)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
@@ -2245,9 +2234,9 @@ final class ConnectionRuntime: Identifiable {
     func addPost(toThread thread: BoardThread, text: String) async throws {
         try await withBoardNetworkActivity {
             let m = P7Message(withName: "wired.board.add_post", spec: spec)
-            m.addParameter(field: "wired.board.thread",  value: thread.uuid)
+            m.addParameter(field: "wired.board.thread", value: thread.uuid)
             m.addParameter(field: "wired.board.subject", value: thread.subject)
-            m.addParameter(field: "wired.board.text",    value: text)
+            m.addParameter(field: "wired.board.text", value: text)
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
@@ -2499,14 +2488,14 @@ final class ConnectionRuntime: Identifiable {
     }
 
     // MARK: - Unreads
-    
+
     public func resetUnreads(_ chat: Chat) {
         chat.unreadMessagesCount = 0
         connectionController.updateNotificationsBadge()
     }
-    
+
     // MARK: -
-    
+
     func hasPrivilege(_ privilege: String) -> Bool {
         if let p = privileges[privilege] as? Bool {
             return p
@@ -2570,9 +2559,9 @@ final class ConnectionRuntime: Identifiable {
     /// or `reaction_removed` broadcast which `ConnectionController` handles to update state.
     func toggleReaction(emoji: String, forPost post: BoardPost) async throws {
         let m = P7Message(withName: "wired.board.add_reaction", spec: spec)
-        m.addParameter(field: "wired.board.thread",         value: post.threadUUID)
+        m.addParameter(field: "wired.board.thread", value: post.threadUUID)
         if !post.isThreadBody {
-            m.addParameter(field: "wired.board.post",       value: post.uuid)
+            m.addParameter(field: "wired.board.post", value: post.uuid)
         }
         m.addParameter(field: "wired.board.reaction.emoji", value: emoji)
         if let response = try await send(m), response.name == "wired.error" {

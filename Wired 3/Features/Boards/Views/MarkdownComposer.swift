@@ -38,7 +38,7 @@ struct MarkdownComposer: View {
     /// Show a rounded border around the composer (for standalone/form use).
     /// Set to false when the composer is embedded edge-to-edge inside a sheet.
     var bordered: Bool = false
-    var onOptionEnter: (() -> Void)? = nil
+    var onOptionEnter: (() -> Void)?
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var showPreview = false
@@ -237,9 +237,8 @@ private final class ComposerTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         // Option+Return (36) or Option+Enter numpad (76)
-        if (event.keyCode == 36 || event.keyCode == 76),
-           event.modifierFlags.contains(.option)
-        {
+        if event.keyCode == 36 || event.keyCode == 76,
+           event.modifierFlags.contains(.option) {
             onOptionEnter?()
             return
         }
@@ -253,7 +252,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     var autoFocus: Bool = false
-    var onOptionEnter: (() -> Void)? = nil
+    var onOptionEnter: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, selectedRange: $selectedRange)

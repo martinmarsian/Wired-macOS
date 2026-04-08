@@ -13,13 +13,13 @@ struct ChatTopicView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
     @Environment(ConnectionRuntime.self) private var runtime
-    
+
     @State private var topicText = ""
     @State private var showTopicSheet = false
     @State private var isTopicExpanded = false
-    
-    @State private var hoverTimer: Timer? = nil
-    
+
+    @State private var hoverTimer: Timer?
+
     var chat: Chat
 
     private var canSetTopic: Bool {
@@ -56,7 +56,7 @@ struct ChatTopicView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 12)
-                    //.help(chat.topic?.topic ?? "")
+                    // .help(chat.topic?.topic ?? "")
                 } else {
                     Text("*No topic set*")
                         .multilineTextAlignment(.leading)
@@ -66,7 +66,7 @@ struct ChatTopicView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 12)
                 }
-                
+
                 Spacer()
 
                 HStack(spacing: 0) {
@@ -151,11 +151,11 @@ struct ChatTopicView: View {
                                 showTopicSheet = false
                             }
                         }
-                        
+
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
                                 showTopicSheet = false
-                                
+
                                 if topicText != "" {
                                     Task {
                                         try await runtime.setChatTopic(chat.id, topic: topicText)
@@ -179,7 +179,7 @@ struct ChatTopicView: View {
                         radius: 4
                     )
             )
-            
+
 #if os(macOS)
             .onHover { isHover in
                 if isHover && hoverTimer == nil {
@@ -212,7 +212,7 @@ struct ChatTopicView: View {
             .padding(.top, 5)
 #endif
         }
-        //.background(.clear)
+        // .background(.clear)
         .backgroundEdgeFade(top: 30, bottom: 0)
     }
 }

@@ -38,7 +38,7 @@ struct TransfersView: View {
     @State private var selection: Set<UUID> = []
     @State private var showRemoveConfirmation: Bool = false
     @State private var pendingRemovalTransferIDs: [UUID] = []
-    
+
     var body: some View {
         VStack(spacing: 0) {
             transferList
@@ -65,9 +65,9 @@ struct TransfersView: View {
                          ? "Are you sure you want to remove these \(count) transfers?"
                          : "Are you sure you want to remove this transfer?")
                 }
-            
+
             Divider()
-            
+
             HStack {
                 Button {
                     transfers.clear()
@@ -87,15 +87,15 @@ struct TransfersView: View {
                 }
                 .disabled(!canStartSelection)
                 .help("Play transfer")
-                
-                Button() {
+
+                Button {
                     applyToSelection { transfers.pause($0) }
                 } label: {
                     Image(systemName: "pause")
                 }
                 .disabled(!canPauseSelection)
                 .help("Pause transfer")
-                
+
                 Button {
                     applyToSelection { transfers.stop($0) }
                 } label: {
@@ -103,7 +103,7 @@ struct TransfersView: View {
                 }
                 .disabled(!canStopSelection)
                 .help("Stop transfer")
-                
+
                 Button {
                     requestRemove(selectedTransfers)
                 } label: {
@@ -111,10 +111,10 @@ struct TransfersView: View {
                 }
                 .disabled(selection.isEmpty)
                 .help("Remove transfer")
-                
+
                 Divider()
                     .frame(height: 16)
-                
+
                 Button {
                     showDownloadsInFinder(selectedTransfers)
                 } label: {
@@ -122,7 +122,7 @@ struct TransfersView: View {
                 }
                 .disabled(!canShowFinderSelection)
                 .help("Show in Finder")
-                
+
                 Button {
                     showRemoteLocation(selectedTransfers)
                 } label: {
@@ -130,7 +130,7 @@ struct TransfersView: View {
                 }
                 .disabled(!canShowRemoteSelection)
                 .help("Show Remote Location")
-                
+
                 Spacer()
             }
             .padding(10)
@@ -159,9 +159,9 @@ struct TransfersView: View {
                         .foregroundStyle(transfer.type == .download ? .blue : .red)
 
                     TransferItemIconView(transfer: transfer, size: 16)
-                    
+
                     Text(transfer.name)
-                    
+
                     Spacer()
 
 //                            if transfer.hasError {
@@ -176,7 +176,7 @@ struct TransfersView: View {
 //                                .buttonStyle(.plain)
 //                                .help(transfer.error)
 //                            }
-                    
+
                     Text(serverName(for: transfer))
                         .font(.caption)
                         .foregroundColor(.secondary)

@@ -39,10 +39,10 @@ struct MessageBubble: Shape {
             // we are using pi / 4 (radians) in the forumula below (which is equivalent to 45 degrees)
             let tailEndpointX = (bubbleWidth - cornerRadius) + cornerRadius * cos(.pi / 4)
             let tailEndpointY = (rect.height - cornerRadius) + cornerRadius * sin(.pi / 4)
-            
+
             path.move(to: CGPoint(x: cornerRadius, y: rect.minY))
             path.addLine(to: CGPoint(x: bubbleWidth - cornerRadius, y: rect.minY))
-            
+
             // Top-right corner
             path.addArc(
                 center: CGPoint(x: bubbleWidth - cornerRadius, y: cornerRadius),
@@ -51,10 +51,10 @@ struct MessageBubble: Shape {
                 endAngle: Angle(degrees: 0),
                 clockwise: false
             )
-            
+
             path.addLine(to: CGPoint(x: bubbleWidth, y: cornerRadius))
             path.addLine(to: CGPoint(x: bubbleWidth, y: rect.height - cornerRadius))
-            
+
             // Tail
             path.addQuadCurve(
                 to: CGPoint(x: rect.width, y: rect.height),
@@ -64,7 +64,7 @@ struct MessageBubble: Shape {
                 to: CGPoint(x: tailEndpointX, y: tailEndpointY),
                 control: CGPoint(x: bubbleWidth, y: rect.height)
             )
-            
+
             // Bottom-right corner
             path.addArc(
                 center: CGPoint(x: bubbleWidth - cornerRadius, y: rect.height - cornerRadius),
@@ -73,10 +73,10 @@ struct MessageBubble: Shape {
                 endAngle: Angle(degrees: 90),
                 clockwise: false
             )
-            
+
             path.addLine(to: CGPoint(x: bubbleWidth - cornerRadius - tailWidth, y: rect.height))
             path.addLine(to: CGPoint(x: rect.minX + cornerRadius, y: rect.height))
-            
+
             // Bottom-left corner
             path.addArc(
                 center: CGPoint(x: cornerRadius, y: rect.height - cornerRadius),
@@ -85,10 +85,10 @@ struct MessageBubble: Shape {
                 endAngle: Angle(degrees: 180),
                 clockwise: false
             )
-            
+
             path.addLine(to: CGPoint(x: rect.minX, y: rect.height - cornerRadius))
             path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cornerRadius))
-            
+
             // Top-left corner
             path.addArc(
                 center: CGPoint(x: cornerRadius, y: cornerRadius),
@@ -97,14 +97,13 @@ struct MessageBubble: Shape {
                 endAngle: Angle(degrees: 270),
                 clockwise: false
             )
-            
+
             path.closeSubpath()
         }
-        
+
         return path
     }
 }
-
 
 struct MessageBubbleStyle: ViewModifier {
     let isFromYou: Bool
@@ -135,7 +134,7 @@ struct MessageBubbleStyle: ViewModifier {
             return Color.primary
         }
     }
-    
+
     func body(content: Content) -> some View {
             content
                 .foregroundStyle(forgroundColor)

@@ -34,7 +34,7 @@ struct ChatMessagesView: View {
     var topOverlayInset: CGFloat = 0
     var bottomOverlayInset: CGFloat = 0
     var keyboardShowTrigger: Int = 0
-    var onUserInteraction: (() -> Void)? = nil
+    var onUserInteraction: (() -> Void)?
 
     private let bottomAnchorID = "chat-messages-bottom-anchor"
     private let scrollIndicatorBottomInset: CGFloat = 8
@@ -213,7 +213,7 @@ struct ChatMessagesView: View {
 
         return nil
     }
-    
+
     /// True when archive history is available but not yet loaded into the chat.
     private var showArchiveBanner: Bool {
         !isSearching && chat.hasMoreHistory && archiveBoundaryMessageID == nil
@@ -409,14 +409,12 @@ struct ChatMessagesView: View {
             .environment(runtime)
             .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
             .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
-        }
-        else if message.type == .me {
+        } else if message.type == .me {
             ChatMeMessageView(message: message)
                 .environment(runtime)
                 .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
                 .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
-        }
-        else if message.type == .join || message.type == .leave || message.type == .event {
+        } else if message.type == .join || message.type == .leave || message.type == .event {
             ChatEventView(message: message)
                 .environment(runtime)
                 .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)

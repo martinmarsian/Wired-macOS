@@ -14,14 +14,14 @@ struct ChatSayMessageView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
     @AppStorageCodable(key: "ChatHighlightRules", defaultValue: [])
-    
+
     private var highlightRules: [ChatHighlightRule]
-    
+
     var message: ChatEvent
     var showNickname: Bool = true
     var showAvatar: Bool = true
     var isGroupedWithNext: Bool = false
-    
+
     @State var isHovered: Bool = false
 
     private var primaryImageURL: URL? {
@@ -51,7 +51,7 @@ struct ChatSayMessageView: View {
         let bubbleFillColor = matchedRule?.color.swiftUIColor
         let bubbleTextColor = matchedRule?.color.contrastTextColor
         let linkColor = bubbleTextColor ?? (isFromYou ? .white : .blue)
-        
+
         VStack(alignment: isFromYou ? .trailing : .leading) {
             HStack(alignment: .bottom) {
                 if isFromYou {
@@ -99,7 +99,7 @@ struct ChatSayMessageView: View {
                     Spacer()
                 }
             }
-            
+
             if timestampEveryMessage {
                 HoverableRelativeDateText(date: message.date)
                     .foregroundStyle(.gray)

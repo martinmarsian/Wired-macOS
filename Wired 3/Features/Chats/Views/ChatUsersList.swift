@@ -45,7 +45,7 @@ struct ChatUsersList: View {
     @State private var selectedUserID: UInt32?
     @State private var moderationSheet: UserModerationSheet?
     @State private var moderationError: Error?
-    
+
     var chat: Chat
 
     private func user(for selection: Set<UInt32>) -> User? {
@@ -79,7 +79,7 @@ struct ChatUsersList: View {
         guard let user, canModerate(user) else { return false }
         return runtime.hasPrivilege("wired.account.user.ban_users")
     }
-        
+
     var body: some View {
         @Bindable var runtime = runtime
 
@@ -153,7 +153,7 @@ struct ChatUsersList: View {
                     .disabled(!canBan(user(for: selection)))
                 }
             } primaryAction: { selection in
-        
+
                 openPrivateMessage(for: selection)
             }
 #else

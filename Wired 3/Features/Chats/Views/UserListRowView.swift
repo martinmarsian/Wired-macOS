@@ -34,7 +34,7 @@ struct UserListRowView: View {
     var body: some View {
         HStack {
             Image(data: user.icon)?.resizable().frame(width: 32, height: 32)
-            
+
             VStack(alignment: .leading) {
                 Text(user.nick)
                     .foregroundStyle(nickColor)
@@ -59,15 +59,14 @@ struct UserListRowView: View {
         )
 #endif
     }
-    
-}
 
+}
 
 struct UserInfosView: View {
     @Environment(ConnectionRuntime.self) private var runtime
-    
+
     var user: User
-    
+
     var body: some View {
         Form {
             Section {
@@ -76,14 +75,14 @@ struct UserInfosView: View {
                 } label: {
                     Text("Nick")
                 }
-                
+
                 LabeledContent {
                     Text(user.status ?? "")
                 } label: {
                     Text("Status")
                 }
             }
-            
+
             Section {
                 LabeledContent {
                     Text("\(user.appVersion) (\(user.appBuild))")
@@ -126,20 +125,20 @@ struct UserInfosView: View {
                     Text("Arch")
                 }
             }
-            
+
             Section {
                 LabeledContent {
                     Text(user.login)
                 } label: {
                     Text("Login")
                 }
-                
+
                 LabeledContent {
                     Text(user.ipAddress)
                 } label: {
                     Text("IP Address")
                 }
-                
+
                 LabeledContent {
                     Text(user.host)
                 } label: {
@@ -152,7 +151,7 @@ struct UserInfosView: View {
                     Text("Cipher")
                 }
             }
-            
+
             Section {
                 LabeledContent {
                     if let loginTime = user.loginTime {
@@ -161,7 +160,7 @@ struct UserInfosView: View {
                 } label: {
                     Text("Login Time")
                 }
-                
+
                 LabeledContent {
                     if let idleTime = user.idleTime {
                         Text(idleTime, style: .timer)

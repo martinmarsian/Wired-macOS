@@ -48,8 +48,8 @@ struct ServerInfoView: View {
                         VStack(spacing: 14) {
 
                             infoSection("Application") {
-                                infoRow("Name",     value: serverInfo.applicationName)
-                                infoRow("Version",  value: serverInfo.serverVersion)
+                                infoRow("Name", value: serverInfo.applicationName)
+                                infoRow("Version", value: serverInfo.serverVersion)
                                 if let spec = runtime.connection?.spec {
                                     if let p7 = spec.builtinProtocolVersion {
                                         infoRow("P7 Protocol", value: p7)
@@ -61,14 +61,14 @@ struct ServerInfoView: View {
                             }
 
                             infoSection("System") {
-                                infoRow("OS",           value: serverInfo.osName)
-                                infoRow("OS Version",   value: serverInfo.osVersion)
+                                infoRow("OS", value: serverInfo.osName)
+                                infoRow("OS Version", value: serverInfo.osVersion)
                                 infoRow("Architecture", value: serverInfo.arch)
                             }
 
                             infoSection("Files") {
-                                infoRow("Count",  value: "\(serverInfo.filesCount) files")
-                                infoRow("Size",   value: ByteCountFormatter().string(fromByteCount: Int64(serverInfo.filesSize)))
+                                infoRow("Count", value: "\(serverInfo.filesCount) files")
+                                infoRow("Size", value: ByteCountFormatter().string(fromByteCount: Int64(serverInfo.filesSize)))
                                 infoTimerRow("Uptime", since: serverInfo.startTime)
                             }
                         }

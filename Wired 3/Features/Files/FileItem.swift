@@ -15,7 +15,7 @@ enum FileType: UInt32, CustomStringConvertible {
     case uploads    = 2
     case dropbox    = 3
     case sync       = 4
-    
+
     var description: String {
         switch self {
         case .file:
@@ -66,15 +66,15 @@ public struct FileItem: Identifiable, Hashable {
     public let id = UUID()
     var name: String = ""
     var path: String = ""
-    
+
     var type: FileType = .file
-    var children: [FileItem]? = nil
-    var directoryCount:Int = 0
-    
-    var dataSize:UInt64 = 0
-    var rsrcSize:UInt64 = 0
-    var creationDate: Date? = nil
-    var modificationDate: Date? = nil
+    var children: [FileItem]?
+    var directoryCount: Int = 0
+
+    var dataSize: UInt64 = 0
+    var rsrcSize: UInt64 = 0
+    var creationDate: Date?
+    var modificationDate: Date?
     var comment: String = ""
     var owner: String = ""
     var group: String = ""
@@ -93,22 +93,22 @@ public struct FileItem: Identifiable, Hashable {
     var syncMaxFileSizeBytes: UInt64 = 0
     var syncMaxTreeSizeBytes: UInt64 = 0
     var syncExcludePatterns: String = ""
-    var uploadDataSize:UInt64 = 0
-    var uploadRsrcSize:UInt64 = 0
-    var dataTransferred:UInt64 = 0
-    var rsrcTransferred:UInt64 = 0
-    
-    var connection: AsyncConnection? = nil
-    
+    var uploadDataSize: UInt64 = 0
+    var uploadRsrcSize: UInt64 = 0
+    var dataTransferred: UInt64 = 0
+    var rsrcTransferred: UInt64 = 0
+
+    var connection: AsyncConnection?
+
     init(_ name: String, path: String, type: FileType = .file) {
         self.name = name
         self.path = path
         self.type = type
     }
-    
+
     init(_ message: P7Message, connection: AsyncConnection) {
         self.connection = connection
-                
+
         if let p = message.string(forField: "wired.file.path") {
             self.path = p
             self.name = self.path.lastPathComponent
@@ -196,7 +196,7 @@ struct FileColumn: Identifiable {
     let id = UUID()
     let path: String
     var items: [FileItem]
-    var selection: UUID? = nil
+    var selection: UUID?
 }
 
 enum FileViewType: Int {

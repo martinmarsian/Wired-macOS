@@ -10,7 +10,7 @@ struct MessagesView: View {
     @State private var conversationIDPendingDeletion: UUID?
     @State private var searchText: String = ""
     @State private var isShowingSearchProgress = false
-    
+
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -118,7 +118,7 @@ struct MessagesView: View {
                     }
                     .disabled(selectedConversation?.kind != .direct)
                     .buttonStyle(.plain)
-                    
+
                     Spacer()
 
                     ProgressView()

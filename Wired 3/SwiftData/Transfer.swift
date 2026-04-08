@@ -63,15 +63,15 @@ public final class Transfer {
     var size: Int64 = 0
     var type: TransferType = TransferType.download
     var state: TransferState = TransferState.waiting
-    var error:String = ""
-    
-    @Transient var connection: AsyncConnection? = nil
-    @Transient var transferConnection: TransferConnection? = nil
-    @Transient var file: FileItem? = nil
+    var error: String = ""
+
+    @Transient var connection: AsyncConnection?
+    @Transient var transferConnection: TransferConnection?
+    @Transient var file: FileItem?
     /// For folder transfers, the worker updates this to point to the currently processed local file.
-    @Transient var currentLocalFilePath: String? = nil
-    @Transient var speedCalculator:SpeedCalculator = SpeedCalculator()
-    
+    @Transient var currentLocalFilePath: String?
+    @Transient var speedCalculator: SpeedCalculator = SpeedCalculator()
+
     init(name: String, type: TransferType, connection: AsyncConnection? = nil) {
         self.id = UUID()
         self.createdDate = Date()
@@ -79,13 +79,13 @@ public final class Transfer {
         self.type = type
         self.connection = connection
     }
-    
+
     public func isWorking() -> Bool {
         return (state == .waiting || state == .queued ||
                 state == .listing || state == .creatingDirectories ||
                 state == .running)
     }
-    
+
     public func isTerminating() -> Bool {
         return (state == .pausing || state == .stopping ||
                 state == .disconnecting || state == .removing)
@@ -95,7 +95,7 @@ public final class Transfer {
         return (state == .paused || state == .stopped ||
                 state == .disconnected || state == .finished)
     }
-    
+
     public func transferStatus() -> String {
         // WCTransfers-like status formatting
         let transferredBytes = dataTransferred + rsrcTransferred

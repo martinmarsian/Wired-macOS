@@ -12,17 +12,17 @@ import WiredSwift
 struct ChatsView: View {
     @Environment(ConnectionController.self) private var connectionController
     @Environment(ConnectionRuntime.self) private var runtime
-    
+
     @State private var visibility: NavigationSplitViewVisibility = .all
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
-    
+
     @State var showCreatePublicChatSheet = false
     @State private var searchText: String = ""
     @State private var isShowingSearchProgress = false
     @State var showEditPublicChatSheet = false
     @State var showDeletePublicChatConfirm = false
-    @State private var chatIDToDelete: UInt32? = nil
-    
+    @State private var chatIDToDelete: UInt32?
+
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -42,17 +42,17 @@ struct ChatsView: View {
     private var hasSearchResults: Bool {
         !(filteredPublicChats.isEmpty && filteredPrivateChats.isEmpty)
     }
-    
+
     private var selectedChat: Chat? {
         guard let chatID = runtime.selectedChatID else { return nil }
         guard let chat = runtime.chat(withID: chatID) else { return nil }
         guard chat.matchesSearch(normalizedSearchText) else { return nil }
         return chat
     }
-        
+
     var body: some View {
         @Bindable var runtime = runtime
-        
+
 #if os(macOS)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -68,7 +68,7 @@ struct ChatsView: View {
                                 Text("Public Chats")
                             }
                         }
-                        
+
                         if !filteredPrivateChats.isEmpty {
                             Section {
                                 ForEach(filteredPrivateChats) { chat in
@@ -109,7 +109,7 @@ struct ChatsView: View {
                                         Task {
                                             do {
                                                 try await runtime.joinChat(chat.id)
-                                                
+
                                             } catch {
                                                 runtime.lastError = error
                                             }
@@ -117,10 +117,10 @@ struct ChatsView: View {
                                     }
                                     .disabled(chat.joined || chat.id == 1)
                                 }
-                                
+
                                 if !chat.isPrivate {
                                     Divider()
-                                    
+
                                     // TODO: add `wired.account.chat.edit_public_chats` message ?
 
                                     Button("Delete") {
@@ -131,7 +131,7 @@ struct ChatsView: View {
                                 }
                             }
                         }
-                    
+
                     }, primaryAction: { selectedIDs in
                         if let first = selectedIDs.first {
                             if let chat = runtime.chat(withID: UInt32(Int(first))) {
@@ -139,7 +139,7 @@ struct ChatsView: View {
                                     Task {
                                         do {
                                             try await runtime.joinChat(chat.id)
-                                            
+
                                         } catch {
                                             runtime.lastError = error
                                         }
@@ -165,8 +165,7 @@ struct ChatsView: View {
                     }
                     .sheet(isPresented: $showEditPublicChatSheet) {
                         if  let selectedChatID = runtime.selectedChatID,
-                            let chat = runtime.chat(withID: selectedChatID)
-                        {
+                            let chat = runtime.chat(withID: selectedChatID) {
                             PublicChatFormView(chat: chat)
                                 .environment(runtime)
                         }
@@ -175,29 +174,28 @@ struct ChatsView: View {
                         Button("OK", role: .destructive) {
                             Task {
                                 if  let chatID = chatIDToDelete,
-                                    let chat = runtime.chat(withID: chatID)
-                                {
+                                    let chat = runtime.chat(withID: chatID) {
                                     try await runtime.deletePublicChat(chat.id)
                                     runtime.selectedChatID = 1
                                 }
                             }
                         }
-                        
+
                         Button("Cancel", role: .cancel) { }
                     } message: {
                         Text("Are you sure you want to delete this public chat? This action cannot be undone.")
                     }
                     .listStyle(.plain)
-                    
+
                     Divider()
-                    
+
                     HStack {
                         Menu("", systemImage: "plus") {
                             Button("New Public Chat") {
                                 showCreatePublicChatSheet.toggle()
                             }
                             .disabled(!runtime.hasPrivilege("wired.account.chat.create_public_chats"))
-                            
+
                             Button("New Private Chat") {
                                 Task {
                                     do {
@@ -211,7 +209,7 @@ struct ChatsView: View {
                         }
                         .menuStyle(.borderlessButton)
                         .frame(maxWidth: 30)
-                        
+
                         Spacer()
 
                         ProgressView()
@@ -224,9 +222,9 @@ struct ChatsView: View {
                     .padding(9)
                 }
                 .frame(width: 200)
-                
+
                 Divider()
-                
+
                 Group {
                     if let chatID = runtime.selectedChatID,
                        let chat = selectedChat {
@@ -240,7 +238,7 @@ struct ChatsView: View {
                                     systemImage: "ellipsis.message",
                                     description: Text("You are not joined to this chat.")
                                 )
-                                
+
                                 Button {
                                     Task {
                                         do {
@@ -276,7 +274,7 @@ struct ChatsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }        
+            }
         }
         .searchable(text: $searchText)
         .onChange(of: normalizedSearchText) { _, query in
@@ -308,7 +306,7 @@ struct ChatsView: View {
                 }
             ),
             presenting: runtime.pendingChatInvitation
-        ) { invitation in
+        ) { _ in
             Button("Accept") {
                 runtime.acceptPendingChatInvitation()
             }
@@ -342,7 +340,7 @@ struct ChatsView: View {
                         Text("Public Chats")
                     }
                 }
-                
+
                 if !filteredPrivateChats.isEmpty {
                     Section {
                         ForEach(filteredPrivateChats) { chat in

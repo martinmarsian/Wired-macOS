@@ -12,10 +12,10 @@ import WiredSwift
 struct PublicChatFormView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @Environment(\.dismiss) var dismiss
-    
+
     @State var chat: Chat?
     @State var chatName: String = ""
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -32,7 +32,7 @@ struct PublicChatFormView: View {
                         Text("Cancel")
                     }
                 }
-                
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task {
@@ -50,17 +50,17 @@ struct PublicChatFormView: View {
             }
         }
     }
-    
+
     func save() async {
         if !chatName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let message = P7Message(withName: "wired.chat.create_public_chat", spec: spec)
             message.addParameter(field: "wired.chat.name", value: chatName)
-            
+
             do {
                 _ = try await runtime.send(message)
-                
+
                 dismiss()
-                
+
             } catch {
                 runtime.lastError = error
             }

@@ -21,8 +21,7 @@ struct ChatView: View {
 #if os(iOS)
     @State private var chatScrollTrigger: Int = 0
 #endif
-    
-    
+
     private var chatInput: String {
         runtime.chatDrafts[chat.id] ?? ""
     }
@@ -81,7 +80,7 @@ struct ChatView: View {
 #if os(iOS)
                 .padding([.horizontal], 10)
 #endif
-                
+
                 ChatTopicView(chat: chat)
                     .environment(runtime)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -124,13 +123,12 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
             .contentMargins(.bottom, 30, for: .scrollIndicators)
-            
+
 #if os(macOS)
             Divider()
-            
+
             if let chatID = runtime.selectedChatID,
-               let chat = runtime.chat(withID: chatID)
-            {
+               let chat = runtime.chat(withID: chatID) {
                 ChatUsersList(chat: chat)
                     .environment(runtime)
             }
@@ -138,7 +136,7 @@ struct ChatView: View {
         }
         .onAppear {
             markCurrentChatAsReadIfNeeded()
-            
+
 #if os(iOS)
             if chat.joined == false {
                 Task {
@@ -187,7 +185,7 @@ struct ChatView: View {
                 }
 
             }
-            
+
 #endif
         }
     }
@@ -287,13 +285,13 @@ struct ConversationComposer: View {
     let placeholder: String
     let isEnabled: Bool
     let onSend: (String) async -> Void
-    var onTextChanged: ((String) -> Void)? = nil
-    var onDisappear: (() -> Void)? = nil
+    var onTextChanged: ((String) -> Void)?
+    var onDisappear: (() -> Void)?
 
     @State private var messageHistory: [String] = []
-    @State private var historyIndex: Int? = nil
+    @State private var historyIndex: Int?
     @State private var historyDraft: String = ""
-    @State private var lastProgrammaticHistoryValue: String? = nil
+    @State private var lastProgrammaticHistoryValue: String?
     @State private var inputHeight: CGFloat = 22
     @State private var commandSuggestions: [ChatCommand] = []
     @State private var selectedSuggestionIndex: Int = 0
@@ -301,13 +299,13 @@ struct ConversationComposer: View {
     @AppStorage("SubstituteEmoji") private var substituteEmoji: Bool = true
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
         ":-)": "😊",
-        ":)":  "😊",
+        ":)": "😊",
         ";-)": "😉",
-        ";)":  "😉",
+        ";)": "😉",
         ":-D": "😀",
-        ":D":  "😀",
-        "<3":  "❤️",
-        "+1":  "👍"
+        ":D": "😀",
+        "<3": "❤️",
+        "+1": "👍"
     ])
     private var emojiSubstitutions: [String: String]
 
@@ -648,10 +646,10 @@ private struct ChatInputField: NSViewRepresentable {
     let onSubmit: () -> Void
     let onHistoryUp: () -> Void
     let onHistoryDown: () -> Void
-    var onSuggestionUp: (() -> Void)? = nil
-    var onSuggestionDown: (() -> Void)? = nil
-    var onSuggestionSelect: (() -> Void)? = nil
-    var onSuggestionDismiss: (() -> Void)? = nil
+    var onSuggestionUp: (() -> Void)?
+    var onSuggestionDown: (() -> Void)?
+    var onSuggestionSelect: (() -> Void)?
+    var onSuggestionDismiss: (() -> Void)?
     var hasSuggestions: Bool = false
 
     func makeCoordinator() -> Coordinator {

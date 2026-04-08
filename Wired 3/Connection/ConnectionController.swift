@@ -91,7 +91,7 @@ enum WiredEventTag: Int, CaseIterable, Codable, Identifiable {
         .boardPostAdded,
         .boardReactionReceived,
         .transferStarted,
-        .transferFinished,
+        .transferFinished
     ]
 }
 
@@ -306,20 +306,20 @@ final class ConnectionController {
     var runtimeStores: [ConnectionRuntime] = []
     var connectionEvents: [SocketEvent] = []
     var temporaryConnections: [TemporaryConnection] = []
-    var presentedNewConnection: NewConnectionDraft? = nil
+    var presentedNewConnection: NewConnectionDraft?
     #if os(macOS)
-    var presentedNewConnectionWindowNumber: Int? = nil
+    var presentedNewConnectionWindowNumber: Int?
     #endif
     var suppressPresentedNewConnectionSheet: Bool = false
-    var presentChangePassword: UUID? = nil
-    var presentChangePasswordWindowNumber: Int? = nil
-    var requestedSelectionID: UUID? = nil
-    var activeConnectionID: UUID? = nil
+    var presentChangePassword: UUID?
+    var presentChangePasswordWindowNumber: Int?
+    var requestedSelectionID: UUID?
+    var activeConnectionID: UUID?
     var didPerformInitialLaunchFlow: Bool = false
     var connectionIssueRevision: UInt64 = 0
     var notificationsRevision: UInt64 = 0
     private var connectionIssueIDs: Set<UUID> = []
-    
+
     // MARK: - Runtime
 
     private var tasks: [UUID: Task<Void, Never>] = [:]
@@ -506,12 +506,12 @@ final class ConnectionController {
         socketClient: SocketClient
     ) {
         self.socketClient = socketClient
-        
+
         NotificationCenter.default.addObserver(self, selector: #selector(wiredUserNickDidChange), name: .wiredUserNickDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(wiredUserStatusDidChange), name: .wiredUserStatusDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(wiredUserIconDidChange), name: .wiredUserIconDidChange, object: nil)
     }
-    
+
     func runtime(for id: UUID) -> ConnectionRuntime? {
         runtimeStores.first { $0.id == id }
     }
@@ -754,9 +754,8 @@ final class ConnectionController {
         }
     }
 
-    
     // MARK: - Notifications
-    
+
     @MainActor @objc func wiredUserNickDidChange(_ notification: Notification) {
         if let nick = notification.object as? String {
             for r in runtimeStores {
@@ -770,7 +769,7 @@ final class ConnectionController {
             }
         }
     }
-    
+
     @MainActor @objc func wiredUserStatusDidChange(_ notification: Notification) {
         if let status = notification.object as? String {
             for r in runtimeStores {
@@ -784,7 +783,7 @@ final class ConnectionController {
             }
         }
     }
-    
+
     @MainActor @objc func wiredUserIconDidChange(_ notification: Notification) {
         if let icon = notification.object as? String {
             if let data = Data(base64Encoded: icon, options: .ignoreUnknownCharacters) {
@@ -798,7 +797,7 @@ final class ConnectionController {
             }
         }
     }
-    
+
     // MARK: - Public API
 
     func connect(_ bookmark: Bookmark) {
@@ -938,7 +937,7 @@ final class ConnectionController {
             runtime.attach(modelContext: modelContext)
         }
     }
-    
+
     func isConnected(_ bookmark: Bookmark) -> Bool {
         withStateLock { tasks[bookmark.id] != nil }
     }
@@ -1259,7 +1258,7 @@ final class ConnectionController {
 
     private func handleMessage(_ message: P7Message, connection: Connection, from id: UUID) async {
         guard let runtime = runtimeStores.first(where: { $0.id == id }) else { return }
-                
+
         switch message.name {
         case "wired.banned":
             withStateLock {
@@ -1320,7 +1319,7 @@ final class ConnectionController {
 //            await MainActor.run {
 //                runtime.lastError = WiredError(message: message)
 //            }
-            
+
         case "wired.login":
             await MainActor.run {
                 runtime.userID = message.uint32(forField: "wired.user.id") ?? 0
@@ -1407,11 +1406,11 @@ final class ConnectionController {
             await MainActor.run {
                 runtime.serverInfo = connection.serverInfo
             }
-            
+
         case "wired.chat.chat_list":
             if let chat = await parseChat(from: message) {
                 await runtime.appendChat(chat)
-                
+
                 if chat.id == 1 {
                     do {
                         try await runtime.joinChat(chat.id)
@@ -1464,7 +1463,7 @@ final class ConnectionController {
                     )
                 }
             }
-            
+
         case "wired.chat.public_chat_created":
             if let chat = await parseChat(from: message) {
                 await runtime.appendChat(chat)
@@ -1476,7 +1475,7 @@ final class ConnectionController {
                     runtime.chats.removeAll(where: { $0.id == chatID })
                 }
             }
-            
+
         case "wired.chat.user_list":
             if let chatID = message.uint32(forField: "wired.chat.id") {
                 if let chat = await runtime.chat(withID: chatID) {
@@ -1497,7 +1496,7 @@ final class ConnectionController {
                         runtime.checkArchiveAvailability(for: chat)
                     }
                 }
-                
+
                 if chatID == 1 {
                     await MainActor.run {
                         runtime.joined = true
@@ -1516,7 +1515,7 @@ final class ConnectionController {
                     }
                 }
             }
-            
+
         case "wired.chat.user_join":
             if let chatID = message.uint32(forField: "wired.chat.id") {
                 if let chat = await runtime.chat(withID: chatID) {
@@ -1525,7 +1524,7 @@ final class ConnectionController {
                             runtime.clearIncomingChatTyping(chatID: chatID, userID: user.id)
                             let wasInserted = self.upsertUser(user, in: chat)
                             if wasInserted {
-                                //chat.messages.append(ChatEvent(chat: chat, user: user, type: .join, text: ""))
+                                // chat.messages.append(ChatEvent(chat: chat, user: user, type: .join, text: ""))
                                 if user.id != runtime.userID {
                                     self.triggerEvent(
                                         .userJoined,
@@ -1544,14 +1543,13 @@ final class ConnectionController {
             }
         case "wired.chat.user_leave":
             if  let chatID = message.uint32(forField: "wired.chat.id"),
-                let userID = message.uint32(forField: "wired.user.id")
-            {
+                let userID = message.uint32(forField: "wired.user.id") {
                 if let chat = await runtime.chat(withID: chatID) {
                     await MainActor.run {
                         runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                         if let user = chat.users.first(where: { $0.id == userID }) {
                             let nick = user.nick
-                            //chat.messages.append(ChatEvent(chat: chat, user: user, type: .leave, text: ""))
+                            // chat.messages.append(ChatEvent(chat: chat, user: user, type: .leave, text: ""))
                             chat.users.removeAll { $0.id == user.id }
                             if userID != runtime.userID {
                                 self.triggerEvent(
@@ -2246,8 +2244,7 @@ final class ConnectionController {
             break
         }
     }
-    
-    
+
     // MARK: -
     @MainActor private func parseChat(from message: P7Message) -> Chat? {
         guard
@@ -2262,7 +2259,7 @@ final class ConnectionController {
             name: name
         )
     }
-    
+
     @MainActor private func parseUser(from message: P7Message) -> User? {
         guard
             let id = message.uint32(forField: "wired.user.id"),
@@ -2272,7 +2269,7 @@ final class ConnectionController {
         else {
             return nil
         }
-        
+
         let user = User(
             id: id,
             nick: nick,
@@ -2320,67 +2317,67 @@ final class ConnectionController {
                             user.login = login
                         }
                     }
-                    
+
                     if let ip = message.string(forField: "wired.user.ip") {
                         await MainActor.run {
                             user.ipAddress = ip
                         }
                     }
-                    
+
                     if let host = message.string(forField: "wired.user.host") {
                         await MainActor.run {
                             user.host = host
                         }
                     }
-                    
+
                     if let cipherName = message.string(forField: "wired.user.cipher.name") {
                         await MainActor.run {
                             user.cipherName = cipherName
                         }
                     }
-                    
+
                     if let cipherBits = message.string(forField: "wired.user.cipher.bits") {
                         await MainActor.run {
                             user.cipherBits = cipherBits
                         }
                     }
-                    
+
                     if let appVersion = message.string(forField: "wired.info.application.version") {
                         await MainActor.run {
                             user.appVersion = appVersion
                         }
                     }
-                    
+
                     if let appBuild = message.string(forField: "wired.info.application.build") {
                         await MainActor.run {
                             user.appBuild = appBuild
                         }
                     }
-                    
+
                     if let osName = message.string(forField: "wired.info.os.name") {
                         await MainActor.run {
                             user.osName = osName
                         }
                     }
-                    
+
                     if let osVersion = message.string(forField: "wired.info.os.version") {
                         await MainActor.run {
                             user.osVersion = osVersion
                         }
                     }
-                    
+
                     if let arch = message.string(forField: "wired.info.arch") {
                         await MainActor.run {
                             user.arch = arch
                         }
                     }
-                    
+
                     if let loginTime = message.date(forField: "wired.user.login_time") {
                         await MainActor.run {
                             user.loginTime = loginTime
                         }
                     }
-                    
+
                     if let idleTime = message.date(forField: "wired.user.idle_time") {
                         await MainActor.run {
                             user.idleTime = idleTime
@@ -2411,9 +2408,9 @@ final class ConnectionController {
             queuePosition: Int(message.uint32(forField: "wired.transfer.queue_position") ?? 0)
         )
     }
-    
+
     // MARK: -
-    
+
     @MainActor
     func triggerTransferStartedEvent(for transfer: Transfer) {
         let name = transfer.name
@@ -2507,7 +2504,7 @@ final class ConnectionController {
     private func appendChatMessage(_ message: ChatEvent, to chat: Chat, runtime: ConnectionRuntime? = nil) {
         chat.messages.append(message)
         if let runtime,
-           (message.type == .say || message.type == .me),
+           message.type == .say || message.type == .me,
            UserDefaults.standard.bool(forKey: "ArchiveChatHistory") {
             runtime.archiveChatMessage(message, chatID: chat.id, chatName: chat.name)
         }
@@ -2616,7 +2613,7 @@ final class ConnectionController {
             configurationsByID[runtime.id]?.name ?? "Server"
         }
     }
-    
+
     @MainActor public func updateNotificationsBadge() {
         let count = runtimeStores.reduce(0) {
             $0 + $1.totalUnreadNotifications

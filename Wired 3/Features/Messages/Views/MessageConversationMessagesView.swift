@@ -16,7 +16,7 @@ struct MessageConversationMessagesView: View {
     var bottomOverlayInset: CGFloat = 0
 
     private let bottomAnchorID = "message-conversation-bottom-anchor"
-    
+
     private var effectiveTimestampInterval: TimeInterval {
         TimeInterval(max(timestampEveryMin, 1) * 60)
     }

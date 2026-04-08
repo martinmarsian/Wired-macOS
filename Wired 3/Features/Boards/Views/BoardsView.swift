@@ -93,7 +93,6 @@ private struct BoardSearchSelectionSnapshot {
     let threadUUID: String?
 }
 
-
 // MARK: - BoardsView
 
 struct BoardsView: View {
@@ -104,9 +103,9 @@ struct BoardsView: View {
     @AppStorage("boardsThreadSortAscending") private var threadSortAscending: Bool = false
     @AppStorage("boardsSmartBoardsJSON") private var smartBoardsJSON: String = "[]"
 
-    @State private var selectedBoardPath: String?   = nil
-    @State private var selectedSmartBoardID: String? = nil
-    @State private var selectedThreadUUID: String?  = nil
+    @State private var selectedBoardPath: String?
+    @State private var selectedSmartBoardID: String?
+    @State private var selectedThreadUUID: String?
     @State private var showNewThread   = false
     @State private var showNewBoard    = false
     @State private var showNewSmartBoard = false
@@ -130,7 +129,7 @@ struct BoardsView: View {
     @State private var selectedBoardSearchResultID: String?
     @State private var boardSearchSelectionSnapshot: BoardSearchSelectionSnapshot?
     @State private var shouldRestoreBoardSearchSelection = true
-    
+
     private var boardListSelection: Binding<String?> {
         Binding(
             get: {
@@ -974,18 +973,18 @@ struct BoardsView: View {
                                                 runtime.markThreadsAsRead(smartBoardThreads)
                                             }
                                             .disabled(!canMarkSmartBoardRead)
-                                            
+
                                             Button("Mark as unread") {
                                                 runtime.markThreadsAsUnread(smartBoardThreads)
                                             }
                                             .disabled(!canMarkSmartBoardUnread)
-                                            
+
                                             Divider()
-                                            
+
                                             Button("Edit Smart Board") { smartBoardToEdit = smartBoard }
-                                            
+
                                             Divider()
-                                            
+
                                             Button("Delete Smart Board", role: .destructive) { smartBoardToDelete = smartBoard }
                                         }
                                 }
@@ -1056,24 +1055,24 @@ struct BoardsView: View {
                                         runtime.markThreadsAsUnread(boardThreads)
                                     }
                                     .disabled(!canMarkBoardUnread)
-                                    
+
                                     if runtime.hasPrivilege("wired.account.board.rename_boards") {
                                         Divider()
-                                        
+
                                         Button("Rename Board") { boardToRename = board }
                                     }
-                                    
+
                                     if runtime.hasPrivilege("wired.account.board.set_board_info") {
                                         Button("Edit Permissions") { boardToEditPermissions = board }
                                     }
-                                    
+
                                     if runtime.hasPrivilege("wired.account.board.move_boards") {
                                         Button("Move Board") { boardToMove = board }
                                     }
-                                    
+
                                     if runtime.hasPrivilege("wired.account.board.delete_boards") {
                                         Divider()
-                                        
+
                                         Button("Delete Board", role: .destructive) { boardToDelete = board }
                                     }
                                 }
@@ -1103,7 +1102,7 @@ struct BoardsView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 Divider()
-                
+
                 HStack(spacing: 0) {
                     Menu {
                         Button {
@@ -1112,21 +1111,21 @@ struct BoardsView: View {
                             Label("New Board", systemImage: "plus")
                         }
                         .disabled(!runtime.hasPrivilege("wired.account.board.add_boards"))
-                        
+
                         Divider()
-                        
+
                         Button {
                             showNewSmartBoard = true
                         } label: {
                             Label("New Smart Board", systemImage: "line.3.horizontal.decrease.circle")
                         }
-                        
+
                     } label: {
                         Image(systemName: "plus")
                     }
                     .menuStyle(.borderlessButton)
                     .frame(maxWidth: 30)
-                    
+
                     Spacer()
 
                     ProgressView()
@@ -1136,7 +1135,7 @@ struct BoardsView: View {
                         .animation(.easeInOut(duration: 0.15), value: runtime.isPerformingBoardNetworkActivity)
                         .help("Boards network activity")
                         .padding(.trailing, 8)
-                    
+
                     Button {
                         runtime.markAllBoardThreadsAsRead()
                     } label: {
@@ -1484,7 +1483,7 @@ struct BoardsView: View {
                                 }
                                 if canDeleteThread(thread) {
                                     Divider()
-                                    
+
                                     Button("Delete Thread", role: .destructive) { threadToDelete = thread }
                                 }
                             }
@@ -1563,7 +1562,7 @@ struct BoardsView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(selectedThread == nil || (selectedThread.map(canReply(to:)) != true))
-                    
+
                     Spacer()
 
                     if !isSearchMode {
@@ -1920,7 +1919,7 @@ struct MarkdownComposer: View {
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
     var bordered: Bool = false
-    var onOptionEnter: (() -> Void)? = nil
+    var onOptionEnter: (() -> Void)?
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var showPreview = false
@@ -2090,7 +2089,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     var autoFocus: Bool = false
-    var onOptionEnter: (() -> Void)? = nil
+    var onOptionEnter: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, selectedRange: $selectedRange, onOptionEnter: onOptionEnter)
@@ -2233,7 +2232,7 @@ struct MarkdownComposer: View {
     @Binding var text: String
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
-    var onOptionEnter: (() -> Void)? = nil
+    var onOptionEnter: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -2828,7 +2827,7 @@ private struct BoardRowView: View {
 
 private struct ThreadRowView: View {
     let thread: BoardThread
-    
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
@@ -2901,7 +2900,7 @@ private struct PostsDetailView: View {
         let id = UUID()
         let initialText: String
     }
-    
+
     private var thread: BoardThread? {
         runtime.thread(boardPath: boardPath, uuid: threadUUID)
     }
@@ -3192,7 +3191,7 @@ private struct PostRowView: View {
         let level: Int
         let text: String
     }
-    
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
@@ -3632,18 +3631,18 @@ private struct ReactionChipView: View {
     /// Brief left-right wiggle to signal a newly arrived reaction.
     private func performShake() {
         let step = 0.07
-        withAnimation(.easeInOut(duration: step))         { shakeOffset = -4 }
+        withAnimation(.easeInOut(duration: step)) { shakeOffset = -4 }
         DispatchQueue.main.asyncAfter(deadline: .now() + step * 1) {
-            withAnimation(.easeInOut(duration: step))     { shakeOffset =  4 }
+            withAnimation(.easeInOut(duration: step)) { shakeOffset =  4 }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + step * 2) {
-            withAnimation(.easeInOut(duration: step))     { shakeOffset = -3 }
+            withAnimation(.easeInOut(duration: step)) { shakeOffset = -3 }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + step * 3) {
-            withAnimation(.easeInOut(duration: step))     { shakeOffset =  2 }
+            withAnimation(.easeInOut(duration: step)) { shakeOffset =  2 }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + step * 4) {
-            withAnimation(.easeInOut(duration: step))     { shakeOffset =  0 }
+            withAnimation(.easeInOut(duration: step)) { shakeOffset =  0 }
         }
     }
 }
@@ -3655,7 +3654,7 @@ private struct EmojiPickerPopover: View {
 
     @State private var searchText = ""
 
-    private static let quickEmojis = ["👍","👎","❤️","😂","😮","🎉","🤔","🔥","👀","✅"]
+    private static let quickEmojis = ["👍", "👎", "❤️", "😂", "😮", "🎉", "🤔", "🔥", "👀", "✅"]
     private static let columns     = Array(repeating: GridItem(.flexible(), spacing: 1), count: 8)
 
     /// Flat filtered list used while a search query is active.

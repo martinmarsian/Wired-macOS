@@ -24,14 +24,14 @@ private enum DropboxAccessLevel: String, CaseIterable, Identifiable {
         }
     }
 
-    var readEnabled: Bool  { self == .readWrite || self == .readOnly }
+    var readEnabled: Bool { self == .readWrite || self == .readOnly }
     var writeEnabled: Bool { self == .readWrite || self == .writeOnly }
 
     static func from(read: Bool, write: Bool) -> DropboxAccessLevel {
         switch (read, write) {
         case (false, false): return .denied
-        case (true,  true):  return .readWrite
-        case (true,  false): return .readOnly
+        case (true, true):  return .readWrite
+        case (true, false): return .readOnly
         case (false, true):  return .writeOnly
         }
     }
@@ -119,9 +119,9 @@ struct FileInfoSheet: View {
         guard info.type.isManagedAccessType else { return false }
         return ownerSelection   != info.owner
             || groupSelection   != info.group
-            || ownerAccess      != .from(read: info.ownerRead,     write: info.ownerWrite)
-            || groupAccess      != .from(read: info.groupRead,     write: info.groupWrite)
-            || everyoneAccess   != .from(read: info.everyoneRead,  write: info.everyoneWrite)
+            || ownerAccess      != .from(read: info.ownerRead, write: info.ownerWrite)
+            || groupAccess      != .from(read: info.groupRead, write: info.groupWrite)
+            || everyoneAccess   != .from(read: info.everyoneRead, write: info.everyoneWrite)
     }
 
     private var hasSyncPolicyChanges: Bool {
@@ -405,9 +405,9 @@ struct FileInfoSheet: View {
     private var syncPolicyCard: some View {
         VStack(spacing: 10) {
             infoCard(title: "Sync Policy", systemImage: "arrow.2.circlepath") {
-                syncModeRow("Owner",    $syncOwnerMode)
+                syncModeRow("Owner", $syncOwnerMode)
                 cardDivider
-                syncModeRow("Group",    $syncGroupMode)
+                syncModeRow("Group", $syncGroupMode)
                 cardDivider
                 syncModeRow("Everyone", $syncEveryoneMode)
                 cardDivider
@@ -542,8 +542,8 @@ struct FileInfoSheet: View {
             }
             ownerSelection   = loadedInfo.owner
             groupSelection   = loadedInfo.group
-            ownerAccess      = .from(read: loadedInfo.ownerRead,    write: loadedInfo.ownerWrite)
-            groupAccess      = .from(read: loadedInfo.groupRead,    write: loadedInfo.groupWrite)
+            ownerAccess      = .from(read: loadedInfo.ownerRead, write: loadedInfo.ownerWrite)
+            groupAccess      = .from(read: loadedInfo.groupRead, write: loadedInfo.groupWrite)
             everyoneAccess   = .from(read: loadedInfo.everyoneRead, write: loadedInfo.everyoneWrite)
             syncOwnerMode        = .from(mode: loadedInfo.syncUserMode)
             syncGroupMode        = .from(mode: loadedInfo.syncGroupMode)
@@ -595,23 +595,23 @@ struct FileInfoSheet: View {
                 let permissions = DropboxPermissions(
                     owner: ownerSelection,
                     group: groupSelection,
-                    ownerRead:     ownerAccess.readEnabled,
-                    ownerWrite:    ownerAccess.writeEnabled,
-                    groupRead:     groupAccess.readEnabled,
-                    groupWrite:    groupAccess.writeEnabled,
-                    everyoneRead:  everyoneAccess.readEnabled,
+                    ownerRead: ownerAccess.readEnabled,
+                    ownerWrite: ownerAccess.writeEnabled,
+                    groupRead: groupAccess.readEnabled,
+                    groupWrite: groupAccess.writeEnabled,
+                    everyoneRead: everyoneAccess.readEnabled,
                     everyoneWrite: everyoneAccess.writeEnabled
                 )
                 try await filesViewModel.setFilePermissions(path: info.path, permissions: permissions)
             }
             if info.type == .sync, hasSyncPolicyChanges, canEditManagedPermissions {
                 let policy = SyncPolicyPayload(
-                    userMode:          syncOwnerMode.value,
-                    groupMode:         syncGroupMode.value,
-                    everyoneMode:      syncEveryoneMode.value,
-                    maxFileSizeBytes:  syncMaxFileSizeBytes,
-                    maxTreeSizeBytes:  syncMaxTreeSizeBytes,
-                    excludePatterns:   syncExcludePatterns
+                    userMode: syncOwnerMode.value,
+                    groupMode: syncGroupMode.value,
+                    everyoneMode: syncEveryoneMode.value,
+                    maxFileSizeBytes: syncMaxFileSizeBytes,
+                    maxTreeSizeBytes: syncMaxTreeSizeBytes,
+                    excludePatterns: syncExcludePatterns
                 )
                 try await filesViewModel.setFileSyncPolicy(path: info.path, policy: policy)
             }

@@ -92,10 +92,10 @@ final class BoardThread: Identifiable, Equatable, Hashable {
     }
 
     func apply(_ message: P7Message) {
-        if let v = message.string(forField: "wired.board.subject")          { subject       = v }
-        if let v = message.uint32(forField: "wired.board.replies")          { replies       = Int(v) }
-        if let v = message.date(forField: "wired.board.edit_date")          { editDate      = v }
-        if let v = message.date(forField: "wired.board.latest_reply_date")  { lastReplyDate = v }
-        if let v = message.uuid(forField: "wired.board.latest_reply")       { lastReplyUUID = v }
+        if let v = message.string(forField: "wired.board.subject") { subject       = v }
+        if let v = message.uint32(forField: "wired.board.replies") { replies       = Int(v) }
+        if let v = message.date(forField: "wired.board.edit_date") { editDate      = v }
+        if let v = message.date(forField: "wired.board.latest_reply_date") { lastReplyDate = v }
+        if let v = message.uuid(forField: "wired.board.latest_reply") { lastReplyUUID = v }
     }
 }

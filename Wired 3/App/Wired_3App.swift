@@ -612,7 +612,6 @@ private struct ErrorLogWindowView: View {
 }
 #endif
 
-
 @main
 struct Wired_3App: App {
     @State private var socketClient = SocketClient()
@@ -624,15 +623,15 @@ struct Wired_3App: App {
 #if os(macOS)
     @NSApplicationDelegateAdaptor(AppTerminationDelegate.self) private var appTerminationDelegate
 #endif
-    
+
     init() {
         let socket = SocketClient()
         let cc = ConnectionController(socketClient: socket)
         let tm = TransferManager(spec: spec, connectionController: cc)
-        
+
         self._controller = State(initialValue: cc)
         self._transfers = State(initialValue: tm)
-        
+
         byteCountFormatter.allowedUnits = [.useAll]
         byteCountFormatter.countStyle = .file
         byteCountFormatter.zeroPadsFractionDigits = true
@@ -652,7 +651,7 @@ struct Wired_3App: App {
         try? FileManager.default.removeItem(atPath: path)
     }
 #endif
-    
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Bookmark.self,
@@ -664,7 +663,7 @@ struct Wired_3App: App {
             StoredBroadcastConversation.self,
             StoredBroadcastMessage.self,
             StoredMessageSelection.self,
-            StoredChatMessage.self,
+            StoredChatMessage.self
         ])
         let storeURL = Self.swiftDataStoreURL()
         Self.migrateLegacySandboxStoreIfNeeded(to: storeURL)
@@ -708,7 +707,7 @@ struct Wired_3App: App {
 
         let candidateStores = [
             legacyBaseURL.appendingPathComponent("default.store"),
-            oldFlatStoreURL,
+            oldFlatStoreURL
         ]
 
         guard let sourceStoreURL = candidateStores.first(where: { source in

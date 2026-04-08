@@ -47,7 +47,7 @@ struct SettingsView: View {
 
     var body: some View {
 #if os(macOS)
-        NavigationSplitView() {
+        NavigationSplitView {
             List(SettingsPane.allCases, selection: $selectedPane) { pane in
                 Label(pane.title, systemImage: pane.symbolName)
                     .tag(pane)
@@ -55,7 +55,7 @@ struct SettingsView: View {
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 260)
             .navigationTitle("Settings")
-            //.toolbar(removing: .sidebarToggle)
+            // .toolbar(removing: .sidebarToggle)
         }
         detail: {
             NavigationStack {
@@ -103,7 +103,6 @@ struct SettingsView: View {
     }
 #endif
 }
-
 
 extension Notification.Name {
     static let wiredUserNickDidChange       = Notification.Name("wiredUserNickDidChange")
@@ -219,7 +218,7 @@ struct GeneralSettingsView: View {
             debouncer.cancel()
             notifyUserStatusChange()
         }
-        .onChange(of: userIcon) { oldValue, newValue in
+        .onChange(of: userIcon) { _, _ in
             NotificationCenter.default.post(name: .wiredUserIconDidChange, object: userIcon)
         }
         .navigationTitle("General")
@@ -245,7 +244,6 @@ struct GeneralSettingsView: View {
     }
     #endif
 }
-
 
 @propertyWrapper
 struct AppStorageCodable<T: Codable>: DynamicProperty {
@@ -351,13 +349,13 @@ struct ChatSettingsView: View {
 
     @AppStorageCodable(key: "EmojiSubstitutions", defaultValue: [
         ":-)": "😊",
-        ":)":  "😊",
+        ":)": "😊",
         ";-)": "😉",
-        ";)":  "😉",
+        ";)": "😉",
         ":-D": "😀",
-        ":D":  "😀",
-        "<3":  "❤️",
-        "+1":  "👍"
+        ":D": "😀",
+        "<3": "❤️",
+        "+1": "👍"
     ])
     var emojiSubstitutions: [String: String]
 
@@ -386,7 +384,7 @@ struct ChatSettingsView: View {
             Section {
                 Toggle("Timestamp every message", isOn: $timestampEveryMessage)
             }
-            
+
             Section("Emoji") {
                 Toggle("Substitute Emoji", isOn: $substituteEmoji)
                 NavigationLink {
@@ -431,7 +429,7 @@ struct ChatSettingsView: View {
 struct ChatHighlightsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var highlightRules: [ChatHighlightRule]
-    @State private var pendingDeleteRuleID: UUID? = nil
+    @State private var pendingDeleteRuleID: UUID?
 
     var body: some View {
         List {
@@ -537,8 +535,7 @@ struct ChatHighlightsSettingsView: View {
             }
         } message: {
             if let id = pendingDeleteRuleID,
-               let rule = highlightRules.first(where: { $0.id == id })
-            {
+               let rule = highlightRules.first(where: { $0.id == id }) {
                 let keyword = rule.keyword.trimmingCharacters(in: .whitespacesAndNewlines)
                 if keyword.isEmpty {
                     Text("This highlight has no keyword. Do you want to delete it?")
@@ -566,7 +563,7 @@ struct ChatEmojiSubstitutionsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var substitutions: [String: String]
     @State private var rules: [Rule] = []
-    @State private var pendingDeleteRuleID: UUID? = nil
+    @State private var pendingDeleteRuleID: UUID?
     @FocusState private var focusedEmojiRuleID: UUID?
 
     private struct Rule: Identifiable, Equatable {
@@ -1098,4 +1095,3 @@ struct EventsSettingsView: View {
 #endif
     }
 }
-

@@ -11,9 +11,9 @@ import SwiftUI
 struct ChatEventView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
-    
+
     var message: ChatEvent
-    
+
     var body: some View {
         HStack(alignment: .bottom) {
             if timestampEveryMessage {
@@ -22,9 +22,9 @@ struct ChatEventView: View {
                     .monospacedDigit()
                     .font(.caption)
             }
-            
+
             Spacer()
-            
+
             if message.type == .join {
                 Text("**\(message.user.nick)** joined")
                     .multilineTextAlignment(.center)
@@ -44,9 +44,9 @@ struct ChatEventView: View {
                     .foregroundStyle(.gray)
                     .font(.caption)
             }
-            
+
             Spacer()
-            
+
             if timestampEveryMessage {
                 HoverableRelativeDateText(date: message.date)
                     .foregroundStyle(.gray)

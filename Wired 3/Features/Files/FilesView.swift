@@ -34,33 +34,33 @@ struct FilesView: View {
 
     @State var pendingDeleteItems: [FileItem] = []
     @State var showDeleteSelectionConfirmation: Bool = false
-    @State var createFolderTargetOverride: FileItem? = nil
+    @State var createFolderTargetOverride: FileItem?
     @State var pendingDownloadItems: [FileItem] = []
     @State var pendingUploadConflicts: [UploadConflict] = []
-    @State var activeUploadConflict: UploadConflict? = nil
-    @State var infoSheetItem: FileItem? = nil
-    @State var primarySelectionPath: String? = nil
+    @State var activeUploadConflict: UploadConflict?
+    @State var infoSheetItem: FileItem?
+    @State var primarySelectionPath: String?
     @State var selectedItemsForToolbar: [FileItem] = []
     @State var backDirectoryHistory: [String] = []
     @State var forwardDirectoryHistory: [String] = []
     @State var currentDirectoryPath: String = "/"
     @State var isApplyingHistoryNavigation: Bool = false
-    @State private var syncActivationNotice: SyncActivationNotice? = nil
-    @State private var pendingDeactivateSyncDirectory: FileItem? = nil
+    @State private var syncActivationNotice: SyncActivationNotice?
+    @State private var pendingDeactivateSyncDirectory: FileItem?
     @State private var showDeactivateSyncConfirmation: Bool = false
     @State private var pairedSyncRemotePaths: Set<String> = []
     @State private var pairedSyncDescriptors: Set<WiredSyncPairDescriptor> = []
     @State private var syncPairLocalOverrides: [String: SyncPairLocalOverride] = [:]
     @State private var syncPairModeReconciliationInFlight: Set<String> = []
     @State private var isSyncPairStatusRefreshing: Bool = false
-    @State private var syncPairStatusRefreshToken: UUID? = nil
+    @State private var syncPairStatusRefreshToken: UUID?
     @State private var lastSyncPairStatusRefreshAt: Date = .distantPast
-    @State private var syncPairStatusRefreshTask: Task<Void, Never>? = nil
-    @State private var syncPairPollingTask: Task<Void, Never>? = nil
+    @State private var syncPairStatusRefreshTask: Task<Void, Never>?
+    @State private var syncPairPollingTask: Task<Void, Never>?
     @State private var syncPairStatusVersion: Int = 0
-    @State private var selectedSyncStatusPath: String? = nil
-    
-    @State var currentSearchTask: Task<Void, Never>? = nil
+    @State private var selectedSyncStatusPath: String?
+
+    @State var currentSearchTask: Task<Void, Never>?
 
     var selectedItem: FileItem? {
         switch filesViewModel.selectedFileViewType {
@@ -505,7 +505,7 @@ struct FilesView: View {
                 print("[WiredSyncUI] activate path=\(directory.path) sync_mode=\(mode) delete_remote=\(deleteRemoteEnabled)")
             }
             do {
-                let _ = try WiredSyncDaemonIPC.addPair(
+                _ = try WiredSyncDaemonIPC.addPair(
                     remotePath: directory.path,
                     localPath: localURL.path,
                     mode: mode,
@@ -969,7 +969,7 @@ struct FilesView: View {
             } else if filesViewModel.searchText.count > 2 {
                 currentSearchTask?.cancel()
                 currentSearchTask = nil
-                
+
                 triggerSearch()
             } else {
                 currentSearchTask?.cancel()

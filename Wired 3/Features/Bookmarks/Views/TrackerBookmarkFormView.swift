@@ -25,7 +25,7 @@ struct TrackerBookmarkFormView: View {
     @State private var password: String = ""
     @FocusState private var focusedField: Field?
 
-    var trackerBookmark: TrackerBookmark? = nil
+    var trackerBookmark: TrackerBookmark?
 
     var body: some View {
         NavigationStack {

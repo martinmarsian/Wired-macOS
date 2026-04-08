@@ -31,11 +31,11 @@ actor SocketClient {
     @AppStorage("UserStatus") var userStatus = ""
     @AppStorage("UserIcon") var userIcon: String?
     @AppStorage("ConnectionAttemptTimeout") var connectionAttemptTimeout: Double = 12.0
-    
+
     private var connections: [UUID: WiredSwift.AsyncConnection] = [:]
     private var continuations: [UUID: AsyncThrowingStream<SocketEvent, Error>.Continuation] = [:]
     private var delegates: [UUID: DelegateProxy] = [:] // 🔑 rétention
-        
+
     // MARK: - Connect
 
     func connect(
@@ -81,7 +81,7 @@ actor SocketClient {
             // SECURITY (A_009): TOFU — verify server identity fingerprint
             let host = configuration.hostname
             let port = configuration.url.port
-            connection.serverTrustHandler = { fingerprint, isNewKey, strictIdentity in
+            connection.serverTrustHandler = { fingerprint, _, strictIdentity in
                 switch ServerTrustStore.evaluate(fingerprint: fingerprint,
                                                  host: host, port: port,
                                                  strictIdentity: strictIdentity) {
@@ -195,7 +195,7 @@ actor SocketClient {
 
     func send(_ message: P7Message, on id: UUID) async throws -> P7Message? {
         guard let connection = connections[id] else { return nil }
-        let response:P7Message? = try await connection.sendAsync(message)
+        let response: P7Message? = try await connection.sendAsync(message)
         return response
     }
 

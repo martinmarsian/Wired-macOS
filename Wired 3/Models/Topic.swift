@@ -15,7 +15,7 @@ final class Topic: Identifiable {
     var topic: String = ""
     var nick: String = ""
     var time: Date
-    
+
     init(topic: String, nick: String, time: Date) {
         self.id = UUID()
         self.topic = topic
@@ -23,4 +23,3 @@ final class Topic: Identifiable {
         self.time = time
     }
 }
-

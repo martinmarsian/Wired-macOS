@@ -18,18 +18,18 @@ struct BookmarkFormView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
     @Environment(ConnectionController.self) private var connectionController
-    
+
     @State var name: String = ""
     @State var hostname: String = ""
     @State var login: String = ""
     @State var password: String = ""
-    
+
     @State var connectAtStartup: Bool = false
     @State var autoReconnect: Bool = false
     @State var useCustomIdentity: Bool = false
     @State var customNick: String = ""
     @State var customStatus: String = ""
-    
+
     @State var cipher: UInt32 = P7Socket.CipherType.ECDH_CHACHA20_POLY1305.rawValue
     @State var checksum: UInt32 = P7Socket.Checksum.HMAC_256.rawValue
     @State var compression: UInt32 = P7Socket.Compression.LZ4.rawValue
@@ -37,8 +37,8 @@ struct BookmarkFormView: View {
     @AppStorage("UserNick") private var userNick: String = "Wired Swift"
     @AppStorage("UserStatus") private var userStatus: String = ""
     @FocusState private var focusedField: Field?
-    
-    var bookmark: Bookmark? = nil
+
+    var bookmark: Bookmark?
 
     var body: some View {
         NavigationStack {
@@ -46,24 +46,24 @@ struct BookmarkFormView: View {
                 Section {
                     TextField("Name", text: $name)
                 }
-                
+
                 Section {
                     TextField("Hostname", text: $hostname)
 #if os(iOS)
                         .textInputAutocapitalization(.never)
 #endif
-                    
+
                     TextField("Login", text: $login)
 #if os(iOS)
                         .textInputAutocapitalization(.never)
 #endif
-                    
+
                     SecureField("Password", text: $password)
                         .focused($focusedField, equals: .password)
                 } header: {
                     Text("Authentication")
                 }
-                
+
                 Section {
                     Toggle("Connect At Startup", isOn: $connectAtStartup)
                     Toggle("Auto-reconnect when disconnected", isOn: $autoReconnect)
@@ -81,7 +81,7 @@ struct BookmarkFormView: View {
                 } header: {
                     Text("Identity")
                 }
-                
+
                 Section {
                     Picker("Encryption", selection: $cipher) {
                         ForEach([
@@ -91,13 +91,13 @@ struct BookmarkFormView: View {
                             P7Socket.CipherType.ECDH_AES256_GCM,
                             P7Socket.CipherType.ECDH_CHACHA20_POLY1305,
                             P7Socket.CipherType.ECDH_XCHACHA20_POLY1305
-                            
+
                         ], id: \.rawValue) { c in
                             Text(c.description).tag(c.rawValue)
                         }
                     }
                     .pickerStyle(.menu)
-                    
+
                     Picker("Compression", selection: $compression) {
                         ForEach([
                             P7Socket.Compression.NONE,
@@ -109,7 +109,7 @@ struct BookmarkFormView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    
+
                     Picker("Checksum", selection: $checksum) {
                         ForEach([
                             P7Socket.Checksum.NONE,
@@ -136,7 +136,7 @@ struct BookmarkFormView: View {
                         Text("Cancel")
                     }
                 }
-                
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         if focusedField != nil {
@@ -191,7 +191,7 @@ struct BookmarkFormView: View {
         cipher = bookmark.cipherRawValue
         password = keychain.get("\(bookmark.login)@\(bookmark.hostname)") ?? ""
     }
-    
+
     func save() {
         let keychain = KeychainSwift()
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -203,7 +203,7 @@ struct BookmarkFormView: View {
         let effectiveName = trimmedName.isEmpty ? trimmedHostname : trimmedName
         let previousCredentialKey = bookmark.map { "\($0.login)@\($0.hostname)" }
         let credentialKey = "\(trimmedLogin)@\(trimmedHostname)"
-        
+
         if let bookmark {
             bookmark.name = effectiveName
             bookmark.hostname = trimmedHostname
@@ -232,7 +232,7 @@ struct BookmarkFormView: View {
                 for: bookmark,
                 password: trimmedPassword
             )
-            
+
         } else {
             let newBookmark = Bookmark(name: effectiveName, hostname: trimmedHostname, login: trimmedLogin)
             newBookmark.connectAtStartup = connectAtStartup
@@ -243,7 +243,7 @@ struct BookmarkFormView: View {
             newBookmark.cipherRawValue = cipher
             newBookmark.compressionRawValue = compression
             newBookmark.checksumRawValue = checksum
-            
+
             modelContext.insert(newBookmark)
 
             connectionController.refreshStoredConfiguration(
@@ -251,7 +251,7 @@ struct BookmarkFormView: View {
                 password: trimmedPassword
             )
         }
-        
+
         if let previousCredentialKey, previousCredentialKey != credentialKey {
             print("Keychain delete 1")
             password = ""
@@ -265,7 +265,7 @@ struct BookmarkFormView: View {
             password = ""
             keychain.delete(credentialKey)
         }
-        
+
         dismiss()
     }
 }

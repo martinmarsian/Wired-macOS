@@ -800,7 +800,7 @@ private struct GeneralServerSettingsView: View {
                 Divider()
 
                 directorySection
-                
+
                 HStack {
                     Button("Recharger") {
                         Task { await loadSettings() }
@@ -1772,7 +1772,7 @@ private final class ServerEventsSettingsViewModel: ObservableObject {
                         event.login,
                         event.ip,
                         event.messageText,
-                        event.protocolName,
+                        event.protocolName
                     ]
                     .joined(separator: " ")
                     if !haystack.localizedStandardContains(query) {
@@ -2079,7 +2079,7 @@ private struct ServerEventsSettingsView: View {
                 Text(event.messageText)
                     .lineLimit(2)
             }
-            
+
             TableColumn("Date et heure") { event in
                 Text(event.time.formatted(date: .abbreviated, time: .shortened))
                     .monospacedDigit()
@@ -2144,7 +2144,7 @@ private struct PlaceholderCategoryView: View {
 @MainActor
 private final class ServerLogSettingsViewModel: ObservableObject {
     @Published var entries: [WiredLogEntry] = []
-    @Published var levelFilter: WiredLogLevel? = nil
+    @Published var levelFilter: WiredLogLevel?
     @Published var searchText = ""
     @Published var isLoading = false
     @Published var error: Error?

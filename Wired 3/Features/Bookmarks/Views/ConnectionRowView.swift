@@ -10,7 +10,7 @@ import SwiftUI
 
 struct ConnectionRowView: View {
     @Environment(ConnectionController.self) private var connectionController
-    
+
     var connectionID: UUID
     var name: String
 
@@ -45,7 +45,7 @@ struct ConnectionRowView: View {
                 .foregroundStyle(iconColor)
 
             Text(name)
-            
+
             Spacer()
 
             UnreadCountBadge(count: unreadCount)

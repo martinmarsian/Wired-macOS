@@ -11,17 +11,17 @@ import WiredSwift
 
 struct FileFormView: View {
     @Environment(\.dismiss) var dismiss
-    
+
     @Environment(ConnectionRuntime.self) private var runtime
     @ObservedObject var filesViewModel: FilesViewModel
-    
+
     @State private var fileName = ""
     @State private var fileType: UInt32 = FileType.directory.rawValue
     @State private var isSaving = false
-    
+
     var parentDirectory: FileItem
     var file: FileItem?
-    var onCreated: ((String) -> Void)? = nil
+    var onCreated: ((String) -> Void)?
 
     private var availableDirectoryTypes: [FileType] {
         if parentDirectory.type == .sync {
@@ -36,12 +36,12 @@ struct FileFormView: View {
             .sync
         ]
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Name", text: $fileName)
-                
+
                 if runtime.hasPrivilege("wired.account.file.set_type") {
                     Picker("Type", selection: $fileType) {
                         ForEach(availableDirectoryTypes, id: \.rawValue) { c in
@@ -58,7 +58,7 @@ struct FileFormView: View {
                         dismiss()
                     })
                 }
-                
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button("OK") {
                         Task {
@@ -78,7 +78,7 @@ struct FileFormView: View {
             }
         }
     }
-    
+
     func save() async {
         isSaving = true
         defer { isSaving = false }

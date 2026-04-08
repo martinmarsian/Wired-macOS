@@ -1,4 +1,4 @@
-    //
+//
 //  ContentView.swift
 //  Wired 3
 //
@@ -53,24 +53,24 @@ struct MainView: View {
     @Environment(TrackerBrowserController.self) private var trackerBrowser
     @EnvironmentObject private var transfers: TransferManager
 
-    @State private var windowConnectionID: UUID? = nil
-    @State private var listSelection: SidebarSelection? = nil
-    @State private var editedBookmark: Bookmark? = nil
-    @State private var editedTrackerBookmark: TrackerBookmark? = nil
+    @State private var windowConnectionID: UUID?
+    @State private var listSelection: SidebarSelection?
+    @State private var editedBookmark: Bookmark?
+    @State private var editedTrackerBookmark: TrackerBookmark?
     @State private var showingNewTrackerSheet: Bool = false
-    
+
     @State private var showDeleteBookmarkConfirmation: Bool = false
-    @State private var bookmarkToDelete: Bookmark? = nil
+    @State private var bookmarkToDelete: Bookmark?
     @State private var showDeleteTrackerConfirmation: Bool = false
-    @State private var trackerBookmarkToDelete: TrackerBookmark? = nil
-    @State private var inspectedTrackerServer: TrackerServerInfoPresentation? = nil
+    @State private var trackerBookmarkToDelete: TrackerBookmark?
+    @State private var inspectedTrackerServer: TrackerServerInfoPresentation?
     @AppStorage("transfersHeight") private var transfersHeight: Double = 0
     @AppStorage("CheckActiveConnectionsBeforeClosingWindowTab")
     private var checkActiveConnectionsBeforeClosingWindowTab: Bool = true
     @State private var lastTransfersHeight: CGFloat = 200
     @State private var isTransfersVisible = false
     @State private var isTabBarVisible = false
-    @State private var windowNumber: Int? = nil
+    @State private var windowNumber: Int?
 #if os(iOS)
     @State private var iPadSplitVisibility: NavigationSplitViewVisibility = .doubleColumn
 #elseif os(macOS)
@@ -621,7 +621,7 @@ struct MainView: View {
                             server: server
                         )
                     }
-                    
+
                     Divider()
 
                     Button("Add to Favorites") {
@@ -877,18 +877,18 @@ struct MainView: View {
                 }
             )
     }
-    
+
     private func deleteBookmark() {
-        if let bookmarkToDelete  {
+        if let bookmarkToDelete {
             // disconnect if needed
             if let runtime = connectionController.runtime(for: bookmarkToDelete.id) {
                 connectionController.disconnect(connectionID: bookmarkToDelete.id, runtime: runtime)
             }
-            
+
             modelContext.delete(bookmarkToDelete)
             self.bookmarkToDelete = nil
         }
-        
+
         showDeleteBookmarkConfirmation = false
     }
 
@@ -903,8 +903,8 @@ struct MainView: View {
 
         showDeleteTrackerConfirmation = false
     }
-    
-    private func disconnect(_ id:UUID) {
+
+    private func disconnect(_ id: UUID) {
         if let runtime = connectionController.runtime(for: id) {
             connectionController.disconnect(connectionID: id, runtime: runtime)
         }

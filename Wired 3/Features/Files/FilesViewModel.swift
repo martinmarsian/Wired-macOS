@@ -40,7 +40,7 @@ final class FilesViewModel: ObservableObject {
     @Published var treeChildrenByPath: [String: [FileItem]] = [:]
     @Published var treeRootPath: String = "/"
     @Published var expandedTreePaths: Set<String> = ["/"]
-    @Published var treeSelectionPath: String? = nil
+    @Published var treeSelectionPath: String?
     @Published var treeViewRevision: Int = 0
 
     // Scroll-position persistence across tab switches (not published — no UI depends on them)
@@ -55,15 +55,15 @@ final class FilesViewModel: ObservableObject {
     @Published var isSearching: Bool = false
     @Published var searchText: String = ""
     @Published private(set) var fileNetworkActivityCount: Int = 0
-    
-    @Published var error: Error? = nil {
+
+    @Published var error: Error? {
         didSet {
             if let error, isPermissionDeniedError(error) {
                 self.error = nil
             }
         }
     }
-    
+
     var fileService: FileServiceProtocol?
     private var runtime: ConnectionRuntime?
     private var root = FileItem("/", path: "/")
@@ -78,14 +78,14 @@ final class FilesViewModel: ObservableObject {
         let expandedPaths: Set<String>
         let selectionPath: String?
     }
-    private var savedBrowseState: SavedBrowseState? = nil
+    private var savedBrowseState: SavedBrowseState?
 
     // MARK: -
-    
+
     static func empty() -> FilesViewModel {
         FilesViewModel()
     }
-    
+
     func configure(
         fileService: FileServiceProtocol,
         runtime: ConnectionRuntime
@@ -187,26 +187,25 @@ final class FilesViewModel: ObservableObject {
             }
         }
     }
-    
-    
+
     // MARK: -
-    
+
     var selectedItem: FileItem? {
         guard let lastColumn = columns.last else {
             return nil
         }
-                
+
         guard let selectedID = lastColumn.selection else {
             return FileItem(lastColumn.path.lastPathComponent, path: lastColumn.path, type: .directory)
         }
-                
+
         guard let item = lastColumn.items.first(where: { $0.id == selectedID }) else {
             return nil
         }
-        
+
         return item
     }
-    
+
     func selectionBinding(
             column index: Int,
             onColumnAppended: @escaping (FileColumn) -> Void
@@ -225,7 +224,7 @@ final class FilesViewModel: ObservableObject {
                 }
             )
         }
-    
+
     // MARK: -
 
     func loadRoot() async {
@@ -274,7 +273,7 @@ final class FilesViewModel: ObservableObject {
             return nil
         }
     }
-    
+
     @MainActor
     func reloadColumn(at index: Int) async {
         guard
@@ -305,8 +304,7 @@ final class FilesViewModel: ObservableObject {
             // 🔁 restaurer la sélection si possible
             if
                 let selectedID = previousSelection,
-                files.contains(where: { $0.id == selectedID })
-            {
+                files.contains(where: { $0.id == selectedID }) {
                 columns[index].selection = selectedID
             } else {
                 columns[index].selection = nil
@@ -328,7 +326,7 @@ final class FilesViewModel: ObservableObject {
             self.error = error
         }
     }
-    
+
     @MainActor
     func reloadSelectedColumn() async {
         guard let index = columns.indices.last else { return }
@@ -347,14 +345,14 @@ final class FilesViewModel: ObservableObject {
         await loadTreeRoot()
         await syncDirectorySubscriptions()
     }
-    
+
     @MainActor
     func deleteFile(_ path: String) async {
         guard   let connection = runtime?.connection as? AsyncConnection,
                 let fileService = fileService else {
             return
         }
-        
+
         do {
             try await withFileNetworkActivity {
                 try await fileService.deleteFile(path: path, connection: connection)
@@ -848,7 +846,6 @@ final class FilesViewModel: ObservableObject {
     }
 }
 
-
 extension FilesViewModel {
     @MainActor
     func syncDirectorySubscriptions() async {
@@ -1120,7 +1117,7 @@ extension FilesViewModel {
         guard
             let id = newID,
             let item = columns[index].items.first(where: { $0.id == id }),
-            (item.type.isDirectoryLike)
+            item.type.isDirectoryLike
         else {
             if let id = newID,
                let selected = columns[index].items.first(where: { $0.id == id }) {

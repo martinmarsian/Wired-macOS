@@ -6,7 +6,6 @@
 //  Copyright © 2025 Read-Write. All rights reserved.
 //
 
-
 import SwiftUI
 
 enum UserActiveTransferType: UInt32 {
@@ -168,14 +167,14 @@ final class User: Identifiable {
     var icon: Data
     var idle: Bool = false
     var color: UInt32 = 0
-    
+
     var appVersion: String = ""
     var appBuild: String = ""
     var osName: String = ""
     var osVersion: String = ""
     var arch: String = ""
     var supportsRsrc: String = ""
-    
+
     var login: String = ""
     var ipAddress: String = ""
     var host: String = ""
@@ -184,7 +183,7 @@ final class User: Identifiable {
     var loginTime: Date?
     var idleTime: Date?
     var activeTransfer: UserActiveTransfer?
-    
+
     init(id: UInt32, nick: String, status: String? = nil, icon: Data, idle: Bool) {
         self.id = id
         self.nick = nick

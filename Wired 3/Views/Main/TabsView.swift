@@ -284,7 +284,7 @@ struct TabsView: View {
                     .foregroundColor(runtime.selectedTab == .infos ? .accentColor : .primary)
                 }
                 .sharedBackgroundHiddenIfAvailable()
-                
+
                 ToolbarItemGroup(placement: .automatic) {
                     if !isBookmarked {
                         Button {
@@ -473,7 +473,7 @@ struct TabsView: View {
 
     private func bookmarkCurrentConnection() {
         print("bookmarkCurrentConnection")
-        
+
         guard bookmark == nil else { return }
         guard let configuration = connectionController.configuration(for: connectionID) else { return }
 
@@ -486,7 +486,7 @@ struct TabsView: View {
         newBookmark.cipherRawValue = configuration.cipher.rawValue
         newBookmark.compressionRawValue = configuration.compression.rawValue
         newBookmark.checksumRawValue = configuration.checksum.rawValue
-        
+
         if let runtime = connectionController.runtime(for: configuration.id) {
             print("runtime \(runtime)")
             if let serverName = runtime.serverInfo?.serverName {
@@ -520,7 +520,6 @@ private extension View {
 #endif
     }
 }
-
 
 struct DisconnectAlert: ViewModifier {
     @Binding var askDisconnect: Bool

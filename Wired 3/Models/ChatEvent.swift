@@ -51,7 +51,7 @@ final class ChatEvent: Identifiable {
     /// `text` is effectively immutable after init, so the cache is always valid.
     /// `@ObservationIgnored` keeps this out of SwiftUI's dependency tracking.
     @ObservationIgnored private var _imageURLCached = false
-    @ObservationIgnored private var _cachedPrimaryImageURL: URL? = nil
+    @ObservationIgnored private var _cachedPrimaryImageURL: URL?
 
     var cachedPrimaryHTTPImageURL: URL? {
         if !_imageURLCached {

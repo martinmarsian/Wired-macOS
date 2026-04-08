@@ -431,7 +431,7 @@ final class TransferManager: ObservableObject {
         let downloads = numberOfWorkingTransfers(type: .download, uri: uri)
         let uploads = numberOfWorkingTransfers(type: .upload, uri: uri)
 
-        var next: Transfer? = nil
+        var next: Transfer?
 
         if !queueTransfersEnabled {
             next = firstTransfer(state: .locallyQueued, uri: uri)

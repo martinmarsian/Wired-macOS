@@ -35,7 +35,7 @@ protocol FileServiceProtocol {
         recursive: Bool,
         connection: AsyncConnection
     ) -> AsyncThrowingStream<FileItem, Error>
-    
+
     func deleteFile(
         path: String,
         connection: AsyncConnection
@@ -126,7 +126,7 @@ final class FileService: FileServiceProtocol {
             }
         }
     }
-    
+
     func deleteFile(
         path: String,
         connection: AsyncConnection
@@ -135,11 +135,11 @@ final class FileService: FileServiceProtocol {
             withName: "wired.file.delete",
             spec: spec
         )
-        
+
         message.addParameter(field: "wired.file.path", value: path)
-        
+
         let response = try await connection.sendAsync(message)
-           
+
         if response?.name == "wired.error" {
             throw WiredError(message: response!)
         }

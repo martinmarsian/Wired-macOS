@@ -16,9 +16,9 @@ final class Chat: Identifiable {
     var isPrivate: Bool
     var topic: Topic?
     var joined = false
-    
-    var users : [User] = []
-    var messages : [ChatEvent] = []
+
+    var users: [User] = []
+    var messages: [ChatEvent] = []
     var typingUsersByID: [UInt32: Date] = [:]
 
     /// Reserved for future local history persistence.
@@ -26,8 +26,8 @@ final class Chat: Identifiable {
     /// Always false in the current in-memory model.
     var hasMoreHistory: Bool = false
 
-    var unreadMessagesCount : Int = 0
-    
+    var unreadMessagesCount: Int = 0
+
     init(id: UInt32, name: String, isPrivate: Bool = false) {
         self.id = id
         self.name = name
