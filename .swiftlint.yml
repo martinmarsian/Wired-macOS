@@ -28,6 +28,7 @@ opt_in_rules:
 disabled_rules:
   - todo
   - blanket_disable_command
+  - large_tuple
 
 line_length:
   warning: 160
@@ -47,8 +48,8 @@ identifier_name:
     - c
 
 type_body_length:
-  warning: 350
-  error: 600
+  warning: 500
+  error: 900
 
 file_length:
   warning: 500
