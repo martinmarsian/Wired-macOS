@@ -2260,7 +2260,7 @@ final class ConnectionController {
             nick: nick,
             status: message.string(forField: "wired.user.status"),
             icon: icon,
-            idle: idle,
+            idle: idle
         )
 
         user.color = message.enumeration(forField: "wired.account.color")
