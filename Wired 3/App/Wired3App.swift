@@ -613,7 +613,7 @@ private struct ErrorLogWindowView: View {
 #endif
 
 @main
-struct Wired_3App: App {
+struct Wired3App: App {
     @State private var socketClient = SocketClient()
     @State private var controller: ConnectionController
     @State private var trackerBrowser = TrackerBrowserController()
