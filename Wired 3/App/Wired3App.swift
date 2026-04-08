@@ -89,6 +89,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
 
 private struct MainAppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @FocusedBinding(\.wiredSearchFieldFocused) private var isSearchFieldFocused: Bool?
 
     let controller: ConnectionController
 
@@ -118,6 +119,14 @@ private struct MainAppCommands: Commands {
                 openWindow(id: "chat-history")
             }
             .keyboardShortcut("h", modifiers: [.command, .option])
+        }
+
+        CommandMenu("Find") {
+            Button("Find") {
+                isSearchFieldFocused = true
+            }
+            .keyboardShortcut("f", modifiers: [.command])
+            .disabled(isSearchFieldFocused == nil)
         }
 
         CommandGroup(replacing: .newItem) {

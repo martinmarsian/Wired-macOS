@@ -166,6 +166,7 @@ struct MessagesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .searchable(text: $searchText)
+        .wiredSearchFieldFocus()
         .onChange(of: normalizedSearchText) { _, query in
             guard !query.isEmpty else {
                 isShowingSearchProgress = false
@@ -272,6 +273,7 @@ struct MessagesView: View {
                 }
             }
             .searchable(text: $searchText)
+            .wiredSearchFieldFocus()
             .onAppear {
                 _ = runtime.ensureBroadcastConversation()
             }

@@ -277,6 +277,7 @@ struct ChatsView: View {
             }
         }
         .searchable(text: $searchText)
+        .wiredSearchFieldFocus()
         .onChange(of: normalizedSearchText) { _, query in
             guard !query.isEmpty else {
                 isShowingSearchProgress = false
@@ -369,6 +370,7 @@ struct ChatsView: View {
                 }
             }
             .searchable(text: $searchText)
+            .wiredSearchFieldFocus()
             .onAppear {
                 ensureDefaultSelectedChat()
             }

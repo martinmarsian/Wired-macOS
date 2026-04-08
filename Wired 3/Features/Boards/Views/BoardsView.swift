@@ -689,6 +689,7 @@ struct BoardsView: View {
             boardsList
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
                 .searchable(text: $searchText)
+                .wiredSearchFieldFocus()
 
             HSplitView {
                 threadsList

@@ -961,6 +961,7 @@ struct FilesView: View {
             }
         }
         .searchable(text: $filesViewModel.searchText)
+        .wiredSearchFieldFocus()
         .onChange(of: filesViewModel.searchText, debounceTime: .milliseconds(500)) {
             if filesViewModel.searchText.isEmpty && filesViewModel.isSearchMode {
                 currentSearchTask?.cancel()

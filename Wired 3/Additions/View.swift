@@ -8,6 +8,38 @@
 import SwiftUI
 import WiredSwift
 
+private struct WiredSearchFieldFocusedKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var wiredSearchFieldFocused: Binding<Bool>? {
+        get { self[WiredSearchFieldFocusedKey.self] }
+        set { self[WiredSearchFieldFocusedKey.self] = newValue }
+    }
+}
+
+private struct WiredSearchFieldFocusModifier: ViewModifier {
+    @FocusState private var isSearchFieldFocused: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            content
+                .searchFocused($isSearchFieldFocused)
+                .focusedSceneValue(
+                    \.wiredSearchFieldFocused,
+                    Binding(
+                        get: { isSearchFieldFocused },
+                        set: { isSearchFieldFocused = $0 }
+                    )
+                )
+        } else {
+            content
+        }
+    }
+}
+
 enum WiredWindowToolbarMode {
     case full
     case systemOnly
@@ -64,6 +96,10 @@ extension View {
         #else
         self
         #endif
+    }
+
+    func wiredSearchFieldFocus() -> some View {
+        modifier(WiredSearchFieldFocusModifier())
     }
 
     func errorAlert(error: Binding<Error?>,

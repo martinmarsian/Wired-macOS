@@ -48,6 +48,7 @@ struct ChatHistoryWindow: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search messages...")
+        .wiredSearchFieldFocus()
         .onChange(of: selectedConnectionKey) { _, _ in
             selectedDayKey = nil
         }
