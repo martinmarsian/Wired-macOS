@@ -5,6 +5,7 @@
 //  Created by Rafaël Warnault on 18/12/2025.
 //  Copyright © 2025 Read-Write. All rights reserved.
 //
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
 
 import SwiftUI
 import SwiftData
