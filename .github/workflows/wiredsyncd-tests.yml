@@ -53,9 +53,8 @@ jobs:
         run: >
           xcodebuild test
           -project "Wired-macOS.xcodeproj"
-          -scheme "Wired 3"
+          -scheme "Wired 3 Unit Tests"
           -destination "platform=macOS"
-          -only-testing:"Wired 3Tests"
           CODE_SIGNING_ALLOWED=NO
           CODE_SIGNING_REQUIRED=NO
 
