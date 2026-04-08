@@ -1,74 +1,249 @@
-# WiredSwift Client
+# Wired Client
 
-WiredSwift Client is an implementation of the Wired 2.0 protocol written in Swift. 
+**Wired Client** is a modern macOS client for the **Wired 3.0** ecosystem.
 
-## Requirements
+The project is currently in **beta**. It is already usable, but it is still evolving quickly. If you want the latest macOS version, always download the newest beta build from the project's [GitHub Releases](https://github.com/nark/Wired-macOS/releases).
 
-* macOS 10.14
+## Table of Contents
+
+- [What is Wired?](#what-is-wired)
+- [Why Wired Client?](#why-wired-client)
+- [Screenshots](#screenshots)
+- [Download](#download)
+- [Main Features](#main-features)
+- [About the Wired Server](#about-the-wired-server)
+- [Building from Source](#building-from-source)
+- [wiredsyncd](#wiredsyncd)
+- [Contributing](#contributing)
+- [License](#license)
+
+## What is Wired?
+
+**Wired** is a long-running community platform originally created as a modern alternative to Hotline. A Wired server lets you host a private space where users can:
+
+- chat in public rooms
+- exchange private messages
+- post on discussion boards
+- share files
+- manage a community with fine-grained permissions
+
+In the Wired 3.0 ecosystem, communication between client and server is encrypted, and the server identity can also be verified on the client side.
+
+## Why Wired Client?
+
+Wired Client aims to provide a native macOS experience that feels approachable while staying true to the spirit of Wired:
+
+- an interface built around conversations, files, and boards
+- support for public chats, private messages, and broadcasts
+- file transfers and folder synchronization
+- saved server bookmarks for quick access
+- server information and identity verification
+- built-in administration tools when your account has the required privileges
+
+The repository is named `Wired-macOS`, but the main application target and product name are **Wired Client**. This may change later.
+
+## Screenshots
+
+### Conversations
+
+<p align="center">
+  <img src="screenshots/1-public-chat.png" alt="Public chat" width="48%">
+  <img src="screenshots/2-private-messages.png" alt="Private messages" width="48%">
+</p>
+
+### Boards and files
+
+<p align="center">
+  <img src="screenshots/3-boards.png" alt="Boards" width="48%">
+  <img src="screenshots/4-files.png" alt="Files" width="48%">
+</p>
+
+### Server information and administration
+
+<p align="center">
+  <img src="screenshots/5-server-infos.png" alt="Server information" width="32%">
+  <img src="screenshots/6-server-settings.png" alt="Server settings" width="32%">
+  <img src="screenshots/7-server-events.png" alt="Server events" width="32%">
+</p>
+
+<p align="center">
+  <img src="screenshots/8-server-logs.png" alt="Server logs" width="48%">
+  <img src="screenshots/9-account-permissions.png" alt="Account permissions" width="48%">
+</p>
+
+## Download
+
+Wired Client is distributed through the project's **GitHub Releases**:
+
+1. Open the releases page: [github.com/nark/Wired-macOS/releases](https://github.com/nark/Wired-macOS/releases)
+2. Download the **latest beta** build of `Wired Client`
+3. Unzip the archive if needed
+4. Move the app to `/Applications`
+5. Launch **Wired Client**
+
+### Requirements
+
+- macOS **14.6** or newer
+
+## Main Features
+
+### Public chats
+
+Wired Client lets you join a Wired server's public chat rooms, follow conversations live, see connected users, and participate in a native macOS interface.
+
+In the Wired 3.0 ecosystem, multiple public chats can coexist, making it easier to organize discussions by topic or community.
+
+### Private messages and broadcasts
+
+The client supports direct private conversations between users, as well as broadcast messages. This makes it easy to keep personal conversations separate from public chat rooms.
+
+### Discussion boards
+
+Boards provide a more durable space for discussions than chat. Wired Client includes a dedicated boards interface for browsing topics, reading threads, replying, and keeping track of longer-lived conversations.
+
+Wired 3.0 also brings more modern capabilities here, including reactions and server-side board search.
+
+### File sharing
+
+Wired Client includes a file browser for exploring shared server folders, uploading files, downloading content, and tracking transfers.
+
+For many users, this is one of the core parts of the app: conversations on one side, shared files on the other.
+
+### Folder synchronization
+
+On macOS, Wired Client can pair a local folder with a remote folder to keep content in sync. This feature is powered by a separate component, `wiredsyncd`, documented later in this README.
+
+### Bookmarks and quick access
+
+The client can save connection bookmarks so you can reopen your usual servers quickly. That makes day-to-day access to a Wired community much more convenient.
+
+### Server info and trust
+
+Wired Client can display the main information exposed by a server:
+
+- name and description
+- banner image
+- server version
+- system information
+- file count and size
+
+The client can also remember a server identity fingerprint to help detect unexpected key changes when reconnecting.
+
+### Administration tools
+
+If your account has the required privileges, Wired Client also gives you access to several administration views directly inside the app:
+
+- server settings
+- connected user monitoring
+- events
+- logs
+- accounts and groups
+- permissions
+- bans
+
+This part is mainly intended for administrators and moderators, but it is integrated into the same client.
+
+## About the Wired Server
+
+Wired Client is designed to work with the **Wired 3.0** ecosystem built around **WiredSwift**.
+
+The [WiredSwift](https://github.com/nark/WiredSwift) repository includes:
+
+- **WiredSwift**: the Swift library used to build Wired clients
+- **wired3**: the server daemon
+- **WiredServerApp**: the macOS GUI app for local server administration
+
+In practice, a Wired server can host a private community with:
+
+- multiple public chats
+- private messages
+- boards
+- file sharing
+- server-side search
+- accounts, groups, and fine-grained permissions
+
+If you want to install or administer a Wired server, the `WiredSwift` README is the right place to start for the server side.
+
+## Building from Source
+
+This section is for developers who want to build **Wired Client** locally.
+
+### Requirements
+
+- macOS
+- Xcode with a macOS 14.6 compatible SDK
+- Git
+
+### Important: clone WiredSwift next to this repository
+
+The Xcode project references **WiredSwift** as a **local package** using the path `../WiredSwift`.
+
+To make the project open and build without changing the package reference, you should clone both repositories **side by side**:
+
+```bash
+mkdir Wired3
+cd Wired3
+git clone https://github.com/nark/WiredSwift.git
+git clone https://github.com/nark/Wired-macOS.git
+```
+
+Your folder layout should look like this:
+
+```text
+Wired3/
+├── Wired-macOS/
+└── WiredSwift/
+```
+
+### Open and run the project
+
+1. Open `Wired-macOS/Wired-macOS.xcodeproj`
+2. Select the `Wired 3` scheme
+3. Build and run from Xcode
+
+The generated app product is **Wired Client**.
+
+### Good to know
+
+- the main app depends on the local `../WiredSwift` package
+- `wiredsyncd` is included in this repository as part of the overall client stack
+- the app build automatically embeds `wiredsyncd` inside the macOS app bundle
 
 ## wiredsyncd
 
-`wiredsyncd` is the background synchronization daemon used by Wired Client for folder sync. It is intentionally separate from the GUI so sync pairs can keep running, be restarted cleanly, and be inspected independently when something goes wrong.
+`wiredsyncd` is the background synchronization daemon used by Wired Client for folder sync. It is intentionally separate from the GUI so sync pairs can continue running in the background.
 
-This section focuses on practical operation rather than implementation details. If you only need to use sync from the app, Wired Client will normally install and manage the daemon for you. The standalone commands below are mainly useful for development, support, and troubleshooting.
+In normal use, **Wired Client installs and manages the daemon for you automatically**, so you usually do not need to interact with it directly.
 
-### What the daemon does
+### What `wiredsyncd` does
 
-At a high level, `wiredsyncd`:
+At a high level, the daemon:
 
-* stores sync pair configuration in `~/Library/Application Support/WiredSync/config.json`
-* stores runtime state and sync metadata in `~/Library/Application Support/WiredSync/state.sqlite`
-* stores sync passwords in the macOS Keychain rather than in plaintext project files
-* exposes a local JSON-RPC control socket at `~/Library/Application Support/WiredSync/run/wiredsyncd.sock`
-* runs periodic sync passes in the background
-* connects to a Wired server using the same protocol definition (`wired.xml`) as the main app
+- stores sync pair configuration
+- keeps local synchronization state
+- stores passwords in the macOS Keychain
+- communicates locally with Wired Client over a Unix socket
+- runs background synchronization passes
+- talks directly to the Wired server for file operations
 
-Each sync pair binds:
+### How it fits with Wired Client
 
-* one remote folder on a Wired server
-* one local folder on the Mac
-* one sync mode: `server_to_client`, `client_to_server`, or `bidirectional`
+The responsibilities are straightforward:
 
-The daemon also keeps a lightweight uploaded-file snapshot cache in SQLite. That cache is used to distinguish true changes from changes caused by the daemon's own previous uploads, which is especially important for bidirectional sync.
+- **Wired Client** manages the interface, configuration, and lifecycle
+- **`wiredsyncd`** performs the background sync work
+- **Wired Server** remains the remote source and destination
 
-Passwords are not persisted in `config.json` or `state.sqlite`. They are stored in the current user's macOS Keychain and looked up by the daemon when it opens a server connection.
+### Running `wiredsyncd` manually
 
-### How it integrates with Wired Client and Wired Server
-
-Wired Client is responsible for installing, updating, and talking to `wiredsyncd`.
-
-On macOS, the app installs the daemon under:
-
-```text
-~/Library/Application Support/WiredSync/daemon/wiredsyncd
-```
-
-and loads it with a per-user LaunchAgent:
-
-```text
-~/Library/LaunchAgents/fr.read-write.wiredsyncd.plist
-```
-
-The app then communicates with the daemon over the local Unix socket using JSON-RPC. Typical GUI actions such as enabling sync, pausing a pair, forcing a sync, or changing the sync policy are translated into RPC requests.
-
-The daemon itself talks directly to the Wired server. It does not need the GUI once a pair has been registered. In other words:
-
-* Wired Client manages configuration and lifecycle
-* `wiredsyncd` performs sync work in the background
-* Wired Server remains the remote source and destination for file operations
-
-### Running wiredsyncd standalone
-
-`wiredsyncd` was designed so it can also be launched outside the app.
-
-Build it from the repository root:
+If you are working on sync support or troubleshooting a sync issue, you can also launch the daemon manually:
 
 ```bash
 cd wiredsyncd
 swift build
 ```
 
-Run it in the foreground:
+Then:
 
 ```bash
 WIRED_SYNCD_RESOURCE_ROOT="$(pwd)/../WiredSwift/Sources/WiredSwift/Resources" \
@@ -77,102 +252,34 @@ WIRED_SYNCD_RESOURCE_ROOT="$(pwd)/../WiredSwift/Sources/WiredSwift/Resources" \
 
 If you built a release binary, replace `debug` with `release`.
 
-The `WIRED_SYNCD_RESOURCE_ROOT` environment variable should point to a directory containing `wired.xml`. When the app manages the daemon for you, it sets this automatically. In standalone mode it is best to set it explicitly.
+### Where the daemon is installed for app-managed use
 
-When started successfully, the daemon creates:
+When the app manages it, `wiredsyncd` is installed under:
 
 ```text
-~/Library/Application Support/WiredSync/run/wiredsyncd.sock
+~/Library/Application Support/WiredSync/daemon/wiredsyncd
 ```
 
-You can verify that it is reachable with a simple JSON-RPC `status` request:
+and loaded through a per-user LaunchAgent:
 
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"status-1","method":"status"}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
+```text
+~/Library/LaunchAgents/fr.read-write.wiredsyncd.plist
 ```
 
-Expected response shape:
+### Quick troubleshooting
 
-```json
-{"jsonrpc":"2.0","id":"status-1","result":{"version":"14","pairs_count":0,"active_pairs":0,"queue_depth":0,"socket_path":"...","config_path":"...","state_path":"...","running":true}}
-```
+If sync stops working, the first things worth checking are:
 
-### Standalone JSON-RPC examples
+- whether the local socket exists
+- the daemon logs
+- the user LaunchAgent
+- whether `wired.xml` is available when running the daemon manually
 
-The daemon uses one-line JSON-RPC messages over the Unix socket. The examples below use `nc -U`, which is available on macOS.
-
-List configured sync pairs:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"list-1","method":"list_pairs"}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-Add a sync pair:
-
-```bash
-printf '%s\n' '{
-  "jsonrpc":"2.0",
-  "id":"add-1",
-  "method":"add_pair",
-  "params":{
-    "remote_path":"/Shared/Documents",
-    "local_path":"/Users/me/Documents/WiredSync/Documents",
-    "mode":"bidirectional",
-    "delete_remote_enabled":"false",
-    "exclude_patterns":"*.tmp\n.DS_Store",
-    "server_url":"wired.example.org",
-    "login":"alice",
-    "password":"secret"
-  }
-}' | tr -d '\n' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-echo
-```
-
-Force an immediate sync pass for a specific remote path:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"sync-1","method":"sync_now","params":{"remote_path":"/Shared/Documents","server_url":"wired.example.org","login":"alice"}}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-Pause or resume a pair once you know its `pair_id` from `list_pairs`:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"pause-1","method":"pause_pair","params":{"pair_id":"PUT-PAIR-ID-HERE"}}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"resume-1","method":"resume_pair","params":{"pair_id":"PUT-PAIR-ID-HERE"}}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-Fetch in-memory daemon logs:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"logs-1","method":"logs_tail","params":{"count":"100"}}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-Ask the daemon to shut down cleanly:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"shutdown-1","method":"shutdown"}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-### Troubleshooting and recovery
-
-If sync stops working, the most useful first checks are:
+Useful commands:
 
 ```bash
 ls -l "$HOME/Library/Application Support/WiredSync/run"
 ```
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"status-2","method":"status"}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":"logs-2","method":"logs_tail","params":{"count":"200"}}' | nc -U "$HOME/Library/Application Support/WiredSync/run/wiredsyncd.sock"
-```
-
-If the daemon is app-managed, also inspect the LaunchAgent logs:
 
 ```bash
 tail -n 200 "$HOME/Library/Logs/WiredSync/wiredsyncd.out.log"
@@ -182,80 +289,21 @@ tail -n 200 "$HOME/Library/Logs/WiredSync/wiredsyncd.out.log"
 tail -n 200 "$HOME/Library/Logs/WiredSync/wiredsyncd.err.log"
 ```
 
-To stop the app-managed daemon:
+If you need the most direct debugging setup, it is often easiest to stop the launchd-managed version first and then run `wiredsyncd` in the foreground.
 
-```bash
-launchctl bootout "gui/$(id -u)/fr.read-write.wiredsyncd"
-```
+## Contributing
 
-To start it again:
+Issues and pull requests are welcome.
 
-```bash
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/fr.read-write.wiredsyncd.plist"
-```
+If you contribute to the macOS client, good areas to test include:
 
-To see whether launchd knows about it:
-
-```bash
-launchctl print "gui/$(id -u)/fr.read-write.wiredsyncd"
-```
-
-To verify that the socket is actually owned by your user and being listened to:
-
-```bash
-lsof -U | grep wiredsyncd
-```
-
-If you want the most direct debugging setup, stop the LaunchAgent first and then run the daemon manually in the foreground. That makes stdout, stderr, and crashes much easier to inspect.
-
-### Common things to check
-
-When debugging a sync issue, these are the most common causes:
-
-* the LaunchAgent is still running an old daemon build after you changed the code
-* `wired.xml` cannot be found by the standalone daemon because `WIRED_SYNCD_RESOURCE_ROOT` was not set
-* the Unix socket exists but the daemon behind it is gone
-* the configured local path no longer exists
-* the server URL or login is correct, but the Keychain entry used by the pair is missing or outdated
-* the remote folder permissions allow partial operations but not full listing or deletion
-* exclude patterns are missing for files generated by another tool in the synced folder
-
-The daemon is conservative by design. If it cannot safely determine the remote state, it will often skip part of a sync cycle instead of guessing and amplifying a conflict.
-
-### Notes for advanced users
-
-Some implementation details are useful to know when reading logs:
-
-* the daemon scans and reconciles pairs periodically rather than relying only on file system event streams
-* the control socket is restricted to the current macOS user
-* the daemon version is checked by Wired Client, and a mismatch causes the app to reinstall/restart the daemon
-* sync metadata is persisted in `state.sqlite`, so deleting that file resets the daemon's local sync memory
-
-Deleting `config.json` or `state.sqlite` is a heavy-handed recovery step and should only be done if you intentionally want to reset sync configuration or cache state.
-
-## Contribute
-
-You are welcome to contribute using issues and pull-requests if you want to.
-
-Focus is on:
-
-* socket IO stability: the quality of in/out data interpretation and management through the Wired socket
-* mutli-threading stability: the ability to interact smoothly between connections and UIs
-* low-level unit tests: provides a strong implementation to enforce the integrity of the specification
-* specification compliance: any not yet implemented features that require kilometers of code…
-* limit regression from the original implementation
-
-Check the GitHub « Projects » page to get a sneap peek on the project insights and progress:  https://github.com/nark/WiredSwift/projects
+- connections to a Wired 3.0 server
+- public chats and private messages
+- boards
+- file transfers
+- sync through `wiredsyncd`
+- administration views with different permission levels
 
 ## License
 
-This code is distributed under BSD license, and it is free for personal or commercial use.
-        
-- Copyright (c) 2003-2009 Axel Andersson, All rights reserved.
-- Copyright (c) 2011-2020 Rafaël Warnault, All rights reserved.
-        
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-        
-Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-        
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+This project is distributed under the BSD license. See [LICENSE](LICENSE).
