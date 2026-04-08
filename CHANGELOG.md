@@ -2,7 +2,7 @@
 
 All notable changes to Wired Client are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-## [Unreleased]
+## [3.0-beta.19+36] — 2026-04-08
 
 ### Bug Fixes
 - Make bookmark queries Xcode 16.2 compatible ([`f780864`](https://github.com/nark/Wired-macOS/commit/f7808643f3b2bccaa9811ec9ffb8101bc93f9a5e))
@@ -23,6 +23,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
 ### Features
+- Add README screenshots ([`5ebdef0`](https://github.com/nark/Wired-macOS/commit/5ebdef074b96c4f6282c9f8a161ae199e148c719))
+
+- Add community docs and changelog tooling ([`5663ff3`](https://github.com/nark/Wired-macOS/commit/5663ff31f2e38230b8a96b07f6c79cd82e5332da))
+
 - Add Quick Look previews for remote files ([`3b5e71e`](https://github.com/nark/Wired-macOS/commit/3b5e71ed68351447a44a418ab95abb3ed0da7bee))
 
 - Focus searchable fields with Command-F ([`4353f6a`](https://github.com/nark/Wired-macOS/commit/4353f6a11e727e12eb3b40b696322f0c49d5869d))
@@ -45,6 +49,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
 ### Other
+- Update README wording ([`6d322a8`](https://github.com/nark/Wired-macOS/commit/6d322a8e889c8bed9c95ce217b0193cd9512a420))
+
 - Restore toolbar glass helper and fix Xcode 16.2 parse error ([`3a9f791`](https://github.com/nark/Wired-macOS/commit/3a9f79156405a1bd61f9ff4795627145b29c45c1))
 
 - Disable structural lint rules for legacy connection controller ([`02e7943`](https://github.com/nark/Wired-macOS/commit/02e7943428b78684021c184264d34743f01393ec))
