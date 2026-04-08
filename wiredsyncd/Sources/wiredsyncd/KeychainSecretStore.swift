@@ -1,5 +1,11 @@
 import Foundation
 import Security
+protocol SecretStore {
+    func readPassword(pairID: String) throws -> String?
+    func writePassword(_ password: String, pairID: String, endpoint: SyncEndpoint) throws
+    func deletePassword(pairID: String) throws
+}
+
 final class KeychainSecretStore {
     static let shared = KeychainSecretStore()
 
@@ -84,3 +90,4 @@ final class KeychainSecretStore {
     }
 }
 
+extension KeychainSecretStore: SecretStore {}

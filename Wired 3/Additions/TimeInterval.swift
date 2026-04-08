@@ -16,7 +16,7 @@ public extension TimeInterval {
             past = true
         }
 
-        let ti      = NSInteger(self)
+        let ti      = NSInteger(abs(self))
         let seconds = ti % 60
         let minutes = (ti / 60) % 60
         let hours   = (ti / 3600)

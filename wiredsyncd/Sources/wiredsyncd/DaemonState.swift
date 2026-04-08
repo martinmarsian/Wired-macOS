@@ -2,14 +2,14 @@ import Foundation
 final class DaemonState {
     let paths: PathLayout
     let store: SQLiteStore
-    let secrets: KeychainSecretStore
+    let secrets: SecretStore
     private var config: DaemonConfig
     private var _running: Bool = true
     private var logs: [String] = []
     private var runtimeStatuses: [String: PairRuntimeStatus] = [:]
     private let lock = NSLock()
 
-    init(paths: PathLayout, store: SQLiteStore, secrets: KeychainSecretStore = .shared) throws {
+    init(paths: PathLayout, store: SQLiteStore, secrets: SecretStore = KeychainSecretStore.shared) throws {
         self.paths = paths
         self.store = store
         self.secrets = secrets
@@ -480,4 +480,3 @@ final class DaemonState {
         return _running
     }
 }
-

@@ -4,12 +4,12 @@ import WiredSwift
 final class SyncPairWorker {
     private let pair: SyncPair
     private let store: SQLiteStore
-    private let secrets: KeychainSecretStore
+    private let secrets: SecretStore
     private let specPath: String
     private let log: (String) -> Void
     private let clientInfoDelegate = DaemonClientInfoDelegate()
 
-    init(pair: SyncPair, store: SQLiteStore, secrets: KeychainSecretStore, specPath: String, log: @escaping (String) -> Void) {
+    init(pair: SyncPair, store: SQLiteStore, secrets: SecretStore, specPath: String, log: @escaping (String) -> Void) {
         self.pair = pair
         self.store = store
         self.secrets = secrets
@@ -869,4 +869,3 @@ final class SyncPairWorker {
         return "\(base).conflict.\(username).\(timestamp).\(ext)"
     }
 }
-
