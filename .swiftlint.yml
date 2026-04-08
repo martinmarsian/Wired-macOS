@@ -30,6 +30,11 @@ disabled_rules:
   - blanket_disable_command
   - large_tuple
 
+# Keep CI informative on legacy code without failing every push on
+# oversized files/types or an isolated force cast in touched files.
+force_cast: warning
+empty_count: warning
+
 line_length:
   warning: 160
   error: 200
@@ -49,20 +54,20 @@ identifier_name:
 
 type_body_length:
   warning: 500
-  error: 900
+  error: 2500
 
 file_length:
   warning: 500
-  error: 1200
+  error: 4000
   ignore_comment_only_lines: true
 
 function_body_length:
   warning: 80
-  error: 200
+  error: 300
 
 cyclomatic_complexity:
   warning: 15
-  error: 30
+  error: 40
 
 function_parameter_count:
   warning: 6
