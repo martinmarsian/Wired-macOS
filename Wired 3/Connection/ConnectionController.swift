@@ -567,13 +567,8 @@ final class ConnectionController {
         guard let modelContext else { return nil }
 
         do {
-            var descriptor = FetchDescriptor<Bookmark>(
-                predicate: #Predicate<Bookmark> { bookmark in
-                    bookmark.id == id
-                }
-            )
-            descriptor.fetchLimit = 1
-            return try modelContext.fetch(descriptor).first?.id
+            let descriptor = FetchDescriptor<Bookmark>()
+            return try modelContext.fetch(descriptor).first(where: { $0.id == id })?.id
         } catch {
             return nil
         }
@@ -599,13 +594,8 @@ final class ConnectionController {
         guard let modelContext else { return }
 
         do {
-            var descriptor = FetchDescriptor<Bookmark>(
-                predicate: #Predicate<Bookmark> { bookmark in
-                    bookmark.id == id
-                }
-            )
-            descriptor.fetchLimit = 1
-            guard let bookmark = try modelContext.fetch(descriptor).first else { return }
+            let descriptor = FetchDescriptor<Bookmark>()
+            guard let bookmark = try modelContext.fetch(descriptor).first(where: { $0.id == id }) else { return }
             connect(bookmark)
         } catch {
             return
@@ -1199,16 +1189,10 @@ final class ConnectionController {
         let fallback = withStateLock { configurationsByID[id]?.autoReconnect ?? false }
 
         guard let modelContext else { return fallback }
-        nonisolated(unsafe) let ctx = modelContext
-        return await MainActor.run {
+        return await MainActor.run { [modelContext] in
             do {
-                var descriptor = FetchDescriptor<Bookmark>(
-                    predicate: #Predicate<Bookmark> { bookmark in
-                        bookmark.id == id
-                    }
-                )
-                descriptor.fetchLimit = 1
-                let bookmark = try ctx.fetch(descriptor).first
+                let descriptor = FetchDescriptor<Bookmark>()
+                let bookmark = try modelContext.fetch(descriptor).first(where: { $0.id == id })
                 return bookmark?.autoReconnect ?? fallback
             } catch {
                 return fallback
