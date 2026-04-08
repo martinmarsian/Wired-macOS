@@ -10,14 +10,6 @@ import SwiftUI
 extension ToolbarContent {
     @ToolbarContentBuilder
     func sharedBackgroundHiddenIfAvailable() -> some ToolbarContent {
-        #if os(macOS)
-        if #available(macOS 26.0, *) {
-            self.sharedBackgroundVisibility(.hidden)
-        } else {
-            self
-        }
-        #else
         self
-        #endif
     }
 }
