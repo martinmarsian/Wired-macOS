@@ -5,6 +5,13 @@ import UniformTypeIdentifiers
 import ObjectiveC
 
 struct AppKitFilesTreeView: NSViewRepresentable {
+    private enum ColumnID {
+        static let name = NSUserInterfaceItemIdentifier("TreeColumn")
+        static let kind = NSUserInterfaceItemIdentifier("KindColumn")
+        static let modified = NSUserInterfaceItemIdentifier("ModifiedColumn")
+        static let size = NSUserInterfaceItemIdentifier("SizeColumn")
+    }
+
     let rootPath: String
     let treeChildrenByPath: [String: [FileItem]]
     let expandedPaths: Set<String>
@@ -52,32 +59,54 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         let outlineView = NSOutlineView()
         outlineView.usesAlternatingRowBackgroundColors = false
         outlineView.backgroundColor = .clear
-        outlineView.headerView = nil
         outlineView.allowsMultipleSelection = true
         outlineView.allowsEmptySelection = true
         outlineView.rowHeight = 26
-        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        outlineView.usesAutomaticRowHeights = false
+        outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
         outlineView.setDraggingSourceOperationMask(.copy, forLocal: true)
         outlineView.usesAlternatingRowBackgroundColors = true
         outlineView.registerForDraggedTypes([.fileURL])
         outlineView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
         outlineView.target = context.coordinator
+        outlineView.allowsColumnReordering = false
+        outlineView.allowsColumnResizing = true
 
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TreeColumn"))
+        let column = NSTableColumn(identifier: ColumnID.name)
         column.title = "Name"
         column.minWidth = 220
         column.width = 420
         column.resizingMask = .autoresizingMask
+        column.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
 
-        let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("SizeColumn"))
+        let kindColumn = NSTableColumn(identifier: ColumnID.kind)
+        kindColumn.title = "Kind"
+        kindColumn.minWidth = 110
+        kindColumn.width = 140
+        kindColumn.resizingMask = .autoresizingMask
+        kindColumn.sortDescriptorPrototype = NSSortDescriptor(key: "kind", ascending: true)
+        outlineView.addTableColumn(kindColumn)
+
+        let modifiedColumn = NSTableColumn(identifier: ColumnID.modified)
+        modifiedColumn.title = "Modified"
+        modifiedColumn.minWidth = 140
+        modifiedColumn.width = 180
+        modifiedColumn.resizingMask = .autoresizingMask
+        modifiedColumn.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
+        outlineView.addTableColumn(modifiedColumn)
+
+        let sizeColumn = NSTableColumn(identifier: ColumnID.size)
         sizeColumn.title = "Size"
         sizeColumn.minWidth = 90
         sizeColumn.width = 120
-        sizeColumn.resizingMask = []
+        sizeColumn.resizingMask = .autoresizingMask
+        sizeColumn.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: true)
         outlineView.addTableColumn(sizeColumn)
+
+        outlineView.sortDescriptors = [column.sortDescriptorPrototype].compactMap { $0 }
 
         outlineView.delegate = context.coordinator
         outlineView.dataSource = context.coordinator
@@ -148,6 +177,11 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         private var clickedRowHadSelection = false
         private var lastChildrenPaths: [String: [String]] = [:]
         private var lastSyncPairStatusVersion: Int = -1
+        private var currentChildrenByPath: [String: [FileItem]] = [:]
+        private var lastExpandedPaths: Set<String> = ["/"]
+        private var lastSelectedPaths: Set<String> = []
+        private var activeSortKey: String = "name"
+        private var activeSortAscending = true
 
         init(parent: AppKitFilesTreeView) {
             self.parent = parent
@@ -171,11 +205,43 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         }
 
         private func sortedItems(_ items: [FileItem]) -> [FileItem] {
-            items.sorted {
-                let lhsDir = isDirectory($0)
-                let rhsDir = isDirectory($1)
+            items.sorted { lhs, rhs in
+                let lhsDir = isDirectory(lhs)
+                let rhsDir = isDirectory(rhs)
                 if lhsDir != rhsDir { return lhsDir }
-                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+
+                let comparison: ComparisonResult = {
+                    switch activeSortKey {
+                    case "kind":
+                        let lhsKind = lhs.type.description
+                        let rhsKind = rhs.type.description
+                        let kindOrder = lhsKind.localizedCaseInsensitiveCompare(rhsKind)
+                        if kindOrder != ComparisonResult.orderedSame { return kindOrder }
+                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    case "modified":
+                        let lhsDate = lhs.modificationDate ?? .distantPast
+                        let rhsDate = rhs.modificationDate ?? .distantPast
+                        if lhsDate != rhsDate {
+                            return lhsDate < rhsDate ? .orderedAscending : .orderedDescending
+                        }
+                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    case "size":
+                        let lhsSize = Int64(lhs.dataSize + lhs.rsrcSize)
+                        let rhsSize = Int64(rhs.dataSize + rhs.rsrcSize)
+                        if lhsSize != rhsSize {
+                            return lhsSize < rhsSize ? .orderedAscending : .orderedDescending
+                        }
+                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    default:
+                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    }
+                }()
+
+                if activeSortAscending {
+                    return comparison != .orderedDescending
+                } else {
+                    return comparison == .orderedDescending
+                }
             }
         }
 
@@ -183,6 +249,29 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             guard item.type == .file else { return "-" }
             let total = Int64(item.dataSize + item.rsrcSize)
             return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        }
+
+        private func fileKindString(_ item: FileItem) -> String {
+            item.type.description
+        }
+
+        private func modifiedDateString(_ item: FileItem) -> String {
+            guard let date = item.modificationDate else { return "-" }
+            return DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .short)
+        }
+
+        private func childrenSnapshot(for items: [FileItem]) -> [String] {
+            items.map { item in
+                let modified = item.modificationDate?.timeIntervalSinceReferenceDate ?? -1
+                return [
+                    item.path,
+                    item.name,
+                    String(item.type.rawValue),
+                    String(item.dataSize),
+                    String(item.rsrcSize),
+                    String(modified)
+                ].joined(separator: "|")
+            }
         }
 
         private func ancestorPaths(for path: String) -> [String] {
@@ -224,7 +313,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         }
 
         func refreshTree(rootPath: String, childrenByPath: [String: [FileItem]]) {
-            lastChildrenPaths = childrenByPath.mapValues { $0.map(\.path) }
+            currentChildrenByPath = childrenByPath
+            lastChildrenPaths = childrenByPath.mapValues(childrenSnapshot(for:))
             nodesByPath.removeAll()
             currentRootPath = normalizedRemotePath(rootPath)
 
@@ -287,6 +377,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             let newRoot = normalizedRemotePath(rootPath)
             let treeChanged = newRoot != currentRootPath || treeStructureDidChange(childrenByPath)
             let syncStatusChanged = syncPairStatusVersion != lastSyncPairStatusVersion
+            lastExpandedPaths = effectiveExpandedPaths
+            lastSelectedPaths = selectedPaths
             if treeChanged {
                 refreshTree(rootPath: rootPath, childrenByPath: childrenByPath)
             } else if syncStatusChanged {
@@ -300,7 +392,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         private func treeStructureDidChange(_ newChildren: [String: [FileItem]]) -> Bool {
             guard newChildren.count == lastChildrenPaths.count else { return true }
             for (key, items) in newChildren {
-                guard let cached = lastChildrenPaths[key], cached == items.map(\.path) else { return true }
+                guard let cached = lastChildrenPaths[key], cached == childrenSnapshot(for: items) else { return true }
             }
             return false
         }
@@ -376,9 +468,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
             guard let node = item as? OutlineNode else { return nil }
             let item = node.item
-            let columnID = tableColumn?.identifier ?? NSUserInterfaceItemIdentifier("TreeColumn")
+            let columnID = tableColumn?.identifier ?? ColumnID.name
 
-            if columnID == NSUserInterfaceItemIdentifier("SizeColumn") {
+            if columnID == ColumnID.size {
                 let id = NSUserInterfaceItemIdentifier("TreeSizeCell")
                 let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
                     let cell = NSTableCellView()
@@ -398,6 +490,50 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     return cell
                 }()
                 cell.textField?.stringValue = fileSizeString(item)
+                return cell
+            }
+
+            if columnID == ColumnID.kind {
+                let id = NSUserInterfaceItemIdentifier("TreeKindCell")
+                let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
+                    let cell = NSTableCellView()
+                    cell.identifier = id
+                    let tf = NSTextField(labelWithString: "")
+                    tf.translatesAutoresizingMaskIntoConstraints = false
+                    tf.textColor = .secondaryLabelColor
+                    tf.lineBreakMode = .byTruncatingTail
+                    cell.addSubview(tf)
+                    cell.textField = tf
+                    NSLayoutConstraint.activate([
+                        tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                        tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                        tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                    ])
+                    return cell
+                }()
+                cell.textField?.stringValue = fileKindString(item)
+                return cell
+            }
+
+            if columnID == ColumnID.modified {
+                let id = NSUserInterfaceItemIdentifier("TreeModifiedCell")
+                let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
+                    let cell = NSTableCellView()
+                    cell.identifier = id
+                    let tf = NSTextField(labelWithString: "")
+                    tf.translatesAutoresizingMaskIntoConstraints = false
+                    tf.textColor = .secondaryLabelColor
+                    tf.lineBreakMode = .byTruncatingTail
+                    cell.addSubview(tf)
+                    cell.textField = tf
+                    NSLayoutConstraint.activate([
+                        tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                        tf.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                        tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                    ])
+                    return cell
+                }()
+                cell.textField?.stringValue = modifiedDateString(item)
                 return cell
             }
 
@@ -502,6 +638,15 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                 cell.toolTip = "Sync inactive"
             }
             return cell
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            let nextDescriptor = outlineView.sortDescriptors.first
+            activeSortKey = nextDescriptor?.key ?? "name"
+            activeSortAscending = nextDescriptor?.ascending ?? true
+            refreshTree(rootPath: currentRootPath, childrenByPath: currentChildrenByPath)
+            applyExpandedState(lastExpandedPaths)
+            updateSelection(lastSelectedPaths)
         }
 
         func outlineViewSelectionDidChange(_ notification: Notification) {
