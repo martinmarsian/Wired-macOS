@@ -1,17 +1,57 @@
-name: wiredsyncd Tests
+name: Unit Tests
 
 on:
   push:
     paths:
       - ".github/workflows/wiredsyncd-tests.yml"
+      - "Wired 3/**"
+      - "Wired 3Tests/**"
+      - "Wired-macOS.xcodeproj/**"
       - "wiredsyncd/**"
   pull_request:
     paths:
       - ".github/workflows/wiredsyncd-tests.yml"
+      - "Wired 3/**"
+      - "Wired 3Tests/**"
+      - "Wired-macOS.xcodeproj/**"
       - "wiredsyncd/**"
   workflow_dispatch:
 
 jobs:
+  wired-3-tests:
+    name: Wired 3 app tests
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Wired-macOS
+        uses: actions/checkout@v4
+        with:
+          path: Wired-macOS
+
+      - name: Checkout WiredSwift
+        uses: actions/checkout@v4
+        with:
+          repository: nark/WiredSwift
+          ref: main
+          path: WiredSwift
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Run Wired 3 unit tests
+        working-directory: Wired-macOS
+        run: >
+          xcodebuild test
+          -project "Wired-macOS.xcodeproj"
+          -scheme "Wired 3"
+          -destination "platform=macOS"
+          -only-testing:"Wired 3Tests"
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+
   wiredsyncd-tests:
     name: wiredsyncd package tests
     runs-on: macos-14
