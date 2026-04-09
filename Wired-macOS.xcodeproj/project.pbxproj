@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */; };
 		4C0C2DDF2EF4372200213277 /* WiredSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4C0C2DDE2EF4372200213277 /* WiredSwift */; };
 		4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE02EF437DE00213277 /* Assets.xcassets */; };
 		4C0C2DE72EF437DE00213277 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C2DE12EF437DE00213277 /* MainView.swift */; };
@@ -75,11 +74,34 @@
 		4C95F1642F56CB5F005CD1BA /* Board.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1612F56CB5F005CD1BA /* Board.swift */; };
 		4C95F1652F56CB5F005CD1BA /* BoardPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1622F56CB5F005CD1BA /* BoardPost.swift */; };
 		4C95F1662F56CB5F005CD1BA /* BoardThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1632F56CB5F005CD1BA /* BoardThread.swift */; };
-		4C95F16C2F56CB7D005CD1BA /* ReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */; };
-		4C95F16D2F56CB7D005CD1BA /* NewThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */; };
-		4C95F16E2F56CB7D005CD1BA /* BoardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95F1682F56CB7D005CD1BA /* BoardsView.swift */; };
 		4CA1B0012F70000100213277 /* BoardDragPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA1B0112F70000100213277 /* BoardDragPayload.swift */; };
 		4CAB00022F900002AB213277 /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAB00012F900001AB213277 /* ChangePasswordView.swift */; };
+		4CBF09EF2F879481004196FD /* NewBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E12F879481004196FD /* NewBoardView.swift */; };
+		4CBF09F02F879481004196FD /* ReactionChipView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E72F879481004196FD /* ReactionChipView.swift */; };
+		4CBF09F12F879481004196FD /* BoardPathActionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09D62F879481004196FD /* BoardPathActionView.swift */; };
+		4CBF09F22F879481004196FD /* BoardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09D72F879481004196FD /* BoardRowView.swift */; };
+		4CBF09F32F879481004196FD /* EditBoardPermissionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DA2F879481004196FD /* EditBoardPermissionsView.swift */; };
+		4CBF09F42F879481004196FD /* EmojiLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DD2F879481004196FD /* EmojiLibrary.swift */; };
+		4CBF09F52F879481004196FD /* BoardSearchResultRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09D82F879481004196FD /* BoardSearchResultRowView.swift */; };
+		4CBF09F62F879481004196FD /* MoveThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E02F879481004196FD /* MoveThreadView.swift */; };
+		4CBF09F72F879481004196FD /* PostRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E42F879481004196FD /* PostRowView.swift */; };
+		4CBF09F82F879481004196FD /* NewThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E22F879481004196FD /* NewThreadView.swift */; };
+		4CBF09F92F879481004196FD /* EditPostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DB2F879481004196FD /* EditPostView.swift */; };
+		4CBF09FA2F879481004196FD /* MarkdownComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DF2F879481004196FD /* MarkdownComposer.swift */; };
+		4CBF09FB2F879481004196FD /* PermissionLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09ED2F879481004196FD /* PermissionLevel.swift */; };
+		4CBF09FC2F879481004196FD /* ReactionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E62F879481004196FD /* ReactionBarView.swift */; };
+		4CBF09FD2F879481004196FD /* BoardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09D92F879481004196FD /* BoardsView.swift */; };
+		4CBF09FE2F879481004196FD /* EmojiPickerPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DE2F879481004196FD /* EmojiPickerPopover.swift */; };
+		4CBF09FF2F879481004196FD /* PostsDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E52F879481004196FD /* PostsDetailView.swift */; };
+		4CBF0A002F879481004196FD /* SmartBoardEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E92F879481004196FD /* SmartBoardEditorView.swift */; };
+		4CBF0A012F879481004196FD /* PostActionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E32F879481004196FD /* PostActionButton.swift */; };
+		4CBF0A022F879481004196FD /* EditThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09DC2F879481004196FD /* EditThreadView.swift */; };
+		4CBF0A032F879481004196FD /* ThreadRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09EA2F879481004196FD /* ThreadRowView.swift */; };
+		4CBF0A042F879481004196FD /* ReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09E82F879481004196FD /* ReplyView.swift */; };
+		4CBF0A052F879481004196FD /* ThreadSortMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF09EB2F879481004196FD /* ThreadSortMenuView.swift */; };
+		4CBF0A072F87949B004196FD /* Color+Background.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A062F87949B004196FD /* Color+Background.swift */; };
+		4CBF0A092F8794E8004196FD /* ThreadSortCriterion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A082F8794E8004196FD /* ThreadSortCriterion.swift */; };
+		4CBF0A0D2F879555004196FD /* String+EmojiSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A0C2F879555004196FD /* String+EmojiSearch.swift */; };
 		4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDBA0022F80000100213277 /* RelativeDateText.swift */; };
 		4CF01A922F20000100213277 /* FileInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF01A912F20000100213277 /* FileInfoSheet.swift */; };
 		4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A962F200A1100213277 /* UploadsBadge.icns */; };
@@ -127,7 +149,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
 		4C0C2DB42EF436FE00213277 /* Wired Client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Wired Client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DC32EF4370000213277 /* Wired 3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C0C2DCD2EF4370000213277 /* Wired 3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Wired 3UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -197,13 +218,36 @@
 		4C95F1612F56CB5F005CD1BA /* Board.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Board.swift; sourceTree = "<group>"; };
 		4C95F1622F56CB5F005CD1BA /* BoardPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardPost.swift; sourceTree = "<group>"; };
 		4C95F1632F56CB5F005CD1BA /* BoardThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardThread.swift; sourceTree = "<group>"; };
-		4C95F1682F56CB7D005CD1BA /* BoardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardsView.swift; sourceTree = "<group>"; };
-		4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewThreadView.swift; sourceTree = "<group>"; };
-		4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyView.swift; sourceTree = "<group>"; };
 		4CA1B0112F70000100213277 /* BoardDragPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardDragPayload.swift; sourceTree = "<group>"; };
 		4CAB00012F900001AB213277 /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		4CB1F6E426068DDD00017676 /* SocketSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = SocketSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4CB1F6E626068DDD00017676 /* WiredSwift.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = WiredSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4CBF09D62F879481004196FD /* BoardPathActionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardPathActionView.swift; sourceTree = "<group>"; };
+		4CBF09D72F879481004196FD /* BoardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardRowView.swift; sourceTree = "<group>"; };
+		4CBF09D82F879481004196FD /* BoardSearchResultRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardSearchResultRowView.swift; sourceTree = "<group>"; };
+		4CBF09D92F879481004196FD /* BoardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardsView.swift; sourceTree = "<group>"; };
+		4CBF09DA2F879481004196FD /* EditBoardPermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditBoardPermissionsView.swift; sourceTree = "<group>"; };
+		4CBF09DB2F879481004196FD /* EditPostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPostView.swift; sourceTree = "<group>"; };
+		4CBF09DC2F879481004196FD /* EditThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditThreadView.swift; sourceTree = "<group>"; };
+		4CBF09DD2F879481004196FD /* EmojiLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiLibrary.swift; sourceTree = "<group>"; };
+		4CBF09DE2F879481004196FD /* EmojiPickerPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerPopover.swift; sourceTree = "<group>"; };
+		4CBF09DF2F879481004196FD /* MarkdownComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownComposer.swift; sourceTree = "<group>"; };
+		4CBF09E02F879481004196FD /* MoveThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveThreadView.swift; sourceTree = "<group>"; };
+		4CBF09E12F879481004196FD /* NewBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewBoardView.swift; sourceTree = "<group>"; };
+		4CBF09E22F879481004196FD /* NewThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewThreadView.swift; sourceTree = "<group>"; };
+		4CBF09E32F879481004196FD /* PostActionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostActionButton.swift; sourceTree = "<group>"; };
+		4CBF09E42F879481004196FD /* PostRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostRowView.swift; sourceTree = "<group>"; };
+		4CBF09E52F879481004196FD /* PostsDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostsDetailView.swift; sourceTree = "<group>"; };
+		4CBF09E62F879481004196FD /* ReactionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactionBarView.swift; sourceTree = "<group>"; };
+		4CBF09E72F879481004196FD /* ReactionChipView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactionChipView.swift; sourceTree = "<group>"; };
+		4CBF09E82F879481004196FD /* ReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyView.swift; sourceTree = "<group>"; };
+		4CBF09E92F879481004196FD /* SmartBoardEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartBoardEditorView.swift; sourceTree = "<group>"; };
+		4CBF09EA2F879481004196FD /* ThreadRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadRowView.swift; sourceTree = "<group>"; };
+		4CBF09EB2F879481004196FD /* ThreadSortMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadSortMenuView.swift; sourceTree = "<group>"; };
+		4CBF09ED2F879481004196FD /* PermissionLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionLevel.swift; sourceTree = "<group>"; };
+		4CBF0A062F87949B004196FD /* Color+Background.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Background.swift"; sourceTree = "<group>"; };
+		4CBF0A082F8794E8004196FD /* ThreadSortCriterion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadSortCriterion.swift; sourceTree = "<group>"; };
+		4CBF0A0C2F879555004196FD /* String+EmojiSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+EmojiSearch.swift"; sourceTree = "<group>"; };
 		4CDBA0022F80000100213277 /* RelativeDateText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeDateText.swift; sourceTree = "<group>"; };
 		4CF01A912F20000100213277 /* FileInfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInfoSheet.swift; sourceTree = "<group>"; };
 		4CF01A962F200A1100213277 /* UploadsBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = UploadsBadge.icns; sourceTree = "<group>"; };
@@ -480,15 +524,61 @@
 			path = Messages/Views;
 			sourceTree = "<group>";
 		};
-		4C95F16B2F56CB7D005CD1BA /* Boards/Views */ = {
+		4CBF09EC2F879481004196FD /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				4C95F1682F56CB7D005CD1BA /* BoardsView.swift */,
-				18B5A25C4DA14E87AC54D587 /* EmojiLibrary.swift */,
-				4C95F1692F56CB7D005CD1BA /* NewThreadView.swift */,
-				4C95F16A2F56CB7D005CD1BA /* ReplyView.swift */,
+				4CBF09D92F879481004196FD /* BoardsView.swift */,
+				4CBF09D62F879481004196FD /* BoardPathActionView.swift */,
+				4CBF09D72F879481004196FD /* BoardRowView.swift */,
+				4CBF09D82F879481004196FD /* BoardSearchResultRowView.swift */,
+				4CBF09DA2F879481004196FD /* EditBoardPermissionsView.swift */,
+				4CBF09DB2F879481004196FD /* EditPostView.swift */,
+				4CBF09DC2F879481004196FD /* EditThreadView.swift */,
+				4CBF09DD2F879481004196FD /* EmojiLibrary.swift */,
+				4CBF09DE2F879481004196FD /* EmojiPickerPopover.swift */,
+				4CBF09DF2F879481004196FD /* MarkdownComposer.swift */,
+				4CBF09E02F879481004196FD /* MoveThreadView.swift */,
+				4CBF09E12F879481004196FD /* NewBoardView.swift */,
+				4CBF09E22F879481004196FD /* NewThreadView.swift */,
+				4CBF09E32F879481004196FD /* PostActionButton.swift */,
+				4CBF09E42F879481004196FD /* PostRowView.swift */,
+				4CBF09E52F879481004196FD /* PostsDetailView.swift */,
+				4CBF09E62F879481004196FD /* ReactionBarView.swift */,
+				4CBF09E72F879481004196FD /* ReactionChipView.swift */,
+				4CBF09E82F879481004196FD /* ReplyView.swift */,
+				4CBF09E92F879481004196FD /* SmartBoardEditorView.swift */,
+				4CBF09EA2F879481004196FD /* ThreadRowView.swift */,
+				4CBF09EB2F879481004196FD /* ThreadSortMenuView.swift */,
 			);
-			path = Boards/Views;
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4CBF09EE2F879481004196FD /* Boards */ = {
+			isa = PBXGroup;
+			children = (
+				4CBF09EC2F879481004196FD /* Views */,
+				4CBF0A0A2F879519004196FD /* Enums */,
+				4CBF0A0B2F879523004196FD /* Extensions */,
+			);
+			path = Boards;
+			sourceTree = "<group>";
+		};
+		4CBF0A0A2F879519004196FD /* Enums */ = {
+			isa = PBXGroup;
+			children = (
+				4CBF0A082F8794E8004196FD /* ThreadSortCriterion.swift */,
+				4CBF09ED2F879481004196FD /* PermissionLevel.swift */,
+			);
+			path = Enums;
+			sourceTree = "<group>";
+		};
+		4CBF0A0B2F879523004196FD /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				4CBF0A0C2F879555004196FD /* String+EmojiSearch.swift */,
+				4CBF0A062F87949B004196FD /* Color+Background.swift */,
+			);
+			path = Extensions;
 			sourceTree = "<group>";
 		};
 		4CF6736B2403F48000A8EDC2 /* Frameworks */ = {
@@ -507,7 +597,7 @@
 				4C0C2E162EFD454500213277 /* Chats/Views */,
 				CC100001FA00000100213277 /* ChatHistory/Views */,
 				4C8D12212F30000200213277 /* Messages/Views */,
-				4C95F16B2F56CB7D005CD1BA /* Boards/Views */,
+				4CBF09EE2F879481004196FD /* Boards */,
 				4C0C2E522F110DB600213277 /* Files */,
 				4C0C2E652F17AC0E00213277 /* Transfers */,
 				4C0C2E4E2F0EDB5900213277 /* ServerInfo/Views */,
@@ -731,6 +821,29 @@
 				4C95F1652F56CB5F005CD1BA /* BoardPost.swift in Sources */,
 				4C95F1662F56CB5F005CD1BA /* BoardThread.swift in Sources */,
 				4C0C2E002EF5649C00213277 /* ConnectionRowView.swift in Sources */,
+				4CBF09EF2F879481004196FD /* NewBoardView.swift in Sources */,
+				4CBF09F02F879481004196FD /* ReactionChipView.swift in Sources */,
+				4CBF09F12F879481004196FD /* BoardPathActionView.swift in Sources */,
+				4CBF09F22F879481004196FD /* BoardRowView.swift in Sources */,
+				4CBF09F32F879481004196FD /* EditBoardPermissionsView.swift in Sources */,
+				4CBF09F42F879481004196FD /* EmojiLibrary.swift in Sources */,
+				4CBF09F52F879481004196FD /* BoardSearchResultRowView.swift in Sources */,
+				4CBF09F62F879481004196FD /* MoveThreadView.swift in Sources */,
+				4CBF09F72F879481004196FD /* PostRowView.swift in Sources */,
+				4CBF09F82F879481004196FD /* NewThreadView.swift in Sources */,
+				4CBF09F92F879481004196FD /* EditPostView.swift in Sources */,
+				4CBF09FA2F879481004196FD /* MarkdownComposer.swift in Sources */,
+				4CBF09FB2F879481004196FD /* PermissionLevel.swift in Sources */,
+				4CBF09FC2F879481004196FD /* ReactionBarView.swift in Sources */,
+				4CBF09FD2F879481004196FD /* BoardsView.swift in Sources */,
+				4CBF09FE2F879481004196FD /* EmojiPickerPopover.swift in Sources */,
+				4CBF09FF2F879481004196FD /* PostsDetailView.swift in Sources */,
+				4CBF0A002F879481004196FD /* SmartBoardEditorView.swift in Sources */,
+				4CBF0A012F879481004196FD /* PostActionButton.swift in Sources */,
+				4CBF0A022F879481004196FD /* EditThreadView.swift in Sources */,
+				4CBF0A032F879481004196FD /* ThreadRowView.swift in Sources */,
+				4CBF0A042F879481004196FD /* ReplyView.swift in Sources */,
+				4CBF0A052F879481004196FD /* ThreadSortMenuView.swift in Sources */,
 				4C0C2E312EFDB97300213277 /* ChatEvent.swift in Sources */,
 				4C0C2E3C2F0042FA00213277 /* ChatMessagesView.swift in Sources */,
 				4C39DEBB2F1AB4BC009D54B1 /* FileFormView.swift in Sources */,
@@ -776,19 +889,17 @@
 				AA200029FA00000100213277 /* FilesView+Operations.swift in Sources */,
 				AA200031FA00000100213277 /* RemoteQuickLookSupport.swift in Sources */,
 				AA200033FA00000100213277 /* FilesQuickLookController.swift in Sources */,
+				4CBF0A0D2F879555004196FD /* String+EmojiSearch.swift in Sources */,
 				4C0C2E2D2EFDB93B00213277 /* Topic.swift in Sources */,
 				AA1000022F90010000213277 /* TrackerBrowserController.swift in Sources */,
 				AA1000012F90010000213277 /* TrackerBookmark.swift in Sources */,
 				4C0C2E2B2EFDB92200213277 /* Chat.swift in Sources */,
 				4C0C2E5A2F14025200213277 /* TransferWorker.swift in Sources */,
-				4C95F16C2F56CB7D005CD1BA /* ReplyView.swift in Sources */,
-				4C95F16D2F56CB7D005CD1BA /* NewThreadView.swift in Sources */,
-				4C95F16E2F56CB7D005CD1BA /* BoardsView.swift in Sources */,
-				18B5A25C4DA14E87AC54D588 /* EmojiLibrary.swift in Sources */,
 				4C62A7762F6852F300FB42E3 /* BackgroundEdgeFade.swift in Sources */,
 				4C0C2DE82EF437DE00213277 /* Bookmark.swift in Sources */,
 				4C8D12012F30000200213277 /* MessagesView.swift in Sources */,
 				4C8D12022F30000200213277 /* MessageConversationRow.swift in Sources */,
+				4CBF0A072F87949B004196FD /* Color+Background.swift in Sources */,
 				4C8D12042F30000200213277 /* MessageConversationMessagesView.swift in Sources */,
 				4C8D11012F30000100213277 /* StoredPrivateConversation.swift in Sources */,
 				4C8D11022F30000100213277 /* StoredPrivateMessage.swift in Sources */,
@@ -803,6 +914,7 @@
 				4C0C2E332EFDBA9E00213277 /* ChatMeMessageView.swift in Sources */,
 				4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */,
 				4C0C2E562F1192EE00213277 /* Transfer.swift in Sources */,
+				4CBF0A092F8794E8004196FD /* ThreadSortCriterion.swift in Sources */,
 				4C0C2E4C2F0B10A600213277 /* PublicChatFormView.swift in Sources */,
 				4C0C2DEC2EF43B7200213277 /* BookmarkFormView.swift in Sources */,
 				AA1000032F90010000213277 /* TrackerBookmarkFormView.swift in Sources */,

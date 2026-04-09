@@ -1,42 +1,136 @@
+//
+//  MarkdownComposer 2.swift
+//  Wired-macOS
+//
+//  Created by Rafaël Warnault on 09/04/2026.
+//  Copyright © 2026 Read-Write. All rights reserved.
+//
+
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
+
+#if os(macOS)
 
 // MARK: - ResizableSheet
 
-/// Makes the enclosing sheet window resizable and sets its minimum size.
-/// Usage: `.background { ResizableSheet(minWidth: 500, minHeight: 380) }`
 struct ResizableSheet: NSViewRepresentable {
     var minWidth: CGFloat
     var minHeight: CGFloat
+    var sizeKey: String
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-            window.styleMask.insert(.resizable)
-            window.minSize = NSSize(width: minWidth, height: minHeight)
-            let current = window.frame.size
-            if current.width < minWidth || current.height < minHeight {
-                window.setContentSize(NSSize(
-                    width: max(current.width, minWidth),
-                    height: max(current.height, minHeight)
-                ))
-            }
-        }
-        return view
+    func makeCoordinator() -> Coordinator {
+        Coordinator(sizeKey: sizeKey, minWidth: minWidth, minHeight: minHeight)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
+    func makeNSView(context: Context) -> SheetProbeView {
+        let probe = SheetProbeView()
+        probe.coordinator = context.coordinator
+        return probe
+    }
 
-// MARK: - MarkdownComposer
+    func updateNSView(_ nsView: SheetProbeView, context: Context) {}
+
+    // MARK: - Probe view
+
+    /// Zero-size NSView subclass that configures the sheet window as soon as it
+    /// enters the view hierarchy — before the first draw, avoiding any visual jump.
+    final class SheetProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let coordinator, !coordinator.isConfigured else { return }
+            coordinator.configure(window)
+        }
+    }
+
+    // MARK: - Coordinator
+
+    final class Coordinator {
+        private let sizeKey: String
+        private let minWidth: CGFloat
+        private let minHeight: CGFloat
+
+        private(set) var isConfigured = false
+        /// The size the user last set (or the restored/default size). We lock
+        /// the window to this size so SwiftUI content changes don't resize it.
+        private var targetSize: CGSize = .zero
+        private var observers: [NSObjectProtocol] = []
+
+        init(sizeKey: String, minWidth: CGFloat, minHeight: CGFloat) {
+            self.sizeKey = sizeKey
+            self.minWidth = minWidth
+            self.minHeight = minHeight
+        }
+
+        func configure(_ window: NSWindow) {
+            isConfigured = true
+
+            window.styleMask.insert(.resizable)
+            window.minSize = NSSize(width: minWidth, height: minHeight)
+
+            let saved = loadSize()
+            targetSize = CGSize(
+                width: max(saved?.width ?? minWidth, minWidth),
+                height: max(saved?.height ?? minHeight, minHeight)
+            )
+            window.setContentSize(NSSize(width: targetSize.width, height: targetSize.height))
+
+            // User finished a manual resize → persist new size
+            observers.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.didEndLiveResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self, weak window] _ in
+                guard let self, let window else { return }
+                let sz = window.contentRect(forFrameRect: window.frame).size
+                self.targetSize = sz
+                self.saveSize(sz)
+            })
+
+            // SwiftUI-driven resize (content change) → restore targetSize.
+            // queue: nil = fires synchronously on the posting thread (main),
+            // before the next draw cycle → no visible flash.
+            observers.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: nil
+            ) { [weak self, weak window] _ in
+                guard let self, let window, !window.inLiveResize else { return }
+                let current = window.contentRect(forFrameRect: window.frame).size
+                let target = self.targetSize
+                if abs(current.width - target.width) > 1 || abs(current.height - target.height) > 1 {
+                    window.setContentSize(NSSize(width: target.width, height: target.height))
+                }
+            })
+        }
+
+        private func loadSize() -> CGSize? {
+            guard let dict = UserDefaults.standard.dictionary(forKey: sizeKey),
+                  let w = dict["w"] as? Double,
+                  let h = dict["h"] as? Double else { return nil }
+            return CGSize(width: w, height: h)
+        }
+
+        private func saveSize(_ size: CGSize) {
+            UserDefaults.standard.set(
+                ["w": Double(size.width), "h": Double(size.height)],
+                forKey: sizeKey
+            )
+        }
+
+        deinit {
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
+        }
+    }
+}
 
 struct MarkdownComposer: View {
     @Binding var text: String
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
-    /// Show a rounded border around the composer (for standalone/form use).
-    /// Set to false when the composer is embedded edge-to-edge inside a sheet.
     var bordered: Bool = false
     var onOptionEnter: (() -> Void)?
 
@@ -44,19 +138,16 @@ struct MarkdownComposer: View {
     @State private var showPreview = false
 
     var body: some View {
-        if bordered {
-            baseContent
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
-                )
-        } else {
-            baseContent
-        }
+        baseContent
+            .overlay(
+                Group {
+                    if bordered {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                    }
+                }
+            )
     }
-
-    // MARK: - Base content
 
     @ViewBuilder
     private var baseContent: some View {
@@ -71,8 +162,6 @@ struct MarkdownComposer: View {
         }
     }
 
-    // MARK: - Toolbar
-
     private var toolbar: some View {
         HStack(spacing: 2) {
             toolbarButton(icon: "bold", help: "Gras") {
@@ -84,21 +173,14 @@ struct MarkdownComposer: View {
             toolbarButton(icon: "chevron.left.forwardslash.chevron.right", help: "Code inline") {
                 wrapSelection(prefix: "`", suffix: "`", placeholder: "code")
             }
-
-            toolbarSeparator
-
+            Divider().frame(height: 14).padding(.horizontal, 3)
             toolbarButton(icon: "link", help: "Lien") { insertLink() }
             toolbarButton(icon: "photo", help: "Image") { insertImage() }
-
-            toolbarSeparator
-
+            Divider().frame(height: 14).padding(.horizontal, 3)
             toolbarButton(icon: "text.quote", help: "Citation") { prefixLines(with: "> ") }
             toolbarButton(icon: "list.bullet", help: "Liste") { prefixLines(with: "- ") }
-
             Spacer(minLength: 0)
-
             Divider().frame(height: 14).padding(.horizontal, 4)
-
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) { showPreview.toggle() }
             } label: {
@@ -112,12 +194,6 @@ struct MarkdownComposer: View {
         .padding(.vertical, 5)
         .background(.bar)
     }
-
-    private var toolbarSeparator: some View {
-        Divider().frame(height: 14).padding(.horizontal, 3)
-    }
-
-    // MARK: - Panes
 
     private var previewPane: some View {
         ScrollView {
@@ -150,10 +226,7 @@ struct MarkdownComposer: View {
             onOptionEnter: onOptionEnter
         )
         .frame(minHeight: minHeight, maxHeight: .infinity)
-        .background(Color(NSColor.textBackgroundColor))
     }
-
-    // MARK: - Toolbar button
 
     private func toolbarButton(icon: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -164,8 +237,6 @@ struct MarkdownComposer: View {
         .help(help)
         .disabled(showPreview)
     }
-
-    // MARK: - Text manipulation
 
     private func clampedRange(in value: String) -> NSRange {
         let maxLength = (value as NSString).length
@@ -185,10 +256,7 @@ struct MarkdownComposer: View {
             let caret = range.location + (replacement as NSString).length
             selectedRange = NSRange(location: caret, length: 0)
         } else {
-            selectedRange = NSRange(
-                location: range.location + (prefix as NSString).length,
-                length: (selected as NSString).length
-            )
+            selectedRange = NSRange(location: range.location + (prefix as NSString).length, length: (selected as NSString).length)
         }
     }
 
@@ -230,24 +298,6 @@ struct MarkdownComposer: View {
     }
 }
 
-// MARK: - NSTextView subclass
-
-private final class ComposerTextView: NSTextView {
-    var onOptionEnter: (() -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        // Option+Return (36) or Option+Enter numpad (76)
-        if event.keyCode == 36 || event.keyCode == 76,
-           event.modifierFlags.contains(.option) {
-            onOptionEnter?()
-            return
-        }
-        super.keyDown(with: event)
-    }
-}
-
-// MARK: - NSViewRepresentable
-
 private struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
@@ -255,7 +305,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     var onOptionEnter: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, selectedRange: $selectedRange)
+        Coordinator(text: $text, selectedRange: $selectedRange, onOptionEnter: onOptionEnter)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -263,39 +313,61 @@ private struct MarkdownTextView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
-        scroll.borderType = .noBorder
+        scroll.borderType = .bezelBorder
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .textBackgroundColor
 
-        let textView = ComposerTextView()
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+
+        let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        layoutManager.addTextContainer(textContainer)
+
+        let textView = FocusTextView(frame: .zero, textContainer: textContainer)
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
         textView.usesFindBar = true
+        textView.allowsUndo = true
         textView.font = .preferredFont(forTextStyle: .body)
-        textView.textContainerInset = NSSize(width: 6, height: 8)
-        textView.isVerticallyResizable = true
+        textView.textColor = .textColor
+        textView.insertionPointColor = .controlTextColor
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.usesAdaptiveColorMappingForDarkAppearance = true
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.minSize = NSSize(width: 0, height: 0)
         textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.typingAttributes = [
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+            .foregroundColor: NSColor.textColor
+        ]
+        textView.selectedTextAttributes = [
+            .backgroundColor: NSColor.selectedTextBackgroundColor,
+            .foregroundColor: NSColor.selectedTextColor
+        ]
+        textView.onOptionEnter = { [weak coordinator = context.coordinator] in
+            coordinator?.onOptionEnter?()
+        }
         textView.delegate = context.coordinator
         textView.string = text
-        textView.onOptionEnter = onOptionEnter
 
         scroll.documentView = textView
         context.coordinator.textView = textView
-
-        if autoFocus {
-            DispatchQueue.main.async {
-                textView.window?.makeFirstResponder(textView)
-            }
-        }
+        context.coordinator.didAutoFocus = false
 
         return scroll
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        guard let textView = context.coordinator.textView as? ComposerTextView else { return }
-
-        textView.onOptionEnter = onOptionEnter
+        guard let textView = context.coordinator.textView else { return }
 
         if textView.string != text {
             context.coordinator.isProgrammaticChange = true
@@ -313,17 +385,27 @@ private struct MarkdownTextView: NSViewRepresentable {
             textView.setSelectedRange(clamped)
             context.coordinator.isProgrammaticChange = false
         }
+
+        if autoFocus, context.coordinator.didAutoFocus == false {
+            context.coordinator.didAutoFocus = true
+            DispatchQueue.main.async {
+                nsView.window?.makeFirstResponder(textView)
+            }
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         @Binding var selectedRange: NSRange
+        var onOptionEnter: (() -> Void)?
         weak var textView: NSTextView?
         var isProgrammaticChange = false
+        var didAutoFocus = false
 
-        init(text: Binding<String>, selectedRange: Binding<NSRange>) {
+        init(text: Binding<String>, selectedRange: Binding<NSRange>, onOptionEnter: (() -> Void)?) {
             _text = text
             _selectedRange = selectedRange
+            self.onOptionEnter = onOptionEnter
         }
 
         func textDidChange(_ notification: Notification) {
@@ -338,3 +420,71 @@ private struct MarkdownTextView: NSViewRepresentable {
         }
     }
 }
+
+private final class FocusTextView: NSTextView {
+    var onOptionEnter: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isOptionEnter = flags == .option && (event.keyCode == 36 || event.keyCode == 76)
+        if isOptionEnter {
+            onOptionEnter?()
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
+#else
+struct MarkdownComposer: View {
+    @Binding var text: String
+    var minHeight: CGFloat = 180
+    var autoFocus: Bool = false
+    var onOptionEnter: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                button("B", help: "Gras") { append("**bold**") }
+                button("I", help: "Italique") { append("*italic*") }
+                button("Code", help: "Code inline") { append("`code`") }
+                button("Link", help: "Lien") { append("[label](https://)") }
+                button("Img", help: "Image") { append("![alt](https://)") }
+                button("Quote", help: "Citation") { append("\n> ") }
+                button("List", help: "Liste") { append("\n- ") }
+                Spacer(minLength: 0)
+            }
+
+            TextEditor(text: $text)
+                .frame(minHeight: minHeight)
+                .padding(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3))
+                        .allowsHitTesting(false)
+                )
+        }
+        .padding(8)
+    }
+
+    private func button(_ title: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(help)
+    }
+
+    private func append(_ snippet: String) {
+        if text.isEmpty {
+            text = snippet
+        } else {
+            text += snippet
+        }
+    }
+}
+#endif
