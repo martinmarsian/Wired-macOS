@@ -29,6 +29,7 @@ struct FilesView: View {
     @EnvironmentObject var transfers: TransferManager
 
     let connectionID: UUID
+    @AppStorage("filesPreferredViewType") private var preferredFileViewTypeRawValue: Int = FileViewType.columns.rawValue
 
     @ObservedObject var filesViewModel: FilesViewModel
 
@@ -61,6 +62,11 @@ struct FilesView: View {
     @State private var selectedSyncStatusPath: String?
 
     @State var currentSearchTask: Task<Void, Never>?
+
+    private var preferredFileViewType: FileViewType {
+        get { FileViewType(rawValue: preferredFileViewTypeRawValue) ?? .columns }
+        nonmutating set { preferredFileViewTypeRawValue = newValue.rawValue }
+    }
 
     var selectedItem: FileItem? {
         switch filesViewModel.selectedFileViewType {
@@ -963,6 +969,12 @@ struct FilesView: View {
         }
         .searchable(text: $filesViewModel.searchText)
         .wiredSearchFieldFocus()
+        .onAppear {
+            let persistedViewType = preferredFileViewType
+            if filesViewModel.selectedFileViewType != persistedViewType {
+                filesViewModel.selectedFileViewType = persistedViewType
+            }
+        }
         .onChange(of: filesViewModel.searchText, debounceTime: .milliseconds(500)) {
             if filesViewModel.searchText.isEmpty && filesViewModel.isSearchMode {
                 currentSearchTask?.cancel()
@@ -1097,6 +1109,7 @@ struct FilesView: View {
             connectionID: connectionID
         )
         .onChange(of: filesViewModel.selectedFileViewType) { _, newValue in
+            preferredFileViewType = newValue
             updatePrimarySelectionPath(nil)
             selectedSyncStatusPath = nil
             selectedItemsForToolbar.removeAll()
