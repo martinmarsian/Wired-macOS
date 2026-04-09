@@ -352,6 +352,7 @@ private struct MessageBubbleRow: View {
         }
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .padding(.horizontal, 10)
     }
 
     @ViewBuilder
