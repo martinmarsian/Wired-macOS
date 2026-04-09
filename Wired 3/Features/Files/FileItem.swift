@@ -70,6 +70,7 @@ public struct FileItem: Identifiable, Hashable {
     var type: FileType = .file
     var children: [FileItem]?
     var directoryCount: Int = 0
+    var hasDirectoryCount = false
 
     var dataSize: UInt64 = 0
     var rsrcSize: UInt64 = 0
@@ -124,6 +125,7 @@ public struct FileItem: Identifiable, Hashable {
         }
         if let s = message.uint32(forField: "wired.file.directory_count") {
             self.directoryCount = Int(s)
+            self.hasDirectoryCount = true
         }
         if let date = message.date(forField: "wired.file.creation_time") {
             self.creationDate = date

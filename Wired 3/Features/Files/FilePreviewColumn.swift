@@ -72,7 +72,8 @@ struct FilePreviewColumn: View {
 
     private func containsString(for item: FileItem) -> String {
         if item.type.isDirectoryLike {
-            return "\(item.directoryCount)"
+            guard item.hasDirectoryCount else { return "-" }
+            return item.directoryCount == 1 ? "1 item" : "\(item.directoryCount) items"
         }
         return "-"
     }

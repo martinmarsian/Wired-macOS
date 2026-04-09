@@ -258,8 +258,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                         }
                         return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
                     case "size":
-                        let lhsSize = Int64(lhs.dataSize + lhs.rsrcSize)
-                        let rhsSize = Int64(rhs.dataSize + rhs.rsrcSize)
+                        let lhsSize = sortMetric(for: lhs)
+                        let rhsSize = sortMetric(for: rhs)
                         if lhsSize != rhsSize {
                             return lhsSize < rhsSize ? .orderedAscending : .orderedDescending
                         }
@@ -277,7 +277,21 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
         }
 
+        private func sortMetric(for item: FileItem) -> Int64 {
+            if item.type == .file {
+                return Int64(item.dataSize + item.rsrcSize)
+            }
+            if item.type.isDirectoryLike, item.hasDirectoryCount {
+                return Int64(item.directoryCount)
+            }
+            return -1
+        }
+
         private func fileSizeString(_ item: FileItem) -> String {
+            if item.type.isDirectoryLike {
+                guard item.hasDirectoryCount else { return "-" }
+                return item.directoryCount == 1 ? "1 item" : "\(item.directoryCount) items"
+            }
             guard item.type == .file else { return "-" }
             let total = Int64(item.dataSize + item.rsrcSize)
             return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
@@ -299,6 +313,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     item.path,
                     item.name,
                     String(item.type.rawValue),
+                    String(item.directoryCount),
+                    String(item.hasDirectoryCount),
                     String(item.dataSize),
                     String(item.rsrcSize),
                     String(modified)
