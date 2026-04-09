@@ -9,10 +9,13 @@ struct MessageConversationMessagesView: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @AppStorage("TimestampInChat") private var timestampInChat: Bool = false
     @AppStorage("TimestampEveryMin") private var timestampEveryMin: Int = 5
+    @AppStorage("ChatMaxDisplayedMessages") private var maxDisplayedMessages: Int = 100
     let conversation: MessageConversation
     var searchText: String = ""
     @State private var animatedNewMessageID: UUID?
     @State private var revealNewMessage = true
+    @State private var displayedMessageCount: Int = 100
+    @State private var isLoadingMore = false
     var bottomOverlayInset: CGFloat = 0
 
     private let bottomAnchorID = "message-conversation-bottom-anchor"
@@ -29,108 +32,151 @@ struct MessageConversationMessagesView: View {
         !normalizedSearchText.isEmpty
     }
 
-    private var filteredMessages: [MessageEvent] {
-        conversation.filteredMessages(matching: normalizedSearchText)
+    private var windowedMessages: [MessageEvent] {
+        let all = conversation.messages
+        guard displayedMessageCount < all.count else { return all }
+        return Array(all.suffix(displayedMessageCount))
     }
 
-    private var visibleMessageIDs: Set<UUID> {
-        Set(filteredMessages.map(\.id))
+    private var hasOlderMessages: Bool {
+        !isSearching && displayedMessageCount < conversation.messages.count
+    }
+
+    private var filteredMessages: [MessageEvent] {
+        if isSearching {
+            return conversation.filteredMessages(matching: normalizedSearchText)
+        }
+        return windowedMessages
     }
 
     private var displayItems: [MessageConversationDisplayItem] {
-        guard timestampInChat else {
-            return filteredMessages.map(MessageConversationDisplayItem.message)
+        var items: [MessageConversationDisplayItem] = []
+
+        if timestampInChat {
+            var lastInsertedTimestampDate: Date?
+
+            for message in filteredMessages {
+                if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
+                    items.append(.timestamp(anchorMessageID: message.id, date: message.date))
+                    lastInsertedTimestampDate = message.date
+                }
+
+                items.append(
+                    .message(
+                        message,
+                        showNickname: true,
+                        showAvatar: true,
+                        isGroupedWithNext: false
+                    )
+                )
+            }
+        } else {
+            items = filteredMessages.map {
+                .message($0, showNickname: true, showAvatar: true, isGroupedWithNext: false)
+            }
         }
 
-        var items: [MessageConversationDisplayItem] = []
-        var lastInsertedTimestampDate: Date?
+        for index in items.indices {
+            guard case .message(let message, _, _, _) = items[index] else { continue }
 
-        for message in filteredMessages {
-            if shouldInsertTimestamp(before: message, lastTimestampDate: lastInsertedTimestampDate) {
-                items.append(.timestamp(anchorMessageID: message.id, date: message.date))
-                lastInsertedTimestampDate = message.date
-            }
+            let previous = index > 0 ? items[index - 1].messageEvent : nil
+            let sameAsPrevious = previous.map { isSameSender($0, as: message) } ?? false
 
-            items.append(.message(message))
+            let next = index < (items.count - 1) ? items[index + 1].messageEvent : nil
+            let sameAsNext = next.map { isSameSender($0, as: message) } ?? false
+
+            items[index] = .message(
+                message,
+                showNickname: !sameAsPrevious,
+                showAvatar: !sameAsNext,
+                isGroupedWithNext: sameAsNext
+            )
         }
 
         return items
     }
 
     var body: some View {
-        if isSearching && filteredMessages.isEmpty {
-            ContentUnavailableView(
-                "No Matching Messages",
-                systemImage: "magnifyingglass",
-                description: Text("No message in \"\(conversation.title)\" matches \"\(normalizedSearchText)\".")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            messagesList
+        Group {
+            if isSearching && filteredMessages.isEmpty {
+                ContentUnavailableView(
+                    "No Matching Messages",
+                    systemImage: "magnifyingglass",
+                    description: Text("No message in \"\(conversation.title)\" matches \"\(normalizedSearchText)\".")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                messagesList
+            }
+        }
+        .onChange(of: conversation.id) {
+            displayedMessageCount = maxDisplayedMessages
+        }
+        .onChange(of: maxDisplayedMessages) { _, newMax in
+            if displayedMessageCount < newMax {
+                displayedMessageCount = newMax
+            }
         }
     }
 
     private var messagesList: some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
-                    switch item {
-                    case .timestamp(_, let date):
-                        MessageInlineTimestampView(date: date)
-                    case .message(let message):
-                        let previous = index > 0 ? displayItems[index - 1].messageEvent : nil
-                        let next = index < (displayItems.count - 1) ? displayItems[index + 1].messageEvent : nil
-                        let sameAsPrevious = previous.map { isSameSender($0, as: message) } ?? false
-                        let sameAsNext = next.map { isSameSender($0, as: message) } ?? false
-
-                        MessageBubbleRow(
-                            message: message,
-                            currentUserID: runtime.userID,
-                            showNickname: !sameAsPrevious,
-                            showAvatar: !sameAsNext,
-                            isGroupedWithNext: sameAsNext
-                        )
-                            .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
-                            .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
-                            .id(message.id)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if hasOlderMessages {
+                        loadMoreIndicatorView(proxy: proxy)
                     }
-                }
 
-                Color.clear
-                    .frame(height: max(bottomOverlayInset, 0.1))
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .id(bottomAnchorID)
+                    ForEach(displayItems, id: \.id) { item in
+                        switch item {
+                        case .timestamp(_, let date):
+                            MessageInlineTimestampView(date: date)
+                        case .message(let message, let showNickname, let showAvatar, let isGroupedWithNext):
+                            MessageBubbleRow(
+                                message: message,
+                                currentUserID: runtime.userID,
+                                showNickname: showNickname,
+                                showAvatar: showAvatar,
+                                isGroupedWithNext: isGroupedWithNext
+                            )
+                                .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
+                                .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
+                                .id(item.id)
+                        }
+                    }
+
+                    Color.clear
+                        .frame(height: max(bottomOverlayInset, 0.1))
+                        .id(bottomAnchorID)
+                }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .background(.clear)
-            .environment(\.defaultMinListRowHeight, 1)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
             .onChange(of: conversation.messages.last?.id) {
+                guard let lastMessage = conversation.messages.last else { return }
+                let isVisible = !isSearching || lastMessage.matchesSearch(normalizedSearchText)
+                guard isVisible else { return }
+
                 DispatchQueue.main.async {
-                    if let lastMessage = conversation.messages.last,
-                       visibleMessageIDs.contains(lastMessage.id) {
-                        let lastID = lastMessage.id
-                        animatedNewMessageID = lastID
-                        revealNewMessage = false
-                        DispatchQueue.main.async {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                revealNewMessage = true
-                            }
+                    let lastID = lastMessage.id
+                    animatedNewMessageID = lastID
+                    revealNewMessage = false
+                    DispatchQueue.main.async {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            revealNewMessage = true
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            if animatedNewMessageID == lastID {
-                                animatedNewMessageID = nil
-                            }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        if animatedNewMessageID == lastID {
+                            animatedNewMessageID = nil
                         }
                     }
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
             .onAppear {
+                displayedMessageCount = maxDisplayedMessages
                 DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
@@ -171,6 +217,51 @@ struct MessageConversationMessagesView: View {
     private func isSameSender(_ lhs: MessageEvent, as rhs: MessageEvent) -> Bool {
         senderKey(for: lhs) == senderKey(for: rhs)
     }
+
+    @ViewBuilder
+    private func loadMoreIndicatorView(proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            if isLoadingMore {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Button {
+                    loadMoreMessages(with: proxy)
+                } label: {
+                    Label("Load older messages", systemImage: "arrow.up.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .task {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                loadMoreMessages(with: proxy)
+            }
+        }
+    }
+
+    @MainActor
+    private func loadMoreMessages(with proxy: ScrollViewProxy) {
+        guard hasOlderMessages, !isLoadingMore else { return }
+        isLoadingMore = true
+
+        let anchorID = displayItems.first(where: { $0.messageEvent != nil })?.id
+        displayedMessageCount = min(displayedMessageCount + 100, conversation.messages.count)
+
+        DispatchQueue.main.async {
+            if let anchorID {
+                proxy.scrollTo(anchorID, anchor: .top)
+            }
+            isLoadingMore = false
+        }
+    }
 }
 
 private struct MessageBubbleRow: View {
@@ -183,7 +274,7 @@ private struct MessageBubbleRow: View {
     let isGroupedWithNext: Bool
 
     private var primaryImageURL: URL? {
-        message.text.detectedHTTPImageURLs().first
+        message.cachedPrimaryHTTPImageURL
     }
 
     private var trimmedMessageText: String {
@@ -312,13 +403,13 @@ private struct MessageBubbleRow: View {
 
 private enum MessageConversationDisplayItem: Identifiable {
     case timestamp(anchorMessageID: UUID, date: Date)
-    case message(MessageEvent)
+    case message(MessageEvent, showNickname: Bool, showAvatar: Bool, isGroupedWithNext: Bool)
 
     var id: String {
         switch self {
         case .timestamp(let anchorMessageID, _):
             return "timestamp-\(anchorMessageID.uuidString)"
-        case .message(let message):
+        case .message(let message, _, _, _):
             return "message-\(message.id.uuidString)"
         }
     }
@@ -327,7 +418,7 @@ private enum MessageConversationDisplayItem: Identifiable {
         switch self {
         case .timestamp:
             return nil
-        case .message(let message):
+        case .message(let message, _, _, _):
             return message
         }
     }
@@ -354,7 +445,5 @@ private struct MessageInlineTimestampView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 6)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
     }
 }

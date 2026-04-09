@@ -103,6 +103,17 @@ final class MessageEvent: Identifiable {
     let date: Date
     let isFromCurrentUser: Bool
 
+    @ObservationIgnored private var imageURLCacheResolved = false
+    @ObservationIgnored private var cachedImageURL: URL?
+
+    var cachedPrimaryHTTPImageURL: URL? {
+        if !imageURLCacheResolved {
+            imageURLCacheResolved = true
+            cachedImageURL = text.detectedHTTPImageURLs().first
+        }
+        return cachedImageURL
+    }
+
     init(
         id: UUID = UUID(),
         senderNick: String,
@@ -125,6 +136,17 @@ final class MessageEvent: Identifiable {
 @Observable
 @MainActor
 final class MessageConversation: Identifiable {
+    private struct SearchCacheEntry {
+        let query: String
+        let messageCount: Int
+        let lastMessageID: UUID?
+        let title: String
+        let participantNick: String?
+        let matches: Bool
+        let matchingMessages: [MessageEvent]
+        let previewText: String?
+    }
+
     let id: UUID
     let kind: MessageConversationKind
     var title: String
@@ -132,6 +154,7 @@ final class MessageConversation: Identifiable {
     var participantUserID: UInt32?
     var messages: [MessageEvent] = []
     var unreadMessagesCount: Int = 0
+    @ObservationIgnored private var searchCache: SearchCacheEntry?
 
     var lastMessageDate: Date? {
         messages.last?.date
@@ -164,24 +187,15 @@ extension MessageEvent {
 
 extension MessageConversation {
     func matchesSearch(_ rawQuery: String) -> Bool {
-        let query = rawQuery.trimmedMessageSearchQuery
-        guard !query.isEmpty else { return true }
-
-        return matchesMetadata(query) || messages.contains { $0.matchesSearch(query) }
+        searchCacheEntry(for: rawQuery).matches
     }
 
     func filteredMessages(matching rawQuery: String) -> [MessageEvent] {
-        let query = rawQuery.trimmedMessageSearchQuery
-        guard !query.isEmpty else { return messages }
-
-        return messages.filter { $0.matchesSearch(query) }
+        searchCacheEntry(for: rawQuery).matchingMessages
     }
 
     func previewText(matching rawQuery: String) -> String? {
-        let query = rawQuery.trimmedMessageSearchQuery
-        guard !query.isEmpty else { return messages.last?.text }
-
-        return messages.last(where: { $0.matchesSearch(query) })?.text ?? messages.last?.text
+        searchCacheEntry(for: rawQuery).previewText
     }
 
     private func matchesMetadata(_ query: String) -> Bool {
@@ -194,6 +208,49 @@ extension MessageConversation {
         }
 
         return false
+    }
+
+    private func searchCacheEntry(for rawQuery: String) -> SearchCacheEntry {
+        let query = rawQuery.trimmedMessageSearchQuery
+        let lastMessageID = messages.last?.id
+
+        if let searchCache,
+           searchCache.query == query,
+           searchCache.messageCount == messages.count,
+           searchCache.lastMessageID == lastMessageID,
+           searchCache.title == title,
+           searchCache.participantNick == participantNick {
+            return searchCache
+        }
+
+        let entry: SearchCacheEntry
+        if query.isEmpty {
+            entry = SearchCacheEntry(
+                query: query,
+                messageCount: messages.count,
+                lastMessageID: lastMessageID,
+                title: title,
+                participantNick: participantNick,
+                matches: true,
+                matchingMessages: messages,
+                previewText: messages.last?.text
+            )
+        } else {
+            let matchingMessages = messages.filter { $0.matchesSearch(query) }
+            entry = SearchCacheEntry(
+                query: query,
+                messageCount: messages.count,
+                lastMessageID: lastMessageID,
+                title: title,
+                participantNick: participantNick,
+                matches: matchesMetadata(query) || !matchingMessages.isEmpty,
+                matchingMessages: matchingMessages,
+                previewText: matchingMessages.last?.text ?? messages.last?.text
+            )
+        }
+
+        searchCache = entry
+        return entry
     }
 }
 
