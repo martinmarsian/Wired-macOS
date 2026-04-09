@@ -31,6 +31,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
     let rootPath: String
     let treeChildrenByPath: [String: [FileItem]]
     let expandedPaths: Set<String>
+    @Binding var sortColumn: String
+    @Binding var sortAscending: Bool
     let connectionID: UUID
     let quickLookConnection: AsyncConnection?
     let transferManager: TransferManager
@@ -126,7 +128,12 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         sizeColumn.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: true)
         outlineView.addTableColumn(sizeColumn)
 
-        outlineView.sortDescriptors = [column.sortDescriptorPrototype].compactMap { $0 }
+        let initialSortDescriptor = sortDescriptor(
+            for: sortColumn,
+            ascending: sortAscending,
+            outlineView: outlineView
+        ) ?? column.sortDescriptorPrototype
+        outlineView.sortDescriptors = [initialSortDescriptor].compactMap { $0 }
 
         outlineView.delegate = context.coordinator
         outlineView.dataSource = context.coordinator
@@ -163,6 +170,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.applySortDescriptorIfNeeded()
         context.coordinator.syncFromModel(
             rootPath: rootPath,
             childrenByPath: treeChildrenByPath,
@@ -170,6 +178,22 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             selectedPaths: selectedPaths,
             syncPairStatusVersion: syncPairStatusVersion
         )
+    }
+
+    private func sortDescriptor(
+        for key: String,
+        ascending: Bool,
+        outlineView: NSOutlineView
+    ) -> NSSortDescriptor? {
+        guard let column = outlineView.tableColumns.first(where: { $0.sortDescriptorPrototype?.key == key }) else {
+            return nil
+        }
+
+        if let prototype = column.sortDescriptorPrototype {
+            return NSSortDescriptor(key: prototype.key, ascending: ascending)
+        }
+
+        return NSSortDescriptor(key: key, ascending: ascending)
     }
 
     final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
@@ -218,6 +242,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         init(parent: AppKitFilesTreeView) {
             self.parent = parent
             self.currentRootPath = parent.rootPath
+            self.activeSortKey = parent.sortColumn
+            self.activeSortAscending = parent.sortAscending
             let normalizedRoot: String = {
                 if parent.rootPath == "/" { return "/" }
                 let trimmed = parent.rootPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -225,6 +251,32 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }()
             let rootName = normalizedRoot == "/" ? "/" : (normalizedRoot as NSString).lastPathComponent
             self.contextDirectoryTarget = FileItem(rootName, path: normalizedRoot, type: .directory)
+        }
+
+        func applySortDescriptorIfNeeded() {
+            guard let outlineView else { return }
+            let desiredKey = parent.sortColumn
+            let desiredAscending = parent.sortAscending
+            let currentDescriptor = outlineView.sortDescriptors.first
+            if currentDescriptor?.key == desiredKey, currentDescriptor?.ascending == desiredAscending {
+                activeSortKey = desiredKey
+                activeSortAscending = desiredAscending
+                return
+            }
+
+            if outlineView.tableColumns.contains(where: { $0.sortDescriptorPrototype?.key == desiredKey }) {
+                let descriptor = NSSortDescriptor(key: desiredKey, ascending: desiredAscending)
+                outlineView.sortDescriptors = [descriptor]
+                activeSortKey = desiredKey
+                activeSortAscending = desiredAscending
+                refreshTree(rootPath: currentRootPath, childrenByPath: currentChildrenByPath)
+                applyExpandedState(lastExpandedPaths)
+                updateSelection(lastSelectedPaths)
+            } else if let fallback = outlineView.tableColumns.first?.sortDescriptorPrototype {
+                outlineView.sortDescriptors = [fallback]
+                activeSortKey = fallback.key ?? "name"
+                activeSortAscending = fallback.ascending
+            }
         }
 
         @objc func handleScrollChange(_ notification: Notification) {
@@ -692,6 +744,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             let nextDescriptor = outlineView.sortDescriptors.first
             activeSortKey = nextDescriptor?.key ?? "name"
             activeSortAscending = nextDescriptor?.ascending ?? true
+            parent.sortColumn = activeSortKey
+            parent.sortAscending = activeSortAscending
             refreshTree(rootPath: currentRootPath, childrenByPath: currentChildrenByPath)
             applyExpandedState(lastExpandedPaths)
             updateSelection(lastSelectedPaths)

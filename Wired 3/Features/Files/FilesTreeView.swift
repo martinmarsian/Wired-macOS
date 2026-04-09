@@ -4,6 +4,8 @@ import WiredSwift
 struct FilesTreeView: View {
     let connectionID: UUID
     @ObservedObject var filesViewModel: FilesViewModel
+    @Binding var sortColumn: String
+    @Binding var sortAscending: Bool
     @EnvironmentObject private var transfers: TransferManager
     @Environment(\.colorScheme) private var colorScheme
 
@@ -38,6 +40,8 @@ struct FilesTreeView: View {
             rootPath: filesViewModel.treeRootPath,
             treeChildrenByPath: filesViewModel.treeChildrenByPath,
             expandedPaths: filesViewModel.expandedTreePaths,
+            sortColumn: $sortColumn,
+            sortAscending: $sortAscending,
             connectionID: connectionID,
             quickLookConnection: filesViewModel.activeConnection,
             transferManager: transfers,

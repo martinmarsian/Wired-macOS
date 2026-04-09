@@ -30,6 +30,8 @@ struct FilesView: View {
 
     let connectionID: UUID
     @AppStorage("filesPreferredViewType") private var preferredFileViewTypeRawValue: Int = FileViewType.columns.rawValue
+    @AppStorage("filesTreeSortColumn") private var treeSortColumn: String = "name"
+    @AppStorage("filesTreeSortAscending") private var treeSortAscending = true
 
     @ObservedObject var filesViewModel: FilesViewModel
 
@@ -770,6 +772,8 @@ struct FilesView: View {
         FilesTreeView(
             connectionID: connectionID,
             filesViewModel: filesViewModel,
+            sortColumn: $treeSortColumn,
+            sortAscending: $treeSortAscending,
             onRequestCreateFolder: { directory in
                 guard canCreateFolder(in: directory) else { return }
                 createFolderTargetOverride = directory
