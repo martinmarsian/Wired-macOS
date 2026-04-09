@@ -121,41 +121,71 @@ private struct MainAppCommands: Commands {
         }
 
         CommandGroup(before: .windowSize) {
-            Button("Chats") {
+            Button {
                 if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
                     runtime.selectedTab = .chats
+                }
+            } label: {
+                Label {
+                    Text("Chats")
+                } icon: {
+                    Image(systemName: "text.bubble")
                 }
             }
             .keyboardShortcut("c", modifiers: [.option])
             .disabled(controller.activeConnectionID == nil)
 
-            Button("Messages") {
+            Button {
                 if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
                     runtime.selectedTab = .messages
+                }
+            } label: {
+                Label {
+                    Text("Messages")
+                } icon: {
+                    Image(systemName: "ellipsis.message")
                 }
             }
             .keyboardShortcut("m", modifiers: [.option])
             .disabled(controller.activeConnectionID == nil)
 
-            Button("Boards") {
+            Button {
                 if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
                     runtime.selectedTab = .boards
+                }
+            } label: {
+                Label {
+                    Text("Boards")
+                } icon: {
+                    Image(systemName: "newspaper")
                 }
             }
             .keyboardShortcut("b", modifiers: [.option])
             .disabled(controller.activeConnectionID == nil)
 
-            Button("Files") {
+            Button {
                 if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
                     runtime.selectedTab = .files
+                }
+            } label: {
+                Label {
+                    Text("Files")
+                } icon: {
+                    Image(systemName: "folder")
                 }
             }
             .keyboardShortcut("f", modifiers: [.option])
             .disabled(controller.activeConnectionID == nil)
 
-            Button("Settings") {
+            Button {
                 if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
                     runtime.selectedTab = .settings
+                }
+            } label: {
+                Label {
+                    Text("Settings")
+                } icon: {
+                    Image(systemName: "gear")
                 }
             }
             .keyboardShortcut("s", modifiers: [.option])
@@ -378,9 +408,9 @@ private enum OverlayGlyphs {
         return "About \(appName)"
     }
 
-    static var leftLine: String { decode([130, 189, 190, 163, 178, 243, 135, 187, 190, 243, 132, 188, 161, 191, 183, 223], key: 0xE0) }
-    static var rightLine: String { decode([191, 128, 186, 185, 243, 135, 187, 190, 243, 189, 178, 163, 135], key: 0xF0) }
-    static var lowerLine: String { decode([166, 243, 135, 161, 186, 177, 166, 135, 182, 243, 135, 188, 243, 190, 161, 161, 186, 160, 160], key: 0xC7) }
+    static var leftLine: String { decode([163, 140, 143, 147, 133, 192, 148, 136, 133, 192, 151, 143, 146, 140, 132, 204], key: 0xE0) }
+    static var rightLine: String { decode([159, 128, 149, 158, 208, 132, 152, 149, 208, 158, 181, 136, 132], key: 0xF0) }
+    static var lowerLine: String { decode([147, 181, 174, 165, 178, 179, 162, 231, 179, 168, 231, 138, 168, 181, 181, 174, 180], key: 0xC7) }
 
     private static func decode(_ bytes: [UInt8], key: UInt8) -> String {
         String(bytes: bytes.map { $0 ^ key }, encoding: .utf8) ?? ""
