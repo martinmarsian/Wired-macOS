@@ -25,6 +25,12 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
     weak var transferManager: TransferManager?
     weak var connectionController: ConnectionController?
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let fileMenu = NSApp.mainMenu?.item(withTitle: "File") {
+            fileMenu.title = "Connection"
+        }
+    }
+
     func applicationShouldSaveApplicationState(_ sender: NSApplication) -> Bool {
         false
     }
@@ -114,12 +120,50 @@ private struct MainAppCommands: Commands {
             .keyboardShortcut(",", modifiers: .command)
         }
 
-        CommandGroup(before: .windowList) {
-            Button("Chat History") {
-                openWindow(id: "chat-history")
+        CommandGroup(before: .windowSize) {
+            Button("Chats") {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .chats
+                }
             }
-            .keyboardShortcut("h", modifiers: [.command, .option])
+            .keyboardShortcut("c", modifiers: [.option])
+            .disabled(controller.activeConnectionID == nil)
+
+            Button("Messages") {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .messages
+                }
+            }
+            .keyboardShortcut("m", modifiers: [.option])
+            .disabled(controller.activeConnectionID == nil)
+
+            Button("Boards") {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .boards
+                }
+            }
+            .keyboardShortcut("b", modifiers: [.option])
+            .disabled(controller.activeConnectionID == nil)
+
+            Button("Files") {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .files
+                }
+            }
+            .keyboardShortcut("f", modifiers: [.option])
+            .disabled(controller.activeConnectionID == nil)
+
+            Button("Settings") {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .settings
+                }
+            }
+            .keyboardShortcut("s", modifiers: [.option])
+            .disabled(controller.activeConnectionID == nil)
+
+            Divider()
         }
+
 
         CommandMenu("Find") {
             Button("Find") {
@@ -130,15 +174,21 @@ private struct MainAppCommands: Commands {
         }
 
         CommandGroup(replacing: .newItem) {
-            Button("New Connection") {
+            Button {
                 controller.presentedNewConnectionWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
                 controller.presentNewConnection()
+            } label: {
+                Label {
+                    Text("New Connection")
+                } icon: {
+                    Image(systemName: "network")
+                }
             }
             .keyboardShortcut("k", modifiers: [.command])
 
             Divider()
 
-            Menu("New Window for Bookmark") {
+            Menu {
                 let bookmarkItems = controller.bookmarkMenuItems()
                 if bookmarkItems.isEmpty {
                     Text("No Bookmarks")
@@ -151,10 +201,16 @@ private struct MainAppCommands: Commands {
                         }
                     }
                 }
+            } label: {
+                Label {
+                    Text("Window Tab for Bookmark")
+                } icon: {
+                    Image(systemName: "macwindow.badge.plus")
+                }
             }
             .disabled(controller.bookmarkMenuItems().isEmpty)
 
-            Menu("New Tab for Bookmark") {
+            Menu {
                 let bookmarkItems = controller.bookmarkMenuItems()
                 if bookmarkItems.isEmpty {
                     Text("No Bookmarks")
@@ -167,15 +223,103 @@ private struct MainAppCommands: Commands {
                         }
                     }
                 }
+            } label: {
+                Label {
+                    Text("New Tab for Bookmark")
+                } icon: {
+                    Image(systemName: "macwindow.on.rectangle")
+                }
             }
             .disabled(controller.bookmarkMenuItems().isEmpty)
 
             Divider()
 
-            Button("Change password...") {
+            Button {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    controller.disconnect(connectionID: id, runtime: runtime)
+                }
+            } label: {
+                Label {
+                    Text("Disconnect")
+                } icon: {
+                    Image(systemName: "cable.connector.slash")
+                }
+            }
+            .keyboardShortcut("d", modifiers: [.command])
+            .disabled(!controller.canDisconnect)
+
+            Button {
+                controller.reconnectActiveConnection()
+            } label: {
+                Label {
+                    Text("Reconnect")
+                } icon: {
+                    Image(systemName: "cable.connector.horizontal")
+                }
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
+            .disabled(!controller.canReconnect)
+
+            Divider()
+
+            Button {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .infos
+                }
+            } label: {
+                Label {
+                    Text("Show Server Info")
+                } icon: {
+                    Image(systemName: "info.circle.fill")
+                }
+            }
+            .keyboardShortcut("i", modifiers: [.command])
+            .disabled(!controller.canShowServerInfo)
+
+            Divider()
+
+            Button {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .chats
+                    runtime.pendingTopicSheet = true
+                }
+            } label: {
+                Label {
+                    Text("Set Topic")
+                } icon: {
+                    Image(systemName: "message.badge.waveform.fill")
+                }
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(!controller.canSetTopic)
+
+            Button {
+                if let id = controller.activeConnectionID, let runtime = controller.runtime(for: id) {
+                    runtime.selectedTab = .messages
+                    runtime.pendingBroadcastConversation = true
+                }
+            } label: {
+                Label {
+                    Text("New Broadcast")
+                } icon: {
+                    Image(systemName: "megaphone.fill")
+                }
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            .disabled(!controller.canBroadcast)
+
+            Divider()
+
+            Button {
                 controller.presentChangePasswordWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
                 if let id = controller.activeConnectionID {
                     controller.presentChangePassword = id
+                }
+            } label: {
+                Label {
+                    Text("Change password...")
+                } icon: {
+                    Image(systemName: "lock.fill")
                 }
             }
             .disabled(!controller.canChangePassword)

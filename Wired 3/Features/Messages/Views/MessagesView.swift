@@ -195,6 +195,12 @@ struct MessagesView: View {
                 runtime.resetUnreads(conversation)
             }
         }
+        .task(id: runtime.pendingBroadcastConversation) {
+            guard runtime.pendingBroadcastConversation else { return }
+            let conversation = runtime.ensureBroadcastConversation()
+            runtime.selectedMessageConversationID = conversation.id
+            runtime.pendingBroadcastConversation = false
+        }
         .confirmationDialog(
             "Delete Conversation?",
             isPresented: Binding(

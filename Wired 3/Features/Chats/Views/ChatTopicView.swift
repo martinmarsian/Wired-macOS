@@ -214,5 +214,11 @@ struct ChatTopicView: View {
         }
         // .background(.clear)
         .backgroundEdgeFade(top: 30, bottom: 0)
+        .task(id: runtime.pendingTopicSheet) {
+            guard runtime.pendingTopicSheet, canSetTopic else { return }
+            topicText = ""
+            showTopicSheet = true
+            runtime.pendingTopicSheet = false
+        }
     }
 }

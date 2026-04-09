@@ -563,6 +563,59 @@ final class ConnectionController {
         return r.hasPrivilege("wired.account.account.change_password")
     }
 
+    @MainActor
+    var canDisconnect: Bool {
+        guard let id = activeConnectionID, let r = runtime(for: id) else { return false }
+        return r.status == .connected || r.status == .connecting
+    }
+
+    @MainActor
+    var canReconnect: Bool {
+        activeConnectionID != nil
+    }
+
+    @MainActor
+    var canShowServerInfo: Bool {
+        guard let id = activeConnectionID, let r = runtime(for: id) else { return false }
+        return r.status == .connected && r.joined
+    }
+
+    @MainActor
+    var canSetTopic: Bool {
+        guard let id = activeConnectionID, let r = runtime(for: id), r.status == .connected, r.joined else { return false }
+        return r.hasPrivilege("wired.account.chat.set_topic")
+    }
+
+    @MainActor
+    var canBroadcast: Bool {
+        guard let id = activeConnectionID, let r = runtime(for: id), r.status == .connected, r.joined else { return false }
+        return r.hasPrivilege("wired.account.message.broadcast")
+    }
+
+    @MainActor
+    func reconnectActiveConnection() {
+        guard let id = activeConnectionID, let r = runtime(for: id) else { return }
+        if r.status != .disconnected {
+            withStateLock {
+                autoReconnectBlockedReasons.removeValue(forKey: id)
+                tasks[id]?.cancel()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self else { return }
+                if let config = self.configuration(for: id) {
+                    self.connect(config)
+                }
+            }
+        } else {
+            withStateLock {
+                autoReconnectBlockedReasons.removeValue(forKey: id)
+            }
+            if let config = configuration(for: id) {
+                connect(config)
+            }
+        }
+    }
+
     func activeBookmarkedConnectionID() -> UUID? {
         guard let id = activeConnectionID else { return nil }
         guard let modelContext else { return nil }

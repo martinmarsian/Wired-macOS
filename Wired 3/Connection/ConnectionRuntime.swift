@@ -298,6 +298,8 @@ final class ConnectionRuntime: Identifiable {
     var private_chats: [Chat] = []
 
     var pendingChatInvitation: ChatInvitation?
+    var pendingTopicSheet: Bool = false
+    var pendingBroadcastConversation: Bool = false
     var selectedMessageConversationID: UUID?
     var messageConversations: [MessageConversation] = []
 
