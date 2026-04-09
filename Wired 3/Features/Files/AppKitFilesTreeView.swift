@@ -74,6 +74,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
+        scrollView.automaticallyAdjustsContentInsets = false
 
         let outlineView = QuickLookOutlineView()
         outlineView.usesAlternatingRowBackgroundColors = false
@@ -144,6 +145,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         scrollView.documentView = outlineView
         context.coordinator.outlineView = outlineView
         context.coordinator.scrollView = scrollView
+        context.coordinator.applyHeaderInset()
         context.coordinator.syncFromModel(
             rootPath: rootPath,
             childrenByPath: treeChildrenByPath,
@@ -159,10 +161,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             object: scrollView.contentView
         )
 
-        let offsetToRestore = savedScrollOffset
         DispatchQueue.main.async {
-            scrollView.contentView.scroll(to: offsetToRestore)
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            context.coordinator.restoreScrollPosition(savedScrollOffset)
         }
 
         return scrollView
@@ -170,6 +170,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.applyHeaderInset()
         context.coordinator.applySortDescriptorIfNeeded()
         context.coordinator.syncFromModel(
             rootPath: rootPath,
@@ -226,6 +227,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         private var lastSelectedPaths: Set<String> = []
         private var activeSortKey: String = "name"
         private var activeSortAscending = true
+        private var isRestoringScrollPosition = false
         private lazy var quickLookController = FilesQuickLookController(
             connectionID: parent.connectionID,
             sourceFrameProvider: { [weak self] path in
@@ -281,7 +283,50 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
         @objc func handleScrollChange(_ notification: Notification) {
             guard let sv = scrollView else { return }
-            parent.onScrollOffsetChange(sv.contentView.bounds.origin)
+            if isRestoringScrollPosition { return }
+            parent.onScrollOffsetChange(normalizedScrollOffset(from: sv.contentView.bounds.origin))
+        }
+
+        func restoreScrollPosition(_ offset: CGPoint) {
+            guard let scrollView, let outlineView else { return }
+
+            isRestoringScrollPosition = true
+            defer {
+                DispatchQueue.main.async { [weak self] in
+                    self?.isRestoringScrollPosition = false
+                }
+            }
+
+            let restoredOffset = denormalizedScrollOffset(from: offset)
+
+            if offset.y <= 0.5 {
+                if outlineView.numberOfRows > 0 {
+                    outlineView.scrollRowToVisible(0)
+                }
+                scrollView.contentView.scroll(to: denormalizedScrollOffset(from: .zero))
+            } else {
+                scrollView.contentView.scroll(to: restoredOffset)
+            }
+
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        func applyHeaderInset() {
+            guard let scrollView, let outlineView else { return }
+            let headerHeight = outlineView.headerView?.frame.height ?? 0
+            scrollView.contentView.contentInsets = NSEdgeInsets(top: headerHeight, left: 0, bottom: 0, right: 0)
+        }
+
+        private func normalizedScrollOffset(from rawOffset: CGPoint) -> CGPoint {
+            CGPoint(x: rawOffset.x, y: max(0, rawOffset.y + topContentInset))
+        }
+
+        private func denormalizedScrollOffset(from normalizedOffset: CGPoint) -> CGPoint {
+            CGPoint(x: normalizedOffset.x, y: normalizedOffset.y - topContentInset)
+        }
+
+        private var topContentInset: CGFloat {
+            scrollView?.contentView.contentInsets.top ?? 0
         }
 
         private func isDirectory(_ item: FileItem) -> Bool {
