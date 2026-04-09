@@ -1697,10 +1697,11 @@ final class ConnectionController {
                     if let chat = await runtime.chat(withID: chatID) {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.say") {
+                                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                                 await MainActor.run {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
-                                        ChatEvent(chat: chat, user: user, type: .say, text: say),
+                                        ChatEvent(chat: chat, user: user, type: .say, text: say, attachments: attachments),
                                         to: chat,
                                         runtime: runtime
                                     )
@@ -1748,10 +1749,11 @@ final class ConnectionController {
                     if let chat = await runtime.chat(withID: chatID) {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.me") {
+                                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                                 await MainActor.run {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
-                                        ChatEvent(chat: chat, user: user, type: .me, text: say),
+                                        ChatEvent(chat: chat, user: user, type: .me, text: say, attachments: attachments),
                                         to: chat,
                                         runtime: runtime
                                     )
@@ -1804,9 +1806,10 @@ final class ConnectionController {
         case "wired.message.message":
             if let senderUserID = message.uint32(forField: "wired.user.id"),
                let body = message.string(forField: "wired.message.message") {
+                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                 await MainActor.run {
                     guard senderUserID != runtime.userID else { return }
-                    runtime.receivePrivateMessage(from: senderUserID, text: body)
+                    runtime.receivePrivateMessage(from: senderUserID, text: body, attachments: attachments)
                     let sender = runtime.messageConversations.first(where: {
                         $0.kind == .direct && $0.participantUserID == senderUserID
                     })?.title ?? "User"

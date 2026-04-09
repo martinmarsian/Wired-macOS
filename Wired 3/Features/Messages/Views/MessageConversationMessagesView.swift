@@ -277,6 +277,14 @@ private struct MessageBubbleRow: View {
         message.cachedPrimaryHTTPImageURL
     }
 
+    private var imageAttachments: [ChatAttachmentDescriptor] {
+        message.attachments.filter(\.isImage)
+    }
+
+    private var fileAttachments: [ChatAttachmentDescriptor] {
+        message.attachments.filter { !$0.isImage }
+    }
+
     private var trimmedMessageText: String {
         message.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -287,7 +295,7 @@ private struct MessageBubbleRow: View {
     }
 
     private var shouldShowTextBubble: Bool {
-        !isImageOnlyMessage
+        !trimmedMessageText.isEmpty && !isImageOnlyMessage
     }
 
     private var isEmojiOnlyMessage: Bool {
@@ -357,7 +365,7 @@ private struct MessageBubbleRow: View {
                 Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
                     .messageBubbleStyle(
                         isFromYou: isFromYou,
-                        showsTail: primaryImageURL == nil && !isGroupedWithNext
+                        showsTail: primaryImageURL == nil && imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext
                     )
                     .containerRelativeFrame(
                         .horizontal,
@@ -372,7 +380,23 @@ private struct MessageBubbleRow: View {
                 ChatRemoteImageBubbleView(
                     url: primaryImageURL,
                     isFromYou: isFromYou,
-                    showsTail: !isGroupedWithNext
+                    showsTail: imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext
+                )
+            }
+
+            ForEach(Array(imageAttachments.enumerated()), id: \.element.id) { index, attachment in
+                ChatAttachmentImageBubbleView(
+                    attachment: attachment,
+                    isFromYou: isFromYou,
+                    showsTail: index == imageAttachments.count - 1 && fileAttachments.isEmpty && !isGroupedWithNext
+                )
+            }
+
+            ForEach(Array(fileAttachments.enumerated()), id: \.element.id) { index, attachment in
+                ChatAttachmentFileBubbleView(
+                    attachment: attachment,
+                    isFromYou: isFromYou,
+                    showsTail: index == fileAttachments.count - 1 && !isGroupedWithNext
                 )
             }
         }

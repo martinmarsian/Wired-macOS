@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -21,9 +22,16 @@ struct ChatView: View {
 #if os(iOS)
     @State private var chatScrollTrigger: Int = 0
 #endif
+#if os(macOS)
+    @State private var isAttachmentDropTargeted = false
+#endif
 
     private var chatInput: String {
         runtime.chatDrafts[chat.id] ?? ""
+    }
+
+    private var chatDraftAttachments: [ChatDraftAttachment] {
+        runtime.chatDraftAttachments[chat.id] ?? []
     }
 
     private var chatInputBinding: Binding<String> {
@@ -50,10 +58,11 @@ struct ChatView: View {
     }
 
     private var composerOverlayInset: CGFloat {
+        let attachmentInset: CGFloat = chatDraftAttachments.isEmpty ? 0 : 42
 #if os(macOS)
-        58
+        return 58 + attachmentInset
 #else
-        76
+        return 76 + attachmentInset
 #endif
     }
 
@@ -85,43 +94,78 @@ struct ChatView: View {
                     .environment(runtime)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                HStack(alignment: .top, spacing: 0) {
-                    ConversationComposer(
-                        text: chatInputBinding,
-                        placeholder: "Chat here…",
-                        isEnabled: true,
-                        onSend: { text in
-                            await runtime.setChatTyping(chatID: chat.id, isTyping: false)
-                            do {
-                                _ = try await runtime.sendChatMessage(chat.id, text)
-                            } catch {
-                                runtime.lastError = error
+                VStack(alignment: .leading, spacing: 6) {
+                    if !chatDraftAttachments.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(chatDraftAttachments) { attachment in
+                                    ChatDraftAttachmentChipView(attachment: attachment) {
+                                        runtime.removeChatDraftAttachment(attachment, for: chat.id)
+                                    }
+                                }
                             }
-                        },
-                        onTextChanged: { newValue in
-                            handleComposerTextChanged(newValue)
-                        },
-                        onDisappear: {
-                            stopTypingUpdates(sendStopSignal: true)
+                            .padding(.leading, 10)
+                            .padding(.trailing, 8)
                         }
-                    )
+                    }
+
+                    HStack(alignment: .top, spacing: 0) {
+                        ConversationComposer(
+                            text: chatInputBinding,
+                            placeholder: chatDraftAttachments.isEmpty ? "Chat here…" : "Add a message or press Return to send…",
+                            isEnabled: true,
+                            allowsEmptySubmit: !chatDraftAttachments.isEmpty,
+                            onSend: { text in
+                                await runtime.setChatTyping(chatID: chat.id, isTyping: false)
+                                do {
+                                    _ = try await runtime.sendChatMessage(chat.id, text, attachments: chatDraftAttachments)
+                                    runtime.clearChatDraftAttachments(for: chat.id)
+                                } catch {
+                                    runtime.chatDrafts[chat.id] = text
+                                    runtime.lastError = error
+                                }
+                            },
+                            onTextChanged: { newValue in
+                                handleComposerTextChanged(newValue)
+                            },
+                            onDisappear: {
+                                stopTypingUpdates(sendStopSignal: true)
+                            }
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
 #if os(macOS)
-                    Button {
-                        NSApp.orderFrontCharacterPalette(nil)
-                    } label: {
-                        Image(systemName: "face.smiling")
-                            .font(.title3)
-                    }
-                    .foregroundColor(.gray)
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
-                    .padding(.trailing, 8)
+                        Button {
+                            NSApp.orderFrontCharacterPalette(nil)
+                        } label: {
+                            Image(systemName: "face.smiling")
+                                .font(.title3)
+                        }
+                        .foregroundColor(.gray)
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
+                        .padding(.trailing, 8)
 #endif
+                    }
                 }
                 .backgroundEdgeFade(top: 0, bottom: 60)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
+#if os(macOS)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.accentColor.opacity(isAttachmentDropTargeted ? 0.9 : 0), lineWidth: 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.accentColor.opacity(isAttachmentDropTargeted ? 0.08 : 0))
+                    )
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+            .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isAttachmentDropTargeted) { providers in
+                handleFileDrop(providers: providers)
+            }
+#endif
             .contentMargins(.bottom, 30, for: .scrollIndicators)
 
 #if os(macOS)
@@ -277,6 +321,44 @@ struct ChatView: View {
             await runtime.setChatTyping(chatID: chatID, isTyping: false)
         }
     }
+
+#if os(macOS)
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        let fileProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+
+        guard !fileProviders.isEmpty else {
+            return false
+        }
+
+        for provider in fileProviders {
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, error in
+                if let error {
+                    Task { @MainActor in
+                        runtime.lastError = error
+                    }
+                    return
+                }
+
+                guard let data,
+                      let fileURL = URL(dataRepresentation: data, relativeTo: nil) else {
+                    return
+                }
+
+                Task { @MainActor in
+                    do {
+                        try runtime.addChatDraftAttachment(fileURL, for: chat.id)
+                    } catch {
+                        runtime.lastError = error
+                    }
+                }
+            }
+        }
+
+        return true
+    }
+#endif
 }
 
 struct ConversationComposer: View {
@@ -284,6 +366,7 @@ struct ConversationComposer: View {
 
     let placeholder: String
     let isEnabled: Bool
+    var allowsEmptySubmit: Bool = false
     let onSend: (String) async -> Void
     var onTextChanged: ((String) -> Void)?
     var onDisappear: (() -> Void)?
@@ -331,6 +414,7 @@ struct ConversationComposer: View {
                         text: $text,
                         dynamicHeight: $inputHeight,
                         isEnabled: isEnabled,
+                        allowsEmptySubmit: allowsEmptySubmit,
                         onSubmit: {
                             submit()
                         },
@@ -403,16 +487,18 @@ struct ConversationComposer: View {
         guard isEnabled else { return }
 
         var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return }
+        guard !value.isEmpty || allowsEmptySubmit else { return }
 
-        if substituteEmoji {
+        if substituteEmoji, !value.isEmpty {
             value = value.replacingEmoticons(using: emojiSubstitutions)
         }
 
         let finalText = value
         Task { await onSend(finalText) }
 
-        messageHistory.append(finalText)
+        if !finalText.isEmpty {
+            messageHistory.append(finalText)
+        }
         historyIndex = nil
         historyDraft = ""
         text = ""
@@ -642,6 +728,7 @@ private struct ChatInputField: NSViewRepresentable {
     @Binding var text: String
     @Binding var dynamicHeight: CGFloat
     var isEnabled: Bool = true
+    var allowsEmptySubmit: Bool = false
 
     let onSubmit: () -> Void
     let onHistoryUp: () -> Void
@@ -653,7 +740,12 @@ private struct ChatInputField: NSViewRepresentable {
     var hasSuggestions: Bool = false
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, dynamicHeight: $dynamicHeight, onSubmit: onSubmit)
+        Coordinator(
+            text: $text,
+            dynamicHeight: $dynamicHeight,
+            allowsEmptySubmit: allowsEmptySubmit,
+            onSubmit: onSubmit
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -755,11 +847,13 @@ private struct ChatInputField: NSViewRepresentable {
         context.coordinator.onSuggestionSelect = onSuggestionSelect
         context.coordinator.onSuggestionDismiss = onSuggestionDismiss
         context.coordinator.hasSuggestions = hasSuggestions
+        context.coordinator.allowsEmptySubmit = allowsEmptySubmit
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var textBinding: Binding<String>
         var dynamicHeightBinding: Binding<CGFloat>
+        var allowsEmptySubmit: Bool
         var onSubmit: () -> Void
         var onHistoryUp: (() -> Void)?
         var onHistoryDown: (() -> Void)?
@@ -774,9 +868,15 @@ private struct ChatInputField: NSViewRepresentable {
         private let maximumLineCount: CGFloat = 5
         private let minimumHeight: CGFloat = 22
 
-        init(text: Binding<String>, dynamicHeight: Binding<CGFloat>, onSubmit: @escaping () -> Void) {
+        init(
+            text: Binding<String>,
+            dynamicHeight: Binding<CGFloat>,
+            allowsEmptySubmit: Bool,
+            onSubmit: @escaping () -> Void
+        ) {
             self.textBinding = text
             self.dynamicHeightBinding = dynamicHeight
+            self.allowsEmptySubmit = allowsEmptySubmit
             self.onSubmit = onSubmit
         }
 
@@ -871,6 +971,8 @@ private struct ChatInputField: NSViewRepresentable {
                 if flags.contains(.shift) || flags.contains(.option) {
                     return false
                 } else {
+                    let trimmed = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty || allowsEmptySubmit else { return true }
                     onSubmit()
                     return true
                 }

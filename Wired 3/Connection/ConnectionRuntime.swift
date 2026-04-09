@@ -9,6 +9,8 @@
 import SwiftUI
 import SwiftData
 import WiredSwift
+import UniformTypeIdentifiers
+import CryptoKit
 
 struct ChatInvitation: Equatable {
     let chatID: UInt32
@@ -102,6 +104,7 @@ final class MessageEvent: Identifiable {
     let text: String
     let date: Date
     let isFromCurrentUser: Bool
+    let attachments: [ChatAttachmentDescriptor]
 
     @ObservationIgnored private var imageURLCacheResolved = false
     @ObservationIgnored private var cachedImageURL: URL?
@@ -121,7 +124,8 @@ final class MessageEvent: Identifiable {
         senderIcon: Data?,
         text: String,
         date: Date = Date(),
-        isFromCurrentUser: Bool
+        isFromCurrentUser: Bool,
+        attachments: [ChatAttachmentDescriptor] = []
     ) {
         self.id = id
         self.senderNick = senderNick
@@ -130,6 +134,7 @@ final class MessageEvent: Identifiable {
         self.text = text
         self.date = date
         self.isFromCurrentUser = isFromCurrentUser
+        self.attachments = attachments
     }
 }
 
@@ -271,7 +276,9 @@ final class ConnectionRuntime: Identifiable {
     var selectedTab: MainTab = .chats
     var selectedChatID: UInt32? = 1
     var chatDrafts: [UInt32: String] = [:]
+    var chatDraftAttachments: [UInt32: [ChatDraftAttachment]] = [:]
     var messageDrafts: [UUID: String] = [:]
+    var messageDraftAttachments: [UUID: [ChatDraftAttachment]] = [:]
     var userID: UInt32 = 0
     var privileges: [String: Any] = [:]
 
@@ -996,24 +1003,49 @@ final class ConnectionRuntime: Identifiable {
         return conversation
     }
 
-    func sendPrivateMessage(_ text: String, in conversation: MessageConversation) async throws {
+    func sendPrivateMessage(_ text: String, in conversation: MessageConversation, attachments: [ChatDraftAttachment] = []) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         guard conversation.kind == .direct else { return }
 
         guard let recipientUserID = resolvedRecipientUserID(for: conversation) else {
             throw WiredError(withTitle: "Private Message", message: "User is offline.")
         }
 
+        try ChatDraftAttachment.validateDraftCollection(attachments)
+
+        var attachmentIDs: [String] = []
+        attachmentIDs.reserveCapacity(attachments.count)
+
+        for attachment in attachments {
+            attachmentIDs.append(try await uploadPrivateMessageAttachment(attachment, toUserID: recipientUserID))
+        }
+
         let message = P7Message(withName: "wired.message.send_message", spec: spec)
         message.addParameter(field: "wired.user.id", value: recipientUserID)
         message.addParameter(field: "wired.message.message", value: trimmed)
+        if !attachmentIDs.isEmpty {
+            message.addParameter(field: "wired.attachment.ids", value: attachmentIDs)
+        }
 
         if let response = try await send(message), response.name == "wired.error" {
             throw WiredError(message: response)
         }
 
-        appendOwnPrivateMessage(trimmed, to: conversation)
+        let descriptors = zip(attachments, attachmentIDs).map { attachment, id in
+            ChatAttachmentDescriptor(
+                id: id,
+                name: attachment.fileName,
+                mediaType: attachment.mediaType,
+                size: attachment.size,
+                sha256: "",
+                inlinePreview: attachment.isImage,
+                width: nil,
+                height: nil
+            )
+        }
+
+        appendOwnPrivateMessage(trimmed, attachments: descriptors, to: conversation)
     }
 
     func sendBroadcastMessage(_ text: String) async throws {
@@ -1031,7 +1063,7 @@ final class ConnectionRuntime: Identifiable {
         appendOwnMessage(trimmed, to: conversation, isBroadcast: true)
     }
 
-    func receivePrivateMessage(from userID: UInt32, text: String) {
+    func receivePrivateMessage(from userID: UInt32, text: String, attachments: [ChatAttachmentDescriptor] = []) {
         let sender = onlineUser(withID: userID)
         let nick = sender?.nick ?? "User #\(userID)"
         let icon = sender?.icon
@@ -1044,6 +1076,7 @@ final class ConnectionRuntime: Identifiable {
             fromNick: nick,
             userID: userID,
             icon: icon,
+            attachments: attachments,
             to: conversation
         )
     }
@@ -1118,11 +1151,11 @@ final class ConnectionRuntime: Identifiable {
         onlineUser(for: conversation)?.icon
     }
 
-    private func appendOwnPrivateMessage(_ text: String, to conversation: MessageConversation) {
-        appendOwnMessage(text, to: conversation, isBroadcast: false)
+    private func appendOwnPrivateMessage(_ text: String, attachments: [ChatAttachmentDescriptor] = [], to conversation: MessageConversation) {
+        appendOwnMessage(text, attachments: attachments, to: conversation, isBroadcast: false)
     }
 
-    private func appendOwnMessage(_ text: String, to conversation: MessageConversation, isBroadcast: Bool) {
+    private func appendOwnMessage(_ text: String, attachments: [ChatAttachmentDescriptor] = [], to conversation: MessageConversation, isBroadcast: Bool) {
         let me = onlineUser(withID: userID)
         let nick = me?.nick ?? "You"
         let icon = me?.icon
@@ -1132,7 +1165,8 @@ final class ConnectionRuntime: Identifiable {
                 senderUserID: userID,
                 senderIcon: icon,
                 text: text,
-                isFromCurrentUser: true
+                isFromCurrentUser: true,
+                attachments: attachments
             )
         )
         if selectedMessageConversationID == nil || selectedMessageConversationID == conversation.id {
@@ -1151,6 +1185,7 @@ final class ConnectionRuntime: Identifiable {
         fromNick nick: String,
         userID: UInt32,
         icon: Data?,
+        attachments: [ChatAttachmentDescriptor] = [],
         to conversation: MessageConversation
     ) {
         conversation.messages.append(
@@ -1159,7 +1194,8 @@ final class ConnectionRuntime: Identifiable {
                 senderUserID: userID,
                 senderIcon: icon,
                 text: text,
-                isFromCurrentUser: false
+                isFromCurrentUser: false,
+                attachments: attachments
             )
         )
 
@@ -1868,8 +1904,12 @@ final class ConnectionRuntime: Identifiable {
 
     // MARK: -
 
-    func sendChatMessage( _ chatID: UInt32, _ text: String) async throws -> P7Message? {
+    func sendChatMessage(_ chatID: UInt32, _ text: String, attachments: [ChatDraftAttachment] = []) async throws -> P7Message? {
         if text.starts(with: "/") {
+            if !attachments.isEmpty {
+                throw WiredError(withTitle: "Attachment", message: "Attachments are currently supported only for regular chat messages.")
+            }
+
             if text == ChatCommand.clear.rawValue {
                 await MainActor.run {
                     self.clearChat(chatID)
@@ -1886,13 +1926,268 @@ final class ConnectionRuntime: Identifiable {
                 return try await self.send(message)
             }
         } else {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty || !attachments.isEmpty else { return nil }
+
+            try ChatDraftAttachment.validateDraftCollection(attachments)
+
+            var attachmentIDs: [String] = []
+            attachmentIDs.reserveCapacity(attachments.count)
+
+            for attachment in attachments {
+                attachmentIDs.append(try await uploadChatAttachment(attachment, toChatID: chatID))
+            }
+
             let message = P7Message(withName: "wired.chat.send_say", spec: spec)
             message.addParameter(field: "wired.chat.id", value: chatID)
-            message.addParameter(field: "wired.chat.say", value: text)
+            message.addParameter(field: "wired.chat.say", value: trimmed)
+            if !attachmentIDs.isEmpty {
+                message.addParameter(field: "wired.attachment.ids", value: attachmentIDs)
+            }
             return try await self.send(message)
         }
 
         return nil
+    }
+
+    func addChatDraftAttachment(_ fileURL: URL, for chatID: UInt32) throws {
+        let attachment = try ChatDraftAttachment(fileURL: fileURL)
+        var attachments = chatDraftAttachments[chatID] ?? []
+
+        guard !attachments.contains(where: { $0.fileURL == attachment.fileURL }) else { return }
+
+        attachments.append(attachment)
+        try ChatDraftAttachment.validateDraftCollection(attachments)
+        chatDraftAttachments[chatID] = attachments
+    }
+
+    func removeChatDraftAttachment(_ attachment: ChatDraftAttachment, for chatID: UInt32) {
+        guard var attachments = chatDraftAttachments[chatID] else { return }
+
+        attachments.removeAll { $0.id == attachment.id }
+
+        if attachments.isEmpty {
+            chatDraftAttachments.removeValue(forKey: chatID)
+        } else {
+            chatDraftAttachments[chatID] = attachments
+        }
+    }
+
+    func clearChatDraftAttachments(for chatID: UInt32) {
+        chatDraftAttachments.removeValue(forKey: chatID)
+    }
+
+    func addMessageDraftAttachment(_ fileURL: URL, for conversationID: UUID) throws {
+        let attachment = try ChatDraftAttachment(fileURL: fileURL)
+        var attachments = messageDraftAttachments[conversationID] ?? []
+
+        guard !attachments.contains(where: { $0.fileURL == attachment.fileURL }) else { return }
+
+        attachments.append(attachment)
+        try ChatDraftAttachment.validateDraftCollection(attachments)
+        messageDraftAttachments[conversationID] = attachments
+    }
+
+    func removeMessageDraftAttachment(_ attachment: ChatDraftAttachment, for conversationID: UUID) {
+        guard var attachments = messageDraftAttachments[conversationID] else { return }
+
+        attachments.removeAll { $0.id == attachment.id }
+
+        if attachments.isEmpty {
+            messageDraftAttachments.removeValue(forKey: conversationID)
+        } else {
+            messageDraftAttachments[conversationID] = attachments
+        }
+    }
+
+    func clearMessageDraftAttachments(for conversationID: UUID) {
+        messageDraftAttachments.removeValue(forKey: conversationID)
+    }
+
+    func imageData(for attachment: ChatAttachmentDescriptor) async throws -> Data {
+        if attachment.inlinePreview {
+            do {
+                return try await previewData(for: attachment)
+            } catch {
+                return try await downloadChatAttachmentData(attachment)
+            }
+        }
+
+        return try await downloadChatAttachmentData(attachment)
+    }
+
+    func previewData(for attachment: ChatAttachmentDescriptor) async throws -> Data {
+        let message = P7Message(withName: "wired.attachment.get_preview", spec: spec)
+        message.addParameter(field: "wired.attachment.id", value: attachment.id)
+
+        guard let response = try await send(message) else {
+            throw WiredError(withTitle: "Attachment", message: "No preview response from server.")
+        }
+
+        if response.name == "wired.error" {
+            throw WiredError(message: response)
+        }
+
+        guard response.name == "wired.attachment.preview",
+              let data = response.data(forField: "wired.attachment.data") else {
+            throw WiredError(withTitle: "Attachment", message: "Invalid preview response from server.")
+        }
+
+        return data
+    }
+
+    func downloadChatAttachmentData(_ attachment: ChatAttachmentDescriptor) async throws -> Data {
+        var offset: UInt64 = 0
+        var collected = Data()
+        var isComplete = false
+
+        while !isComplete {
+            let message = P7Message(withName: "wired.attachment.get_data", spec: spec)
+            message.addParameter(field: "wired.attachment.id", value: attachment.id)
+            message.addParameter(field: "wired.attachment.offset", value: offset)
+            message.addParameter(field: "wired.attachment.length", value: UInt32(256 * 1024))
+
+            guard let response = try await send(message) else {
+                throw WiredError(withTitle: "Attachment", message: "No data response from server.")
+            }
+
+            if response.name == "wired.error" {
+                throw WiredError(message: response)
+            }
+
+            guard response.name == "wired.attachment.data",
+                  let chunk = response.data(forField: "wired.attachment.data") else {
+                throw WiredError(withTitle: "Attachment", message: "Invalid attachment data response from server.")
+            }
+
+            collected.append(chunk)
+            offset += UInt64(chunk.count)
+            isComplete = response.bool(forField: "wired.attachment.complete") ?? false
+        }
+
+        return collected
+    }
+
+    private func uploadChatAttachment(_ attachment: ChatDraftAttachment, toChatID chatID: UInt32) async throws -> String {
+        let data = try Data(contentsOf: attachment.fileURL)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+
+        let create = P7Message(withName: "wired.attachment.create", spec: spec)
+        create.addParameter(field: "wired.chat.id", value: chatID)
+        create.addParameter(field: "wired.attachment.name", value: attachment.fileName)
+        create.addParameter(field: "wired.attachment.media_type", value: attachment.mediaType)
+        create.addParameter(field: "wired.attachment.size", value: UInt64(data.count))
+        create.addParameter(field: "wired.attachment.sha256", value: digest)
+
+        guard let createResponse = try await send(create) else {
+            throw WiredError(withTitle: "Attachment", message: "No response from server while creating attachment.")
+        }
+
+        if createResponse.name == "wired.error" {
+            throw WiredError(message: createResponse)
+        }
+
+        guard createResponse.name == "wired.attachment.created",
+              let attachmentID = createResponse.uuid(forField: "wired.attachment.id") else {
+            throw WiredError(withTitle: "Attachment", message: "Invalid attachment creation response from server.")
+        }
+
+        var offset = 0
+        let chunkSize = 256 * 1024
+
+        while offset < data.count {
+            let upperBound = min(offset + chunkSize, data.count)
+            let chunk = data.subdata(in: offset..<upperBound)
+
+            let upload = P7Message(withName: "wired.attachment.upload", spec: spec)
+            upload.addParameter(field: "wired.attachment.id", value: attachmentID)
+            upload.addParameter(field: "wired.attachment.offset", value: UInt64(offset))
+            upload.addParameter(field: "wired.attachment.data", value: chunk)
+
+            if let uploadResponse = try await send(upload), uploadResponse.name == "wired.error" {
+                throw WiredError(message: uploadResponse)
+            }
+
+            offset = upperBound
+        }
+
+        let complete = P7Message(withName: "wired.attachment.complete", spec: spec)
+        complete.addParameter(field: "wired.attachment.id", value: attachmentID)
+
+        guard let completeResponse = try await send(complete) else {
+            throw WiredError(withTitle: "Attachment", message: "No completion response from server.")
+        }
+
+        if completeResponse.name == "wired.error" {
+            throw WiredError(message: completeResponse)
+        }
+
+        guard completeResponse.name == "wired.attachment.completed" else {
+            throw WiredError(withTitle: "Attachment", message: "Invalid attachment completion response from server.")
+        }
+
+        return attachmentID
+    }
+
+    private func uploadPrivateMessageAttachment(_ attachment: ChatDraftAttachment, toUserID userID: UInt32) async throws -> String {
+        let data = try Data(contentsOf: attachment.fileURL)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+
+        let create = P7Message(withName: "wired.attachment.create", spec: spec)
+        create.addParameter(field: "wired.user.id", value: userID)
+        create.addParameter(field: "wired.attachment.name", value: attachment.fileName)
+        create.addParameter(field: "wired.attachment.media_type", value: attachment.mediaType)
+        create.addParameter(field: "wired.attachment.size", value: UInt64(data.count))
+        create.addParameter(field: "wired.attachment.sha256", value: digest)
+
+        guard let createResponse = try await send(create) else {
+            throw WiredError(withTitle: "Attachment", message: "No response from server while creating attachment.")
+        }
+
+        if createResponse.name == "wired.error" {
+            throw WiredError(message: createResponse)
+        }
+
+        guard createResponse.name == "wired.attachment.created",
+              let attachmentID = createResponse.uuid(forField: "wired.attachment.id") else {
+            throw WiredError(withTitle: "Attachment", message: "Invalid attachment creation response from server.")
+        }
+
+        var offset = 0
+        let chunkSize = 256 * 1024
+
+        while offset < data.count {
+            let upperBound = min(offset + chunkSize, data.count)
+            let chunk = data.subdata(in: offset..<upperBound)
+
+            let upload = P7Message(withName: "wired.attachment.upload", spec: spec)
+            upload.addParameter(field: "wired.attachment.id", value: attachmentID)
+            upload.addParameter(field: "wired.attachment.offset", value: UInt64(offset))
+            upload.addParameter(field: "wired.attachment.data", value: chunk)
+
+            if let uploadResponse = try await send(upload), uploadResponse.name == "wired.error" {
+                throw WiredError(message: uploadResponse)
+            }
+
+            offset = upperBound
+        }
+
+        let complete = P7Message(withName: "wired.attachment.complete", spec: spec)
+        complete.addParameter(field: "wired.attachment.id", value: attachmentID)
+
+        guard let completeResponse = try await send(complete) else {
+            throw WiredError(withTitle: "Attachment", message: "No completion response from server.")
+        }
+
+        if completeResponse.name == "wired.error" {
+            throw WiredError(message: completeResponse)
+        }
+
+        guard completeResponse.name == "wired.attachment.completed" else {
+            throw WiredError(withTitle: "Attachment", message: "Invalid attachment completion response from server.")
+        }
+
+        return attachmentID
     }
 
     @MainActor
