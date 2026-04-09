@@ -3,6 +3,7 @@ import WiredSwift
 
 struct FilesColumnsView: View {
     let connectionID: UUID
+    let selectedItem: FileItem?
 
     @ObservedObject var filesViewModel: FilesViewModel
     @EnvironmentObject private var transfers: TransferManager
@@ -51,7 +52,7 @@ struct FilesColumnsView: View {
                         ColumnResizeHandle(width: binding(for: column.id))
                     }
 
-                    FilePreviewColumn(selectedItem: filesViewModel.selectedItem)
+                    FilePreviewColumn(selectedItem: selectedItem)
                         .frame(width: previewWidth)
 
                     ColumnResizeHandle(width: $previewWidth)

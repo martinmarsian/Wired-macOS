@@ -848,6 +848,7 @@ struct FilesView: View {
     private var columnsContent: some View {
         FilesColumnsView(
             connectionID: connectionID,
+            selectedItem: selectedItem,
             filesViewModel: filesViewModel,
             onRequestCreateFolder: { directory in
                 guard canCreateFolder(in: directory) else { return }
