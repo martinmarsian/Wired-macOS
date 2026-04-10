@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -129,13 +130,34 @@ struct ResizableSheet: NSViewRepresentable {
 
 struct MarkdownComposer: View {
     @Binding var text: String
+    @Binding var attachments: [ComposerAttachmentItem]
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
     var bordered: Bool = false
     var onOptionEnter: (() -> Void)?
+    var onAttachmentError: ((Error) -> Void)?
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var showPreview = false
+    @State private var isAttachmentDropTargeted = false
+
+    init(
+        text: Binding<String>,
+        attachments: Binding<[ComposerAttachmentItem]> = .constant([]),
+        minHeight: CGFloat = 180,
+        autoFocus: Bool = false,
+        bordered: Bool = false,
+        onOptionEnter: (() -> Void)? = nil,
+        onAttachmentError: ((Error) -> Void)? = nil
+    ) {
+        self._text = text
+        self._attachments = attachments
+        self.minHeight = minHeight
+        self.autoFocus = autoFocus
+        self.bordered = bordered
+        self.onOptionEnter = onOptionEnter
+        self.onAttachmentError = onAttachmentError
+    }
 
     var body: some View {
         baseContent
@@ -147,6 +169,19 @@ struct MarkdownComposer: View {
                     }
                 }
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.accentColor.opacity(isAttachmentDropTargeted ? 0.9 : 0), lineWidth: 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.accentColor.opacity(isAttachmentDropTargeted ? 0.08 : 0))
+                    )
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+            .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isAttachmentDropTargeted) { providers in
+                handleFileDrop(providers: providers)
+            }
     }
 
     @ViewBuilder
@@ -176,6 +211,7 @@ struct MarkdownComposer: View {
             Divider().frame(height: 14).padding(.horizontal, 3)
             toolbarButton(icon: "link", help: "Lien") { insertLink() }
             toolbarButton(icon: "photo", help: "Image") { insertImage() }
+            toolbarButton(icon: "paperclip", help: "Attach file") { chooseFiles() }
             Divider().frame(height: 14).padding(.horizontal, 3)
             toolbarButton(icon: "text.quote", help: "Citation") { prefixLines(with: "> ") }
             toolbarButton(icon: "list.bullet", help: "Liste") { prefixLines(with: "- ") }
@@ -219,13 +255,31 @@ struct MarkdownComposer: View {
     }
 
     private var editorPane: some View {
-        MarkdownTextView(
-            text: $text,
-            selectedRange: $selectedRange,
-            autoFocus: autoFocus,
-            onOptionEnter: onOptionEnter
-        )
-        .frame(minHeight: minHeight, maxHeight: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            if !attachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(attachments) { attachment in
+                            ComposerAttachmentChipView(attachment: attachment) {
+                                removeAttachment(attachment)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                }
+
+                Divider()
+            }
+
+            MarkdownTextView(
+                text: $text,
+                selectedRange: $selectedRange,
+                autoFocus: autoFocus,
+                onOptionEnter: onOptionEnter
+            )
+            .frame(minHeight: minHeight, maxHeight: .infinity)
+        }
     }
 
     private func toolbarButton(icon: String, help: String, action: @escaping () -> Void) -> some View {
@@ -295,6 +349,136 @@ struct MarkdownComposer: View {
 
         text = ns.replacingCharacters(in: lineRange, with: transformed)
         selectedRange = NSRange(location: lineRange.location, length: (transformed as NSString).length)
+    }
+
+    private func insertAttachmentReferences(_ references: [String]) {
+        guard !references.isEmpty else { return }
+        let replacement = references.joined(separator: "\n")
+        let ns = text as NSString
+        let range = clampedRange(in: text)
+        text = ns.replacingCharacters(in: range, with: replacement)
+        let caret = range.location + (replacement as NSString).length
+        selectedRange = NSRange(location: caret, length: 0)
+    }
+
+    private func removeAttachment(_ attachment: ComposerAttachmentItem) {
+        attachments.removeAll { $0.id == attachment.id }
+        text = text.replacingOccurrences(of: attachment.markdownReference, with: "")
+            .replacingOccurrences(of: attachment.referenceURLString, with: "")
+    }
+
+    private func chooseFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.resolvesAliases = true
+
+        guard panel.runModal() == .OK else { return }
+        addFiles(panel.urls)
+    }
+
+    private func addFiles(_ urls: [URL]) {
+        do {
+            var updated = attachments
+            var insertedReferences: [String] = []
+
+            for url in urls {
+                let draft = try ChatDraftAttachment(fileURL: url)
+                let item = ComposerAttachmentItem.local(draft)
+                let alreadyPresent = updated.contains { existing in
+                    switch (existing, item) {
+                    case (.local(let lhs), .local(let rhs)):
+                        return lhs.fileURL == rhs.fileURL
+                    case (.remote(let lhs), .remote(let rhs)):
+                        return lhs.id == rhs.id
+                    default:
+                        return false
+                    }
+                }
+
+                guard !alreadyPresent else { continue }
+                updated.append(item)
+                insertedReferences.append(item.markdownReference)
+            }
+
+            try ComposerAttachmentItem.validateCollection(updated)
+            attachments = updated
+            insertAttachmentReferences(insertedReferences)
+        } catch {
+            onAttachmentError?(error)
+        }
+    }
+
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        let fileProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+
+        guard !fileProviders.isEmpty else { return false }
+
+        for provider in fileProviders {
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, error in
+                if let error {
+                    DispatchQueue.main.async {
+                        onAttachmentError?(error)
+                    }
+                    return
+                }
+
+                guard let data,
+                      let fileURL = URL(dataRepresentation: data, relativeTo: nil) else {
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    addFiles([fileURL])
+                }
+            }
+        }
+
+        return true
+    }
+}
+
+private struct ComposerAttachmentChipView: View {
+    let attachment: ComposerAttachmentItem
+    let onRemove: () -> Void
+
+    private var iconName: String {
+        attachment.isImage ? "photo" : "doc"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: iconName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+
+            (
+                Text(attachment.fileName)
+                    .font(.subheadline.weight(.medium))
+                +
+                Text("  \(attachment.fileSizeDescription)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            )
+            .lineLimit(1)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.secondary.opacity(0.10))
+        )
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -443,9 +627,27 @@ private final class FocusTextView: NSTextView {
 #else
 struct MarkdownComposer: View {
     @Binding var text: String
+    @Binding var attachments: [ComposerAttachmentItem]
     var minHeight: CGFloat = 180
     var autoFocus: Bool = false
     var onOptionEnter: (() -> Void)?
+    var onAttachmentError: ((Error) -> Void)?
+
+    init(
+        text: Binding<String>,
+        attachments: Binding<[ComposerAttachmentItem]> = .constant([]),
+        minHeight: CGFloat = 180,
+        autoFocus: Bool = false,
+        onOptionEnter: (() -> Void)? = nil,
+        onAttachmentError: ((Error) -> Void)? = nil
+    ) {
+        self._text = text
+        self._attachments = attachments
+        self.minHeight = minHeight
+        self.autoFocus = autoFocus
+        self.onOptionEnter = onOptionEnter
+        self.onAttachmentError = onAttachmentError
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -455,6 +657,7 @@ struct MarkdownComposer: View {
                 button("Code", help: "Code inline") { append("`code`") }
                 button("Link", help: "Lien") { append("[label](https://)") }
                 button("Img", help: "Image") { append("![alt](https://)") }
+                button("Attach", help: "Attachment") {}
                 button("Quote", help: "Citation") { append("\n> ") }
                 button("List", help: "Liste") { append("\n- ") }
                 Spacer(minLength: 0)

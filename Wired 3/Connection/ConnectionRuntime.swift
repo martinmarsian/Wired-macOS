@@ -18,6 +18,50 @@ struct ChatInvitation: Equatable {
     let inviterNick: String?
 }
 
+private extension String {
+    func resolvingDraftAttachmentReferences(using mapping: [String: String]) -> String {
+        var resolved = self
+
+        for (draftID, attachmentID) in mapping {
+            resolved = resolved.replacingOccurrences(
+                of: "attachment://draft/\(draftID)",
+                with: "attachment://\(attachmentID.lowercased())"
+            )
+        }
+
+        let unresolvedPattern = #"!?\[[^\]]*\]\(attachment://draft/[0-9a-fA-F\-]+\)"#
+        if let regex = try? NSRegularExpression(pattern: unresolvedPattern) {
+            let range = NSRange(resolved.startIndex..<resolved.endIndex, in: resolved)
+            resolved = regex.stringByReplacingMatches(in: resolved, options: [], range: range, withTemplate: "")
+        }
+
+        return resolved
+    }
+
+    func removingUnboundAttachmentReferences(allowedAttachmentIDs: Set<String>) -> String {
+        let pattern = #"!?\[[^\]]*\]\(attachment://([0-9a-fA-F\-]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return self }
+
+        let source = self
+        let matches = regex.matches(in: source, options: [], range: NSRange(source.startIndex..<source.endIndex, in: source)).reversed()
+        var result = source
+
+        for match in matches {
+            guard match.numberOfRanges >= 2,
+                  let fullRange = Range(match.range(at: 0), in: result),
+                  let idRange = Range(match.range(at: 1), in: source) else {
+                continue
+            }
+
+            let attachmentID = String(source[idRange]).lowercased()
+            guard !allowedAttachmentIDs.contains(attachmentID) else { continue }
+            result.removeSubrange(fullRange)
+        }
+
+        return result
+    }
+}
+
 struct PendingBoardPostScrollTarget: Equatable {
     let threadUUID: String
     let postUUID: String
@@ -2080,12 +2124,34 @@ final class ConnectionRuntime: Identifiable {
         return collected
     }
 
-    private func uploadChatAttachment(_ attachment: ChatDraftAttachment, toChatID chatID: UInt32) async throws -> String {
+    private enum AttachmentUploadScope {
+        case chat(UInt32)
+        case direct(UInt32)
+        case board(String)
+        case thread(String)
+        case post(String)
+    }
+
+    private func uploadAttachment(
+        _ attachment: ChatDraftAttachment,
+        scope: AttachmentUploadScope
+    ) async throws -> String {
         let data = try Data(contentsOf: attachment.fileURL)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 
         let create = P7Message(withName: "wired.attachment.create", spec: spec)
-        create.addParameter(field: "wired.chat.id", value: chatID)
+        switch scope {
+        case .chat(let chatID):
+            create.addParameter(field: "wired.chat.id", value: chatID)
+        case .direct(let userID):
+            create.addParameter(field: "wired.user.id", value: userID)
+        case .board(let boardPath):
+            create.addParameter(field: "wired.board.board", value: boardPath)
+        case .thread(let threadUUID):
+            create.addParameter(field: "wired.board.thread", value: threadUUID)
+        case .post(let postUUID):
+            create.addParameter(field: "wired.board.post", value: postUUID)
+        }
         create.addParameter(field: "wired.attachment.name", value: attachment.fileName)
         create.addParameter(field: "wired.attachment.media_type", value: attachment.mediaType)
         create.addParameter(field: "wired.attachment.size", value: UInt64(data.count))
@@ -2141,65 +2207,59 @@ final class ConnectionRuntime: Identifiable {
         return attachmentID
     }
 
-    private func uploadPrivateMessageAttachment(_ attachment: ChatDraftAttachment, toUserID userID: UInt32) async throws -> String {
-        let data = try Data(contentsOf: attachment.fileURL)
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    private func resolvedBoardMessagePayload(
+        text: String,
+        attachments: [ComposerAttachmentItem],
+        uploadScope: AttachmentUploadScope
+    ) async throws -> (text: String, attachmentIDs: [String], descriptors: [ChatAttachmentDescriptor]) {
+        try ComposerAttachmentItem.validateCollection(attachments)
 
-        let create = P7Message(withName: "wired.attachment.create", spec: spec)
-        create.addParameter(field: "wired.user.id", value: userID)
-        create.addParameter(field: "wired.attachment.name", value: attachment.fileName)
-        create.addParameter(field: "wired.attachment.media_type", value: attachment.mediaType)
-        create.addParameter(field: "wired.attachment.size", value: UInt64(data.count))
-        create.addParameter(field: "wired.attachment.sha256", value: digest)
+        let remoteDescriptors = attachments.compactMap(\.descriptor)
+        let localDrafts = attachments.compactMap(\.draftAttachment)
 
-        guard let createResponse = try await send(create) else {
-            throw WiredError(withTitle: "Attachment", message: "No response from server while creating attachment.")
+        var attachmentIDs = remoteDescriptors.map(\.id)
+        attachmentIDs.reserveCapacity(attachments.count)
+
+        var draftIDMap: [String: String] = [:]
+        draftIDMap.reserveCapacity(localDrafts.count)
+
+        for attachment in localDrafts {
+            let attachmentID = try await uploadAttachment(attachment, scope: uploadScope)
+            attachmentIDs.append(attachmentID)
+            draftIDMap[attachment.id.uuidString.lowercased()] = attachmentID
         }
 
-        if createResponse.name == "wired.error" {
-            throw WiredError(message: createResponse)
-        }
-
-        guard createResponse.name == "wired.attachment.created",
-              let attachmentID = createResponse.uuid(forField: "wired.attachment.id") else {
-            throw WiredError(withTitle: "Attachment", message: "Invalid attachment creation response from server.")
-        }
-
-        var offset = 0
-        let chunkSize = 256 * 1024
-
-        while offset < data.count {
-            let upperBound = min(offset + chunkSize, data.count)
-            let chunk = data.subdata(in: offset..<upperBound)
-
-            let upload = P7Message(withName: "wired.attachment.upload", spec: spec)
-            upload.addParameter(field: "wired.attachment.id", value: attachmentID)
-            upload.addParameter(field: "wired.attachment.offset", value: UInt64(offset))
-            upload.addParameter(field: "wired.attachment.data", value: chunk)
-
-            if let uploadResponse = try await send(upload), uploadResponse.name == "wired.error" {
-                throw WiredError(message: uploadResponse)
+        let descriptors = attachments.map { attachment -> ChatAttachmentDescriptor in
+            switch attachment {
+            case .remote(let descriptor):
+                return descriptor
+            case .local(let draft):
+                let resolvedID = draftIDMap[draft.id.uuidString.lowercased()] ?? ""
+                return ChatAttachmentDescriptor(
+                    id: resolvedID,
+                    name: draft.fileName,
+                    mediaType: draft.mediaType,
+                    size: draft.size,
+                    sha256: "",
+                    inlinePreview: draft.isImage,
+                    width: nil,
+                    height: nil
+                )
             }
-
-            offset = upperBound
         }
 
-        let complete = P7Message(withName: "wired.attachment.complete", spec: spec)
-        complete.addParameter(field: "wired.attachment.id", value: attachmentID)
+        let resolvedText = text
+            .resolvingDraftAttachmentReferences(using: draftIDMap)
+            .removingUnboundAttachmentReferences(allowedAttachmentIDs: Set(attachmentIDs.map { $0.lowercased() }))
+        return (resolvedText, attachmentIDs, descriptors)
+    }
 
-        guard let completeResponse = try await send(complete) else {
-            throw WiredError(withTitle: "Attachment", message: "No completion response from server.")
-        }
+    private func uploadChatAttachment(_ attachment: ChatDraftAttachment, toChatID chatID: UInt32) async throws -> String {
+        try await uploadAttachment(attachment, scope: .chat(chatID))
+    }
 
-        if completeResponse.name == "wired.error" {
-            throw WiredError(message: completeResponse)
-        }
-
-        guard completeResponse.name == "wired.attachment.completed" else {
-            throw WiredError(withTitle: "Attachment", message: "Invalid attachment completion response from server.")
-        }
-
-        return attachmentID
+    private func uploadPrivateMessageAttachment(_ attachment: ChatDraftAttachment, toUserID userID: UInt32) async throws -> String {
+        try await uploadAttachment(attachment, scope: .direct(userID))
     }
 
     @MainActor
@@ -2585,24 +2645,49 @@ final class ConnectionRuntime: Identifiable {
         }
     }
 
-    func addThread(toBoard board: Board, subject: String, text: String) async throws {
+    func addThread(
+        toBoard board: Board,
+        subject: String,
+        text: String,
+        attachments: [ComposerAttachmentItem] = []
+    ) async throws {
         try await withBoardNetworkActivity {
+            let payload = try await resolvedBoardMessagePayload(
+                text: text,
+                attachments: attachments,
+                uploadScope: .board(board.path)
+            )
             let m = P7Message(withName: "wired.board.add_thread", spec: spec)
             m.addParameter(field: "wired.board.board", value: board.path)
             m.addParameter(field: "wired.board.subject", value: subject)
-            m.addParameter(field: "wired.board.text", value: text)
+            m.addParameter(field: "wired.board.text", value: payload.text)
+            if !payload.attachmentIDs.isEmpty {
+                m.addParameter(field: "wired.attachment.ids", value: payload.attachmentIDs)
+            }
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
         }
     }
 
-    func addPost(toThread thread: BoardThread, text: String) async throws {
+    func addPost(
+        toThread thread: BoardThread,
+        text: String,
+        attachments: [ComposerAttachmentItem] = []
+    ) async throws {
         try await withBoardNetworkActivity {
+            let payload = try await resolvedBoardMessagePayload(
+                text: text,
+                attachments: attachments,
+                uploadScope: .thread(thread.uuid)
+            )
             let m = P7Message(withName: "wired.board.add_post", spec: spec)
             m.addParameter(field: "wired.board.thread", value: thread.uuid)
             m.addParameter(field: "wired.board.subject", value: thread.subject)
-            m.addParameter(field: "wired.board.text", value: text)
+            m.addParameter(field: "wired.board.text", value: payload.text)
+            if !payload.attachmentIDs.isEmpty {
+                m.addParameter(field: "wired.attachment.ids", value: payload.attachmentIDs)
+            }
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
@@ -2614,11 +2699,12 @@ final class ConnectionRuntime: Identifiable {
                 let post = BoardPost(
                     uuid: localUUID,
                     threadUUID: thread.uuid,
-                    text: text,
+                    text: payload.text,
                     nick: me?.nick ?? (connection?.nick ?? "Me"),
                     postDate: Date(),
                     icon: me?.icon,
-                    isOwn: true
+                    isOwn: true,
+                    attachments: payload.descriptors
                 )
                 post.isUnread = false
                 thread.posts.append(post)
@@ -2818,12 +2904,26 @@ final class ConnectionRuntime: Identifiable {
         }
     }
 
-    func editThread(uuid: String, subject: String, text: String) async throws {
+    func editThread(
+        uuid: String,
+        subject: String,
+        text: String,
+        attachments: [ComposerAttachmentItem] = [],
+        sendAttachmentIDs: Bool = true
+    ) async throws {
         try await withBoardNetworkActivity {
+            let payload = try await resolvedBoardMessagePayload(
+                text: text,
+                attachments: attachments,
+                uploadScope: .thread(uuid)
+            )
             let m = P7Message(withName: "wired.board.edit_thread", spec: spec)
             m.addParameter(field: "wired.board.thread", value: uuid)
             m.addParameter(field: "wired.board.subject", value: subject)
-            m.addParameter(field: "wired.board.text", value: text)
+            m.addParameter(field: "wired.board.text", value: payload.text)
+            if sendAttachmentIDs && !payload.attachmentIDs.isEmpty {
+                m.addParameter(field: "wired.attachment.ids", value: payload.attachmentIDs)
+            }
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }
@@ -2841,12 +2941,26 @@ final class ConnectionRuntime: Identifiable {
         }
     }
 
-    func editPost(uuid: String, subject: String, text: String) async throws {
+    func editPost(
+        uuid: String,
+        subject: String,
+        text: String,
+        attachments: [ComposerAttachmentItem] = [],
+        sendAttachmentIDs: Bool = true
+    ) async throws {
         try await withBoardNetworkActivity {
+            let payload = try await resolvedBoardMessagePayload(
+                text: text,
+                attachments: attachments,
+                uploadScope: .post(uuid)
+            )
             let m = P7Message(withName: "wired.board.edit_post", spec: spec)
             m.addParameter(field: "wired.board.post", value: uuid)
             m.addParameter(field: "wired.board.subject", value: subject)
-            m.addParameter(field: "wired.board.text", value: text)
+            m.addParameter(field: "wired.board.text", value: payload.text)
+            if sendAttachmentIDs && !payload.attachmentIDs.isEmpty {
+                m.addParameter(field: "wired.attachment.ids", value: payload.attachmentIDs)
+            }
             if let response = try await send(m), response.name == "wired.error" {
                 throw WiredError(message: response)
             }

@@ -256,15 +256,13 @@ struct ChatAttachmentImageBubbleView: View {
     let attachment: ChatAttachmentDescriptor
     let isFromYou: Bool
     let showsTail: Bool
+    var maxBubbleWidth: CGFloat = 280
+    var maxBubbleHeight: CGFloat = 360
     var isSelected: Bool = false
     var onSelect: (() -> Void)?
     var onOpenQuickLook: (() -> Void)?
 
     @State private var phase: Phase = .idle
-
-    private let maxBubbleWidth: CGFloat = 280
-    private let maxBubbleHeight: CGFloat = 360
-    private let placeholderSize = CGSize(width: 280, height: 190)
 
     enum Phase {
         case idle
@@ -291,6 +289,10 @@ struct ChatAttachmentImageBubbleView: View {
             return resolvedSize(for: image)
         }
         return placeholderSize
+    }
+
+    private var placeholderSize: CGSize {
+        CGSize(width: maxBubbleWidth, height: min(maxBubbleHeight, maxBubbleWidth * 0.68))
     }
 
     var body: some View {

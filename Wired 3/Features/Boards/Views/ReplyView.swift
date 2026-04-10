@@ -23,6 +23,7 @@ struct ReplyView: View {
     let initialText: String?
 
     @State private var text: String  = ""
+    @State private var attachments: [ComposerAttachmentItem] = []
     @State private var isPosting     = false
 
     private static let dateFormatter: DateFormatter = {
@@ -103,7 +104,13 @@ struct ReplyView: View {
             Divider()
 
             // Composer — edge-to-edge
-            MarkdownComposer(text: $text, autoFocus: true, onOptionEnter: reply)
+            MarkdownComposer(
+                text: $text,
+                attachments: $attachments,
+                autoFocus: true,
+                onOptionEnter: reply,
+                onAttachmentError: { runtime.lastError = $0 }
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -135,7 +142,8 @@ struct ReplyView: View {
         isPosting = true
         Task {
             try? await runtime.addPost(toThread: thread,
-                                       text: text.trimmingCharacters(in: .whitespaces))
+                                       text: text.trimmingCharacters(in: .whitespaces),
+                                       attachments: attachments)
             await MainActor.run { dismiss() }
         }
     }

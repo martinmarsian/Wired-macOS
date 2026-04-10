@@ -16,16 +16,25 @@ public struct EditPostView: View {
     let thread: BoardThread?
 
     @State private var text: String
+    @State private var attachments: [ComposerAttachmentItem]
     @State private var isSubmitting = false
+
+    private let initialAttachmentReferenceKeys: [String]
 
     init(post: BoardPost, thread: BoardThread?) {
         self.post = post
         self.thread = thread
         self._text = State(initialValue: post.text)
+        self._attachments = State(initialValue: post.attachments.map(ComposerAttachmentItem.remote))
+        self.initialAttachmentReferenceKeys = post.attachments.map { "remote:\($0.id.lowercased())" }
     }
 
     private var canSubmit: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSubmitting
+    }
+
+    private var attachmentReferencesChanged: Bool {
+        attachments.map(Self.attachmentReferenceKey(for:)) != initialAttachmentReferenceKeys
     }
 
     public var body: some View {
@@ -42,7 +51,13 @@ public struct EditPostView: View {
             Divider()
 
             // Composer — edge-to-edge
-            MarkdownComposer(text: $text, autoFocus: true, onOptionEnter: save)
+            MarkdownComposer(
+                text: $text,
+                attachments: $attachments,
+                autoFocus: true,
+                onOptionEnter: save,
+                onAttachmentError: { runtime.lastError = $0 }
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -71,7 +86,9 @@ public struct EditPostView: View {
                 try await runtime.editPost(
                     uuid: post.uuid,
                     subject: thread?.subject ?? "",
-                    text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    attachments: attachments,
+                    sendAttachmentIDs: attachmentReferencesChanged
                 )
                 if let thread {
                     try await runtime.getPosts(forThread: thread)
@@ -83,6 +100,15 @@ public struct EditPostView: View {
                     isSubmitting = false
                 }
             }
+        }
+    }
+
+    private static func attachmentReferenceKey(for attachment: ComposerAttachmentItem) -> String {
+        switch attachment {
+        case .local(let draft):
+            return "local:\(draft.id.uuidString.lowercased())"
+        case .remote(let descriptor):
+            return "remote:\(descriptor.id.lowercased())"
         }
     }
 }

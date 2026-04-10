@@ -128,6 +128,105 @@ struct ChatDraftAttachment: Equatable, Identifiable {
     }
 }
 
+enum ComposerAttachmentItem: Identifiable, Equatable {
+    case local(ChatDraftAttachment)
+    case remote(ChatAttachmentDescriptor)
+
+    var id: String {
+        switch self {
+        case .local(let attachment):
+            return "local:\(attachment.id.uuidString.lowercased())"
+        case .remote(let descriptor):
+            return "remote:\(descriptor.id.lowercased())"
+        }
+    }
+
+    var fileName: String {
+        switch self {
+        case .local(let attachment):
+            return attachment.fileName
+        case .remote(let descriptor):
+            return descriptor.name
+        }
+    }
+
+    var mediaType: String {
+        switch self {
+        case .local(let attachment):
+            return attachment.mediaType
+        case .remote(let descriptor):
+            return descriptor.mediaType
+        }
+    }
+
+    var size: UInt64 {
+        switch self {
+        case .local(let attachment):
+            return attachment.size
+        case .remote(let descriptor):
+            return descriptor.size
+        }
+    }
+
+    var fileSizeDescription: String {
+        byteCountFormatter.string(fromByteCount: Int64(size))
+    }
+
+    var isImage: Bool {
+        mediaType.lowercased().hasPrefix("image/")
+    }
+
+    var descriptor: ChatAttachmentDescriptor? {
+        if case .remote(let descriptor) = self {
+            return descriptor
+        }
+        return nil
+    }
+
+    var draftAttachment: ChatDraftAttachment? {
+        if case .local(let attachment) = self {
+            return attachment
+        }
+        return nil
+    }
+
+    var referenceURLString: String {
+        switch self {
+        case .local(let attachment):
+            return "attachment://draft/\(attachment.id.uuidString.lowercased())"
+        case .remote(let descriptor):
+            return "attachment://\(descriptor.id.lowercased())"
+        }
+    }
+
+    var markdownReference: String {
+        let escapedName = fileName
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "]", with: "\\]")
+        return "[\(escapedName)](\(referenceURLString))"
+    }
+
+    static func validateCollection(_ attachments: [ComposerAttachmentItem]) throws {
+        guard attachments.count <= ChatDraftAttachment.maxAttachmentsPerMessage else {
+            throw WiredError(
+                withTitle: "Attachment",
+                message: "You can attach at most \(ChatDraftAttachment.maxAttachmentsPerMessage) files to a post."
+            )
+        }
+
+        let totalSize = attachments.reduce(UInt64(0)) { partialResult, attachment in
+            partialResult + attachment.size
+        }
+
+        guard totalSize <= ChatDraftAttachment.maxTotalSizeBytes else {
+            throw WiredError(
+                withTitle: "Attachment",
+                message: "These attachments are too large together. Attachments are currently limited to \(byteCountFormatter.string(fromByteCount: Int64(ChatDraftAttachment.maxTotalSizeBytes))) per message."
+            )
+        }
+    }
+}
+
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
