@@ -8,6 +8,33 @@
 
 import SwiftUI
 
+private struct PostRowTextSegment: Identifiable {
+    enum Kind {
+        case body
+        case quote
+    }
+
+    let id: String
+    let kind: Kind
+    let text: String
+}
+
+private struct PostRowQuoteLine: Identifiable {
+    let id: String
+    let level: Int
+    let text: String
+}
+
+private struct PostRowContentBlock: Identifiable {
+    enum Kind {
+        case text(String)
+        case attachment(ChatAttachmentDescriptor)
+    }
+
+    let id: String
+    let kind: Kind
+}
+
 struct PostRowView: View {
     let post: BoardPost
     let highlightQuery: String?
@@ -25,33 +52,6 @@ struct PostRowView: View {
     var onSelectImage: ((ChatImageQuickLookSource) -> Void)?
     var onOpenQuickLook: ((ChatImageQuickLookSource) -> Void)?
     @State private var isHoveringText = false
-
-    private struct TextSegment: Identifiable {
-        enum Kind {
-            case body
-            case quote
-        }
-
-        let id: String
-        let kind: Kind
-        let text: String
-    }
-
-    private struct QuoteLine: Identifiable {
-        let id: String
-        let level: Int
-        let text: String
-    }
-
-    private struct ContentBlock: Identifiable {
-        enum Kind {
-            case text(String)
-            case attachment(ChatAttachmentDescriptor)
-        }
-
-        let id: String
-        let kind: Kind
-    }
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -76,22 +76,22 @@ struct PostRowView: View {
         )
     }
 
-    private func segments(for text: String) -> [TextSegment] {
-        var result: [TextSegment] = []
+    private func segments(for text: String) -> [PostRowTextSegment] {
+        var result: [PostRowTextSegment] = []
         var currentBody: [String] = []
         var currentQuote: [String] = []
         var nextSegmentIndex = 0
 
         func flushBody() {
             guard !currentBody.isEmpty else { return }
-            result.append(TextSegment(id: "segment-\(nextSegmentIndex)", kind: .body, text: currentBody.joined(separator: "\n")))
+            result.append(PostRowTextSegment(id: "segment-\(nextSegmentIndex)", kind: .body, text: currentBody.joined(separator: "\n")))
             nextSegmentIndex += 1
             currentBody.removeAll()
         }
 
         func flushQuote() {
             guard !currentQuote.isEmpty else { return }
-            result.append(TextSegment(id: "segment-\(nextSegmentIndex)", kind: .quote, text: currentQuote.joined(separator: "\n")))
+            result.append(PostRowTextSegment(id: "segment-\(nextSegmentIndex)", kind: .quote, text: currentQuote.joined(separator: "\n")))
             nextSegmentIndex += 1
             currentQuote.removeAll()
         }
@@ -112,21 +112,21 @@ struct PostRowView: View {
         return result
     }
 
-    private var contentBlocks: [ContentBlock] {
+    private var contentBlocks: [PostRowContentBlock] {
         let attachmentsByID = Dictionary(uniqueKeysWithValues: post.attachments.map { ($0.id.lowercased(), $0) })
         let pattern = #"\[([^\]]+)\]\(attachment://(?:draft/)?([0-9a-fA-F\-]+)\)"#
 
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return [ContentBlock(id: "text-0", kind: .text(post.text))]
+            return [PostRowContentBlock(id: "text-0", kind: .text(post.text))]
         }
 
         let nsText = post.text as NSString
         let matches = regex.matches(in: post.text, options: [], range: NSRange(location: 0, length: nsText.length))
         guard !matches.isEmpty else {
-            return [ContentBlock(id: "text-0", kind: .text(post.text))]
+            return [PostRowContentBlock(id: "text-0", kind: .text(post.text))]
         }
 
-        var blocks: [ContentBlock] = []
+        var blocks: [PostRowContentBlock] = []
         var renderedAttachmentIDs = Set<String>()
         var cursor = 0
 
@@ -137,14 +137,14 @@ struct PostRowView: View {
             if fullRange.location > cursor {
                 let text = nsText.substring(with: NSRange(location: cursor, length: fullRange.location - cursor))
                 if !text.isEmpty {
-                    blocks.append(ContentBlock(id: "text-\(blocks.count)", kind: .text(text)))
+                    blocks.append(PostRowContentBlock(id: "text-\(blocks.count)", kind: .text(text)))
                 }
             }
 
             if idRange.location != NSNotFound {
                 let attachmentID = nsText.substring(with: idRange).lowercased()
                 if let attachment = attachmentsByID[attachmentID] {
-                    blocks.append(ContentBlock(id: "attachment-\(attachmentID)-\(blocks.count)", kind: .attachment(attachment)))
+                    blocks.append(PostRowContentBlock(id: "attachment-\(attachmentID)-\(blocks.count)", kind: .attachment(attachment)))
                     renderedAttachmentIDs.insert(attachmentID)
                 }
             }
@@ -155,12 +155,12 @@ struct PostRowView: View {
         if cursor < nsText.length {
             let trailingText = nsText.substring(from: cursor)
             if !trailingText.isEmpty {
-                blocks.append(ContentBlock(id: "text-\(blocks.count)", kind: .text(trailingText)))
+                blocks.append(PostRowContentBlock(id: "text-\(blocks.count)", kind: .text(trailingText)))
             }
         }
 
         for attachment in post.attachments where !renderedAttachmentIDs.contains(attachment.id.lowercased()) {
-            blocks.append(ContentBlock(id: "attachment-\(attachment.id.lowercased())-\(blocks.count)", kind: .attachment(attachment)))
+            blocks.append(PostRowContentBlock(id: "attachment-\(attachment.id.lowercased())-\(blocks.count)", kind: .attachment(attachment)))
         }
 
         return blocks
@@ -170,13 +170,13 @@ struct PostRowView: View {
         post.text.detectedHTTPImageURLs()
     }
 
-    private func quoteLines(from text: String) -> [QuoteLine] {
+    private func quoteLines(from text: String) -> [PostRowQuoteLine] {
         text.components(separatedBy: .newlines).enumerated().compactMap { index, rawLine in
             parseQuoteLine(rawLine, index: index)
         }
     }
 
-    private func parseQuoteLine(_ rawLine: String, index: Int) -> QuoteLine? {
+    private func parseQuoteLine(_ rawLine: String, index: Int) -> PostRowQuoteLine? {
         let chars = Array(rawLine)
         var i = 0
         while i < chars.count, chars[i].isWhitespace { i += 1 }
@@ -192,7 +192,7 @@ struct PostRowView: View {
         guard level > 0 else { return nil }
 
         let content = i < chars.count ? String(chars[i...]).trimmingCharacters(in: .whitespaces) : ""
-        return QuoteLine(id: "quote-\(index)", level: level, text: content.isEmpty ? " " : content)
+        return PostRowQuoteLine(id: "quote-\(index)", level: level, text: content.isEmpty ? " " : content)
     }
 
     @ViewBuilder
