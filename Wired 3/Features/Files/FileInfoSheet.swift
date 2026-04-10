@@ -89,6 +89,8 @@ struct FileInfoSheet: View {
     @State private var syncMaxTreeSizeBytes: UInt64 = 0
     @State private var syncExcludePatterns: String = ""
     @State private var newName: String = ""
+    @State private var labelSelection: FileLabelValue = .none
+    @State private var commentText: String = ""
 
     init(filesViewModel: FilesViewModel, file: FileItem) {
         self.filesViewModel = filesViewModel
@@ -138,8 +140,21 @@ struct FileInfoSheet: View {
         !newName.isEmpty && newName != info.name
     }
 
+    private var hasLabelChange: Bool {
+        labelSelection != info.label
+    }
+
+    private var hasCommentChange: Bool {
+        commentText != info.comment
+    }
+
     private var hasChanges: Bool {
-        hasRenameChange || selectedTypeRawValue != info.type.rawValue || hasManagedPermissionChanges || hasSyncPolicyChanges
+        hasRenameChange
+        || hasLabelChange
+        || hasCommentChange
+        || selectedTypeRawValue != info.type.rawValue
+        || hasManagedPermissionChanges
+        || hasSyncPolicyChanges
     }
 
     private var canEditManagedPermissions: Bool {
@@ -149,9 +164,19 @@ struct FileInfoSheet: View {
 
     private var canSaveChanges: Bool {
         hasRenameChange
+        || (canEditLabel && hasLabelChange)
+        || (canEditComment && hasCommentChange)
         || (canEditType && selectedTypeRawValue != info.type.rawValue)
         || (canEditManagedPermissions && hasManagedPermissionChanges)
         || (canEditManagedPermissions && hasSyncPolicyChanges)
+    }
+
+    private var canEditLabel: Bool {
+        runtime.hasPrivilege("wired.account.file.set_label")
+    }
+
+    private var canEditComment: Bool {
+        runtime.hasPrivilege("wired.account.file.set_comment")
     }
 
     private var totalSizeString: String {
@@ -174,6 +199,7 @@ struct FileInfoSheet: View {
             ScrollView {
                 VStack(spacing: 12) {
                     headerCard
+                    metadataCard
 
                     if info.type == .file {
                         sizeCard
@@ -280,6 +306,65 @@ struct FileInfoSheet: View {
             .labelStyle(.titleAndIcon)
             .font(.caption2)
             .foregroundStyle(.tertiary)
+    }
+
+    // MARK: - Metadata Card
+
+    private var metadataCard: some View {
+        infoCard(title: "Metadata", systemImage: "tag") {
+            HStack {
+                Text("Label")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    ForEach(FileLabelValue.allCases) { label in
+                        Button {
+                            labelSelection = label
+                        } label: {
+                            Text(label.title)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(labelSelection.color)
+                            .frame(width: 8, height: 8)
+                            .opacity(labelSelection == .none ? 0.35 : 1)
+                        Text(labelSelection.title)
+                            .foregroundStyle(.primary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(!canEditLabel)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+
+            cardDivider
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Comment")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $commentText)
+                    .font(.body)
+                    .frame(minHeight: 84)
+                    .scrollContentBackground(.hidden)
+                    .disabled(!canEditComment)
+                    .foregroundStyle(canEditComment ? .primary : .secondary)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+        }
     }
 
     // MARK: - Size Card
@@ -542,6 +627,8 @@ struct FileInfoSheet: View {
             }
             ownerSelection   = loadedInfo.owner
             groupSelection   = loadedInfo.group
+            labelSelection   = loadedInfo.label
+            commentText      = loadedInfo.comment
             ownerAccess      = .from(read: loadedInfo.ownerRead, write: loadedInfo.ownerWrite)
             groupAccess      = .from(read: loadedInfo.groupRead, write: loadedInfo.groupWrite)
             everyoneAccess   = .from(read: loadedInfo.everyoneRead, write: loadedInfo.everyoneWrite)
@@ -591,6 +678,14 @@ struct FileInfoSheet: View {
             if selectedType != info.type, canEditType {
                 try await filesViewModel.setFileType(path: info.path, type: selectedType)
             }
+            if hasLabelChange, canEditLabel {
+                try await filesViewModel.setFileLabel(path: info.path, label: labelSelection)
+                info.label = labelSelection
+            }
+            if hasCommentChange, canEditComment {
+                try await filesViewModel.setFileComment(path: info.path, comment: commentText)
+                info.comment = commentText
+            }
             if info.type.isManagedAccessType, hasManagedPermissionChanges, canEditManagedPermissions {
                 let permissions = DropboxPermissions(
                     owner: ownerSelection,
@@ -618,6 +713,29 @@ struct FileInfoSheet: View {
             dismiss()
         } catch {
             filesViewModel.error = error
+        }
+    }
+}
+
+private extension FileLabelValue {
+    var color: Color {
+        switch self {
+        case .none:
+            return Color.secondary
+        case .red:
+            return .red
+        case .orange:
+            return .orange
+        case .yellow:
+            return .yellow
+        case .green:
+            return .green
+        case .blue:
+            return .blue
+        case .purple:
+            return .purple
+        case .gray:
+            return .gray
         }
     }
 }

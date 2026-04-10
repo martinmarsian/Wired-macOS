@@ -62,6 +62,52 @@ enum SyncModeValue: String, CaseIterable, Identifiable {
     }
 }
 
+enum FileLabelValue: UInt32, CaseIterable, Identifiable {
+    case none = 0
+    case red
+    case orange
+    case yellow
+    case green
+    case blue
+    case purple
+    case gray
+
+    var id: UInt32 { rawValue }
+
+    init(wiredValue: UInt32) {
+        self = FileLabelValue(rawValue: wiredValue) ?? .none
+    }
+
+    init(wiredLabel: File.FileLabel) {
+        self = FileLabelValue(rawValue: wiredLabel.rawValue) ?? .none
+    }
+
+    var wiredLabel: File.FileLabel {
+        File.FileLabel(rawValue: rawValue) ?? .LABEL_NONE
+    }
+
+    var title: String {
+        switch self {
+        case .none:
+            return "None"
+        case .red:
+            return "Red"
+        case .orange:
+            return "Orange"
+        case .yellow:
+            return "Yellow"
+        case .green:
+            return "Green"
+        case .blue:
+            return "Blue"
+        case .purple:
+            return "Purple"
+        case .gray:
+            return "Gray"
+        }
+    }
+}
+
 public struct FileItem: Identifiable, Hashable {
     public let id = UUID()
     var name: String = ""
@@ -76,6 +122,7 @@ public struct FileItem: Identifiable, Hashable {
     var rsrcSize: UInt64 = 0
     var creationDate: Date?
     var modificationDate: Date?
+    var label: FileLabelValue = .none
     var comment: String = ""
     var owner: String = ""
     var group: String = ""
@@ -132,6 +179,9 @@ public struct FileItem: Identifiable, Hashable {
         }
         if let date = message.date(forField: "wired.file.modification_time") {
             self.modificationDate = date
+        }
+        if let value = message.uint32(forField: "wired.file.label") {
+            self.label = FileLabelValue(wiredValue: value)
         }
         if let value = message.string(forField: "wired.file.comment") {
             self.comment = value

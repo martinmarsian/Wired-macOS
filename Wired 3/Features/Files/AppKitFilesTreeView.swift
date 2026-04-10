@@ -5,6 +5,38 @@ import UniformTypeIdentifiers
 import ObjectiveC
 import WiredSwift
 
+private final class TreeFileLabelDotView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = min(frameRect.width, frameRect.height) / 2
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = min(bounds.width, bounds.height) / 2
+    }
+
+    func configure(label: FileLabelValue) {
+        if label == .none {
+            isHidden = true
+            toolTip = nil
+            return
+        }
+
+        isHidden = false
+        layer?.backgroundColor = label.nsColor.cgColor
+        toolTip = label.title
+    }
+}
+
 private final class QuickLookOutlineView: NSOutlineView {
     var onQuickLook: (() -> Void)?
 
@@ -414,7 +446,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     String(item.hasDirectoryCount),
                     String(item.dataSize),
                     String(item.rsrcSize),
-                    String(modified)
+                    String(modified),
+                    String(item.label.rawValue)
                 ].joined(separator: "|")
             }
         }
@@ -691,6 +724,11 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                 icon.imageScaling = .scaleProportionallyUpOrDown
                 cell.imageView = icon
 
+                let labelDot = TreeFileLabelDotView(frame: .zero)
+                labelDot.identifier = NSUserInterfaceItemIdentifier("FileLabelDot")
+                labelDot.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(labelDot)
+
                 let tf = NSTextField(labelWithString: "")
                 tf.translatesAutoresizingMaskIntoConstraints = false
                 tf.lineBreakMode = .byTruncatingMiddle
@@ -718,14 +756,18 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     icon.widthAnchor.constraint(equalToConstant: 16),
                     icon.heightAnchor.constraint(equalToConstant: 16),
                     tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+                    labelDot.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -32),
+                    labelDot.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    labelDot.widthAnchor.constraint(equalToConstant: 8),
+                    labelDot.heightAnchor.constraint(equalToConstant: 8),
                     tf.trailingAnchor.constraint(lessThanOrEqualTo: statusIcon.leadingAnchor, constant: -6),
                     tf.trailingAnchor.constraint(lessThanOrEqualTo: statusSpinner.leadingAnchor, constant: -6),
                     tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                    statusIcon.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusIcon.trailingAnchor.constraint(equalTo: labelDot.leadingAnchor, constant: -8),
                     statusIcon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     statusIcon.widthAnchor.constraint(equalToConstant: 16),
                     statusIcon.heightAnchor.constraint(equalToConstant: 16),
-                    statusSpinner.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusSpinner.trailingAnchor.constraint(equalTo: labelDot.leadingAnchor, constant: -8),
                     statusSpinner.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     statusSpinner.widthAnchor.constraint(equalToConstant: 16),
                     statusSpinner.heightAnchor.constraint(equalToConstant: 16)
@@ -734,6 +776,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }()
             cell.textField?.stringValue = item.name
             cell.imageView?.image = remoteItemIconImage(for: item, size: 16)
+            let labelDot = cell.subviews.compactMap { $0 as? TreeFileLabelDotView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("FileLabelDot") })
+            labelDot?.configure(label: item.label)
 
             let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
                 .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
@@ -1150,6 +1195,29 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         @objc private func contextNewFolder() {
             guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
             parent.onRequestCreateFolder()
+        }
+    }
+}
+
+private extension FileLabelValue {
+    var nsColor: NSColor {
+        switch self {
+        case .none:
+            return .secondaryLabelColor
+        case .red:
+            return .systemRed
+        case .orange:
+            return .systemOrange
+        case .yellow:
+            return .systemYellow
+        case .green:
+            return .systemGreen
+        case .blue:
+            return .systemBlue
+        case .purple:
+            return .systemPurple
+        case .gray:
+            return .systemGray
         }
     }
 }
