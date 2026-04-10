@@ -28,6 +28,8 @@ struct FilesColumnsView: View {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canSetLabel: Bool
+    let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let onUploadURLs: ([URL], FileItem) -> Void
     let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem) async throws -> Void
 
@@ -134,8 +136,16 @@ struct FilesColumnsView: View {
             canDeleteForItem: canDeleteForItem,
             canUploadToDirectory: canUploadToDirectory,
             canCreateFolderInDirectory: canCreateFolderInDirectory,
+            canSetLabel: canSetLabel,
+            onRequestSetLabel: onRequestSetLabel,
             savedScrollOffset: filesViewModel.columnScrollOffsets[column.id] ?? 0,
-            onScrollOffsetChange: { filesViewModel.columnScrollOffsets[column.id] = $0 }
+            onScrollOffsetChange: { filesViewModel.columnScrollOffsets[column.id] = $0 },
+            onDesiredWidthChange: { desired in
+                let clamped = min(max(desired, 180), 620)
+                if abs((columnWidths[column.id] ?? 240) - clamped) > 2 {
+                    columnWidths[column.id] = clamped
+                }
+            }
         )
         .frame(width: width(for: column))
         .background(Color.clear)

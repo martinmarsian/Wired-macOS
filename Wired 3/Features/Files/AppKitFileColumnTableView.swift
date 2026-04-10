@@ -79,8 +79,11 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canSetLabel: Bool
+    let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let savedScrollOffset: CGFloat
     let onScrollOffsetChange: (CGFloat) -> Void
+    let onDesiredWidthChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -151,7 +154,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         context.coordinator.syncFromModel(items: self.column.items, selectedPaths: selectedPaths, syncPairStatusVersion: syncPairStatusVersion)
     }
 
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, FileLabelMenuTarget {
         var parent: AppKitFileColumnTableView
         weak var tableView: NSTableView?
         weak var scrollView: NSScrollView?
@@ -230,8 +233,15 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             }
             self.byPath = map
             contextDirectoryTarget = columnDirectory()
-            if let tableColumn = tableView?.tableColumns.first {
-                tableColumn.width = desiredColumnWidth(for: items)
+            if let tv = tableView, let tableColumn = tv.tableColumns.first {
+                let desired = desiredColumnWidth(for: items)
+                tableColumn.minWidth = 180
+                tv.sizeLastColumnToFit()
+                // Notify SwiftUI so it widens the column frame to fit the content.
+                // Deferred to avoid mutating state during a view update pass.
+                DispatchQueue.main.async { [weak self] in
+                    self?.parent.onDesiredWidthChange(desired)
+                }
             }
             if listChanged {
                 tableView?.reloadData()
@@ -302,13 +312,25 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
                 statusSpinner.isDisplayedWhenStopped = false
                 cell.addSubview(statusSpinner)
 
+                let chevron = NSImageView()
+                chevron.identifier = NSUserInterfaceItemIdentifier("ChevronView")
+                chevron.translatesAutoresizingMaskIntoConstraints = false
+                chevron.imageScaling = .scaleProportionallyUpOrDown
+                chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+                chevron.contentTintColor = .tertiaryLabelColor
+                cell.addSubview(chevron)
+
                 NSLayoutConstraint.activate([
                     icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
                     icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     icon.widthAnchor.constraint(equalToConstant: 16),
                     icon.heightAnchor.constraint(equalToConstant: 16),
                     tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-                    labelDot.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -32),
+                    chevron.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                    chevron.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    chevron.widthAnchor.constraint(equalToConstant: 7),
+                    chevron.heightAnchor.constraint(equalToConstant: 11),
+                    labelDot.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -5),
                     labelDot.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     labelDot.widthAnchor.constraint(equalToConstant: 8),
                     labelDot.heightAnchor.constraint(equalToConstant: 8),
@@ -332,6 +354,9 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             let labelDot = cell.subviews.compactMap { $0 as? FileLabelDotView }
                 .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("FileLabelDot") })
             labelDot?.configure(label: item.label)
+            let chevronView = cell.subviews.compactMap { $0 as? NSImageView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("ChevronView") })
+            chevronView?.isHidden = !isDirectory(item)
             let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
                 .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
             let statusSpinner = cell.subviews.compactMap { $0 as? NSProgressIndicator }
@@ -570,21 +595,39 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         func makeContextMenu() -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
-            menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            var item = menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)
+            
             menu.addItem(NSMenuItem.separator())
-            menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
-            menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
-            menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
-            menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
+            item = menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "arrow.up.circle", accessibilityDescription: nil)
+
+            menu.addItem(makeLabelSubmenuItem(target: self))
+
+            menu.addItem(NSMenuItem.separator())
+            item = menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+            
             menu.addItem(NSMenuItem.separator())
             let statusItem = menu.addItem(withTitle: "Sync Status: Pair inactive", action: nil, keyEquivalent: "")
             statusItem.tag = SyncContextMenuItemTag.status
             let toggleItem = menu.addItem(withTitle: "Activate Sync Pair", action: #selector(contextToggleSyncPair), keyEquivalent: "")
             toggleItem.tag = SyncContextMenuItemTag.toggle
+            toggleItem.image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
+            
             let syncNowItem = menu.addItem(withTitle: "Sync Now", action: #selector(contextSyncNow), keyEquivalent: "")
             syncNowItem.tag = SyncContextMenuItemTag.syncNow
-            menu.addItem(NSMenuItem.separator())
-            menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
+            syncNowItem.image = NSImage(systemSymbolName: "arrow.trianglehead.2.clockwise", accessibilityDescription: nil)
+            
             for item in menu.items {
                 item.target = self
             }
@@ -672,6 +715,9 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             menu.item(withTag: SyncContextMenuItemTag.syncNow)?.isHidden = selectedSyncItem == nil
             menu.item(withTag: SyncContextMenuItemTag.syncNow)?.isEnabled = selectedSyncItem != nil && pairExists && syncState != .checking
             menu.item(withTitle: "New Folder")?.isEnabled = parent.canCreateFolderInDirectory(contextDirectoryTarget)
+            if let labelItem = menu.item(withTag: LabelContextMenuItemTag.submenu) {
+                labelItem.isEnabled = parent.canSetLabel && !selectedItems().isEmpty
+            }
         }
 
         private func selectedItems() -> [FileItem] {
@@ -729,6 +775,14 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         @objc private func contextNewFolder() {
             guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
             parent.onRequestCreateFolder(contextDirectoryTarget)
+        }
+
+        @objc func contextSetLabel(_ sender: NSMenuItem) {
+            let rawValue = UInt32(sender.tag - LabelContextMenuItemTag.itemBase)
+            let label = FileLabelValue(rawValue: rawValue) ?? .none
+            let targets = selectedItems()
+            guard !targets.isEmpty else { return }
+            parent.onRequestSetLabel(targets, label)
         }
     }
 }

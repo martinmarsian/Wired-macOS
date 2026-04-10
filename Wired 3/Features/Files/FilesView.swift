@@ -561,6 +561,18 @@ struct FilesView: View {
 #endif
     }
 
+    private func setLabel(_ label: FileLabelValue, on items: [FileItem]) {
+        Task {
+            for item in items {
+                do {
+                    try await filesViewModel.setFileLabel(path: item.path, label: label)
+                } catch {
+                    filesViewModel.error = error
+                }
+            }
+        }
+    }
+
     private func syncNow(for directory: FileItem) {
 #if os(macOS)
         let serverURL = currentSyncServerURL
@@ -839,6 +851,10 @@ struct FilesView: View {
             canCreateFolderInDirectory: { directory in
                 canCreateFolder(in: directory)
             },
+            canSetLabel: runtime.hasPrivilege("wired.account.file.set_label"),
+            onRequestSetLabel: { items, label in
+                setLabel(label, on: items)
+            },
             onUploadURLs: { urls, target in
                 upload(urls: urls, to: target)
             },
@@ -917,6 +933,10 @@ struct FilesView: View {
             },
             canCreateFolderInDirectory: { directory in
                 canCreateFolder(in: directory)
+            },
+            canSetLabel: runtime.hasPrivilege("wired.account.file.set_label"),
+            onRequestSetLabel: { items, label in
+                setLabel(label, on: items)
             },
             onUploadURLs: { urls, target in
                 upload(urls: urls, to: target)

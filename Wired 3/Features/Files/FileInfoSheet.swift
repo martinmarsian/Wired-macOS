@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 private enum DropboxAccessLevel: String, CaseIterable, Identifiable {
     case denied
@@ -322,7 +325,11 @@ struct FileInfoSheet: View {
                         Button {
                             labelSelection = label
                         } label: {
-                            Text(label.title)
+                            Label {
+                                Text(label.title)
+                            } icon: {
+                                Image(nsImage: label.menuDotImage)
+                            }
                         }
                     }
                 } label: {
@@ -720,22 +727,34 @@ struct FileInfoSheet: View {
 private extension FileLabelValue {
     var color: Color {
         switch self {
-        case .none:
-            return Color.secondary
-        case .red:
-            return .red
-        case .orange:
-            return .orange
-        case .yellow:
-            return .yellow
-        case .green:
-            return .green
-        case .blue:
-            return .blue
-        case .purple:
-            return .purple
-        case .gray:
-            return .gray
+        case .none:   return Color.secondary
+        case .red:    return .red
+        case .orange: return .orange
+        case .yellow: return .yellow
+        case .green:  return .green
+        case .blue:   return .blue
+        case .purple: return .purple
+        case .gray:   return .gray
+        }
+    }
+
+    /// A pre-drawn NSImage circle used in menu items.
+    /// SF symbols in menus are always rendered as templates (black) on macOS,
+    /// so we draw the dot directly into an NSImage to preserve the color.
+    var menuDotImage: NSImage {
+        let size: CGFloat = 12
+        return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            if self == .none {
+                NSColor.tertiaryLabelColor.setFill()
+                let path = NSBezierPath(ovalIn: rect.insetBy(dx: 1.5, dy: 1.5))
+                path.lineWidth = 1.5
+                NSColor.tertiaryLabelColor.setStroke()
+                path.stroke()
+            } else {
+                NSColor(self.color).setFill()
+                NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill()
+            }
+            return true
         }
     }
 }
