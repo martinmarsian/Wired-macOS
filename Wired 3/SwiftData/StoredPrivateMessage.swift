@@ -15,6 +15,7 @@ final class StoredPrivateMessage {
     var text: String
     var date: Date
     var isFromCurrentUser: Bool
+    var attachmentDescriptorsData: Data?
     var conversation: StoredPrivateConversation?
 
     init(
@@ -25,6 +26,7 @@ final class StoredPrivateMessage {
         text: String,
         date: Date,
         isFromCurrentUser: Bool,
+        attachmentDescriptorsData: Data?,
         conversation: StoredPrivateConversation
     ) {
         self.eventID = eventID
@@ -34,6 +36,7 @@ final class StoredPrivateMessage {
         self.text = text
         self.date = date
         self.isFromCurrentUser = isFromCurrentUser
+        self.attachmentDescriptorsData = attachmentDescriptorsData
         self.conversation = conversation
     }
 }

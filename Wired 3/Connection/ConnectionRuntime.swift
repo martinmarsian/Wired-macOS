@@ -1257,7 +1257,8 @@ final class ConnectionRuntime: Identifiable {
                             senderIcon: storedMessage.senderIcon,
                             text: storedMessage.text,
                             date: storedMessage.date,
-                            isFromCurrentUser: storedMessage.isFromCurrentUser
+                            isFromCurrentUser: storedMessage.isFromCurrentUser,
+                            attachments: decodeStoredAttachmentDescriptors(from: storedMessage.attachmentDescriptorsData)
                         )
                     }
                 return conversation
@@ -1356,6 +1357,7 @@ final class ConnectionRuntime: Identifiable {
                         text: message.text,
                         date: message.date,
                         isFromCurrentUser: message.isFromCurrentUser,
+                        attachmentDescriptorsData: encodeStoredAttachmentDescriptors(message.attachments),
                         conversation: storedConversation
                     )
                     modelContext.insert(storedMessage)
@@ -1426,6 +1428,16 @@ final class ConnectionRuntime: Identifiable {
         } catch {
             print("[Messages] save failed:", error)
         }
+    }
+
+    private func encodeStoredAttachmentDescriptors(_ descriptors: [ChatAttachmentDescriptor]) -> Data? {
+        guard !descriptors.isEmpty else { return nil }
+        return try? JSONEncoder().encode(descriptors)
+    }
+
+    private func decodeStoredAttachmentDescriptors(from data: Data?) -> [ChatAttachmentDescriptor] {
+        guard let data else { return [] }
+        return (try? JSONDecoder().decode([ChatAttachmentDescriptor].self, from: data)) ?? []
     }
 
     private func persistenceKey() -> String? {
