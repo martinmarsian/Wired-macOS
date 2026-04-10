@@ -13,6 +13,9 @@ struct ChatMeMessageView: View {
     @AppStorage("TimestampEveryMessage") var timestampEveryMessage: Bool = false
 
     var message: ChatEvent
+    var selectedImageSource: ChatImageQuickLookSource?
+    var onSelectImage: ((ChatImageQuickLookSource) -> Void)?
+    var onOpenQuickLook: ((ChatImageQuickLookSource) -> Void)?
 
     private var imageAttachments: [ChatAttachmentDescriptor] {
         message.attachments.filter(\.isImage)
@@ -55,9 +58,21 @@ struct ChatMeMessageView: View {
             }
 
             ForEach(imageAttachments, id: \.id) { attachment in
+                let source = ChatImageQuickLookSource.attachment(attachment)
                 HStack {
                     Spacer()
-                    ChatAttachmentImageBubbleView(attachment: attachment, isFromYou: false, showsTail: false)
+                    ChatAttachmentImageBubbleView(
+                        attachment: attachment,
+                        isFromYou: false,
+                        showsTail: false,
+                        isSelected: selectedImageSource?.selectionID == source.selectionID,
+                        onSelect: {
+                            onSelectImage?(source)
+                        },
+                        onOpenQuickLook: {
+                            onOpenQuickLook?(source)
+                        }
+                    )
                     Spacer()
                 }
             }

@@ -21,6 +21,9 @@ struct ChatSayMessageView: View {
     var showNickname: Bool = true
     var showAvatar: Bool = true
     var isGroupedWithNext: Bool = false
+    var selectedImageSource: ChatImageQuickLookSource?
+    var onSelectImage: ((ChatImageQuickLookSource) -> Void)?
+    var onOpenQuickLook: ((ChatImageQuickLookSource) -> Void)?
 
     @State var isHovered: Bool = false
 
@@ -167,18 +170,34 @@ struct ChatSayMessageView: View {
             }
 
             if let primaryImageURL {
+                let source = ChatImageQuickLookSource.remote(primaryImageURL)
                 ChatRemoteImageBubbleView(
                     url: primaryImageURL,
                     isFromYou: isFromYou,
-                    showsTail: imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext
+                    showsTail: imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext,
+                    isSelected: selectedImageSource?.selectionID == source.selectionID,
+                    onSelect: {
+                        onSelectImage?(source)
+                    },
+                    onOpenQuickLook: {
+                        onOpenQuickLook?(source)
+                    }
                 )
             }
 
             ForEach(Array(imageAttachments.enumerated()), id: \.element.id) { index, attachment in
+                let source = ChatImageQuickLookSource.attachment(attachment)
                 ChatAttachmentImageBubbleView(
                     attachment: attachment,
                     isFromYou: isFromYou,
-                    showsTail: index == imageAttachments.count - 1 && fileAttachments.isEmpty && !isGroupedWithNext
+                    showsTail: index == imageAttachments.count - 1 && fileAttachments.isEmpty && !isGroupedWithNext,
+                    isSelected: selectedImageSource?.selectionID == source.selectionID,
+                    onSelect: {
+                        onSelectImage?(source)
+                    },
+                    onOpenQuickLook: {
+                        onOpenQuickLook?(source)
+                    }
                 )
             }
 
@@ -406,6 +425,9 @@ struct ChatRemoteImageBubbleView: View {
     let url: URL
     let isFromYou: Bool
     let showsTail: Bool
+    var isSelected: Bool = false
+    var onSelect: (() -> Void)?
+    var onOpenQuickLook: (() -> Void)?
 
     @StateObject private var loader: ChatRemoteImageLoader
 
@@ -413,10 +435,20 @@ struct ChatRemoteImageBubbleView: View {
     private let maxBubbleHeight: CGFloat = 360
     private let placeholderSize = CGSize(width: 280, height: 190)
 
-    init(url: URL, isFromYou: Bool, showsTail: Bool) {
+    init(
+        url: URL,
+        isFromYou: Bool,
+        showsTail: Bool,
+        isSelected: Bool = false,
+        onSelect: (() -> Void)? = nil,
+        onOpenQuickLook: (() -> Void)? = nil
+    ) {
         self.url = url
         self.isFromYou = isFromYou
         self.showsTail = showsTail
+        self.isSelected = isSelected
+        self.onSelect = onSelect
+        self.onOpenQuickLook = onOpenQuickLook
         _loader = StateObject(wrappedValue: ChatRemoteImageLoader(url: url))
     }
 
@@ -441,12 +473,18 @@ struct ChatRemoteImageBubbleView: View {
     }
 
     var body: some View {
-        Link(destination: url) {
-            bubbleContent
-        }
-        .buttonStyle(.plain)
+        bubbleContent
         .frame(width: currentSize.width, height: currentSize.height)
+        .overlay(selectionOverlay)
+        .contentShape(Rectangle())
         .contextMenu { contextMenuItems }
+        .onTapGesture {
+            onSelect?()
+        }
+        .onTapGesture(count: 2) {
+            onSelect?()
+            onOpenQuickLook?()
+        }
         .onAppear {
             loader.loadIfNeeded()
         }
@@ -516,6 +554,12 @@ struct ChatRemoteImageBubbleView: View {
         .frame(width: currentSize.width, height: currentSize.height)
         .mask(bubbleMask)
         .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+    }
+
+    private var selectionOverlay: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(Color.accentColor.opacity(isSelected ? 0.35 : 0), lineWidth: 1)
+            .padding(1)
     }
 
     private var bubbleMask: some View {

@@ -6,6 +6,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
 #if os(macOS)
+import Quartz
+#endif
+#if os(macOS)
 import AppKit
 #endif
 
@@ -52,12 +55,210 @@ struct ChatDraftAttachmentChipView: View {
     }
 }
 
+enum ChatImageQuickLookSource: Hashable {
+    case attachment(ChatAttachmentDescriptor)
+    case remote(URL)
+
+    var selectionID: String {
+        switch self {
+        case .attachment(let attachment):
+            return "attachment:\(attachment.id)"
+        case .remote(let url):
+            return "remote:\(url.absoluteString)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .attachment(let attachment):
+            return attachment.name
+        case .remote(let url):
+            let filename = url.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+            return filename.isEmpty ? "Image" : filename
+        }
+    }
+
+    var preferredFilenameExtension: String? {
+        switch self {
+        case .attachment(let attachment):
+            return attachment.preferredFilenameExtension
+        case .remote(let url):
+            let pathExtension = url.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+            return pathExtension.isEmpty ? nil : pathExtension
+        }
+    }
+
+#if os(macOS)
+    func cachedQuickLookURL(
+        connectionID: UUID,
+        baseDirectory: URL = FileManager.default.temporaryDirectory
+    ) -> URL {
+        let cacheDirectory = baseDirectory.appendingPathComponent("ChatQuickLook", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+
+        let fileStem = title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "Preview"
+        let suffix = abs(selectionID.hashValue)
+        let fileExtension = preferredFilenameExtension ?? "bin"
+        return cacheDirectory.appendingPathComponent(
+            "\(fileStem)-\(connectionID.uuidString.lowercased())-\(suffix).\(fileExtension)",
+            isDirectory: false
+        )
+    }
+
+    func quickLookURL(connectionID: UUID, runtime: ConnectionRuntime) async throws -> URL {
+        let cacheURL = cachedQuickLookURL(connectionID: connectionID)
+        if FileManager.default.fileExists(atPath: cacheURL.path) {
+            return cacheURL
+        }
+
+        let data: Data
+        switch self {
+        case .attachment(let attachment):
+            data = try await runtime.downloadChatAttachmentData(attachment)
+        case .remote(let url):
+            if let cached = await ChatRemoteImageCache.shared.data(for: url) {
+                data = cached
+            } else {
+                let (remoteData, _) = try await URLSession.shared.data(from: url)
+                await ChatRemoteImageCache.shared.store(remoteData, for: url)
+                data = remoteData
+            }
+        }
+
+        try data.write(to: cacheURL, options: .atomic)
+        return cacheURL
+    }
+#endif
+}
+
+#if os(macOS)
+private final class ChatImageQuickLookPreviewItem: NSObject, QLPreviewItem {
+    let previewItemURL: URL?
+    let previewItemTitle: String?
+
+    init(url: URL, title: String) {
+        self.previewItemURL = url
+        self.previewItemTitle = title
+    }
+}
+
+final class ChatImageQuickLookController: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    private var previewItem: ChatImageQuickLookPreviewItem?
+    private var sourceFrame: NSRect = .zero
+
+    @MainActor
+    func present(localURL: URL, title: String, sourceFrame: NSRect = .zero) {
+        previewItem = ChatImageQuickLookPreviewItem(url: localURL, title: title)
+        self.sourceFrame = sourceFrame
+
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = self
+        panel.delegate = self
+        panel.makeKeyAndOrderFront(nil)
+        panel.reloadData()
+        panel.currentPreviewItemIndex = 0
+        panel.refreshCurrentPreviewItem()
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        previewItem == nil ? 0 : 1
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        previewItem
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor previewItem: QLPreviewItem!) -> NSRect {
+        sourceFrame
+    }
+}
+
+private struct ChatQuickLookSpaceKeyMonitor: NSViewRepresentable {
+    let isEnabled: Bool
+    let onSpace: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isEnabled: isEnabled, onSpace: onSpace)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        context.coordinator.attach(to: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.attach(to: nsView)
+        context.coordinator.isEnabled = isEnabled
+        context.coordinator.onSpace = onSpace
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        var isEnabled: Bool
+        var onSpace: () -> Void
+        private weak var view: NSView?
+        private var monitor: Any?
+
+        init(isEnabled: Bool, onSpace: @escaping () -> Void) {
+            self.isEnabled = isEnabled
+            self.onSpace = onSpace
+        }
+
+        deinit {
+            detach()
+        }
+
+        func attach(to view: NSView) {
+            self.view = view
+            guard monitor == nil else { return }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self else { return event }
+                guard self.isEnabled else { return event }
+                guard self.view?.window?.isKeyWindow == true else { return event }
+                guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+                      event.keyCode == 49 else {
+                    return event
+                }
+
+                if let textView = self.view?.window?.firstResponder as? NSTextView,
+                   textView.isEditable {
+                    return event
+                }
+
+                self.onSpace()
+                return nil
+            }
+        }
+
+        func detach() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+    }
+}
+#endif
+
 struct ChatAttachmentImageBubbleView: View {
     @Environment(ConnectionRuntime.self) private var runtime
 
     let attachment: ChatAttachmentDescriptor
     let isFromYou: Bool
     let showsTail: Bool
+    var isSelected: Bool = false
+    var onSelect: (() -> Void)?
+    var onOpenQuickLook: (() -> Void)?
 
     @State private var phase: Phase = .idle
 
@@ -97,6 +298,15 @@ struct ChatAttachmentImageBubbleView: View {
             .frame(width: currentSize.width, height: currentSize.height)
             .mask(bubbleMask)
             .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+            .overlay(selectionOverlay)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSelect?()
+            }
+            .onTapGesture(count: 2) {
+                onSelect?()
+                onOpenQuickLook?()
+            }
             .contextMenu {
 #if os(macOS)
                 Button {
@@ -109,6 +319,12 @@ struct ChatAttachmentImageBubbleView: View {
             .task(id: attachment.id) {
                 await load()
             }
+    }
+
+    private var selectionOverlay: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(Color.accentColor.opacity(isSelected ? 0.35 : 0), lineWidth: 1)
+            .padding(1)
     }
 
     private var bubbleContent: some View {
@@ -309,3 +525,27 @@ struct ChatAttachmentFileBubbleView: View {
     }
 #endif
 }
+
+#if os(macOS)
+extension View {
+    @ViewBuilder
+    func chatQuickLookSpaceMonitor(
+        isEnabled: Bool,
+        onSpace: @escaping () -> Void
+    ) -> some View {
+        background(
+            ChatQuickLookSpaceKeyMonitor(
+                isEnabled: isEnabled,
+                onSpace: onSpace
+            )
+            .frame(width: 0, height: 0)
+        )
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+#endif
