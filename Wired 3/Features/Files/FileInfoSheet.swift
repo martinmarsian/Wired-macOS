@@ -725,19 +725,6 @@ struct FileInfoSheet: View {
 }
 
 private extension FileLabelValue {
-    var color: Color {
-        switch self {
-        case .none:   return Color.secondary
-        case .red:    return .red
-        case .orange: return .orange
-        case .yellow: return .yellow
-        case .green:  return .green
-        case .blue:   return .blue
-        case .purple: return .purple
-        case .gray:   return .gray
-        }
-    }
-
     /// A pre-drawn NSImage circle used in menu items.
     /// SF symbols in menus are always rendered as templates (black) on macOS,
     /// so we draw the dot directly into an NSImage to preserve the color.

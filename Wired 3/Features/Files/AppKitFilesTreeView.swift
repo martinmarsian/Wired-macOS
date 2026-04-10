@@ -142,24 +142,24 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         let kindColumn = NSTableColumn(identifier: ColumnID.kind)
         kindColumn.title = "Kind"
         kindColumn.minWidth = 110
-        kindColumn.width = 140
-        kindColumn.resizingMask = .autoresizingMask
+        kindColumn.width = 110
+        kindColumn.resizingMask = .userResizingMask
         kindColumn.sortDescriptorPrototype = NSSortDescriptor(key: "kind", ascending: true)
         outlineView.addTableColumn(kindColumn)
 
         let modifiedColumn = NSTableColumn(identifier: ColumnID.modified)
         modifiedColumn.title = "Modified"
         modifiedColumn.minWidth = 140
-        modifiedColumn.width = 180
-        modifiedColumn.resizingMask = .autoresizingMask
+        modifiedColumn.width = 140
+        modifiedColumn.resizingMask = .userResizingMask
         modifiedColumn.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
         outlineView.addTableColumn(modifiedColumn)
 
         let sizeColumn = NSTableColumn(identifier: ColumnID.size)
         sizeColumn.title = "Size"
-        sizeColumn.minWidth = 90
-        sizeColumn.width = 120
-        sizeColumn.resizingMask = .autoresizingMask
+        sizeColumn.minWidth = 100
+        sizeColumn.width = 100
+        sizeColumn.resizingMask = .userResizingMask
         sizeColumn.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: true)
         outlineView.addTableColumn(sizeColumn)
 

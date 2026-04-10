@@ -54,8 +54,12 @@ struct FilesColumnsView: View {
                         ColumnResizeHandle(width: binding(for: column.id))
                     }
 
-                    FilePreviewColumn(selectedItem: selectedItem)
-                        .frame(width: previewWidth)
+                    FilePreviewColumn(
+                        selectedItem: selectedItem,
+                        syncPairStatusForItem: syncPairStatusForItem,
+                        syncPairExistsForItem: syncPairExistsForItem
+                    )
+                    .frame(width: previewWidth)
 
                     ColumnResizeHandle(width: $previewWidth)
                 }

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftUI
 import WiredSwift
 
 enum FileType: UInt32, CustomStringConvertible {
@@ -88,22 +89,27 @@ enum FileLabelValue: UInt32, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .none:
-            return "None"
-        case .red:
-            return "Red"
-        case .orange:
-            return "Orange"
-        case .yellow:
-            return "Yellow"
-        case .green:
-            return "Green"
-        case .blue:
-            return "Blue"
-        case .purple:
-            return "Purple"
-        case .gray:
-            return "Gray"
+        case .none:   return "None"
+        case .red:    return "Red"
+        case .orange: return "Orange"
+        case .yellow: return "Yellow"
+        case .green:  return "Green"
+        case .blue:   return "Blue"
+        case .purple: return "Purple"
+        case .gray:   return "Gray"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .none:   return .secondary
+        case .red:    return .red
+        case .orange: return .orange
+        case .yellow: return .yellow
+        case .green:  return .green
+        case .blue:   return .blue
+        case .purple: return .purple
+        case .gray:   return .gray
         }
     }
 }
