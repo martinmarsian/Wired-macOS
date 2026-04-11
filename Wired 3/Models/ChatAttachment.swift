@@ -221,7 +221,8 @@ enum ComposerAttachmentItem: Identifiable, Equatable {
         guard totalSize <= ChatDraftAttachment.maxTotalSizeBytes else {
             throw WiredError(
                 withTitle: "Attachment",
-                message: "These attachments are too large together. Attachments are currently limited to \(byteCountFormatter.string(fromByteCount: Int64(ChatDraftAttachment.maxTotalSizeBytes))) per message."
+                message: "These attachments are too large together. Attachments are currently limited to " +
+                    "\(byteCountFormatter.string(fromByteCount: Int64(ChatDraftAttachment.maxTotalSizeBytes))) per message."
             )
         }
     }
