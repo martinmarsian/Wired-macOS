@@ -685,6 +685,28 @@ final class FilesViewModel: ObservableObject {
     }
 
     @MainActor
+    func setFileComment(path: String, comment: String) async throws {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return }
+
+        try await withFileNetworkActivity {
+            try await fileService.setFileComment(path: path, comment: comment, connection: connection)
+        }
+        await reloadAll()
+    }
+
+    @MainActor
+    func setFileLabel(path: String, label: FileLabelValue) async throws {
+        guard let connection = runtime?.connection as? AsyncConnection,
+              let fileService else { return }
+
+        try await withFileNetworkActivity {
+            try await fileService.setFileLabel(path: path, label: label, connection: connection)
+        }
+        await reloadAll()
+    }
+
+    @MainActor
     func setFilePermissions(path: String, permissions: DropboxPermissions) async throws {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }

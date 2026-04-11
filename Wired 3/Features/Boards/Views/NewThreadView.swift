@@ -20,6 +20,7 @@ struct NewThreadView: View {
 
     @State private var subject: String = ""
     @State private var text: String    = ""
+    @State private var attachments: [ComposerAttachmentItem] = []
     @State private var isPosting       = false
     @FocusState private var focusedField: NewThreadField?
 
@@ -56,7 +57,13 @@ struct NewThreadView: View {
             Divider()
 
             // Composer — edge-to-edge
-            MarkdownComposer(text: $text, autoFocus: false, onOptionEnter: post)
+            MarkdownComposer(
+                text: $text,
+                attachments: $attachments,
+                autoFocus: false,
+                onOptionEnter: post,
+                onAttachmentError: { runtime.lastError = $0 }
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -85,7 +92,8 @@ struct NewThreadView: View {
         Task {
             try? await runtime.addThread(toBoard: board,
                                          subject: subject.trimmingCharacters(in: .whitespaces),
-                                         text: text.trimmingCharacters(in: .whitespaces))
+                                         text: text.trimmingCharacters(in: .whitespaces),
+                                         attachments: attachments)
             await MainActor.run { dismiss() }
         }
     }

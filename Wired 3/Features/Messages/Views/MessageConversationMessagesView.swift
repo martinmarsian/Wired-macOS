@@ -16,6 +16,10 @@ struct MessageConversationMessagesView: View {
     @State private var revealNewMessage = true
     @State private var displayedMessageCount: Int = 100
     @State private var isLoadingMore = false
+    @State private var selectedImageSource: ChatImageQuickLookSource?
+#if os(macOS)
+    @State private var quickLookController = ChatImageQuickLookController()
+#endif
     var bottomOverlayInset: CGFloat = 0
 
     private let bottomAnchorID = "message-conversation-bottom-anchor"
@@ -111,6 +115,7 @@ struct MessageConversationMessagesView: View {
         }
         .onChange(of: conversation.id) {
             displayedMessageCount = maxDisplayedMessages
+            selectedImageSource = nil
         }
         .onChange(of: maxDisplayedMessages) { _, newMax in
             if displayedMessageCount < newMax {
@@ -137,7 +142,15 @@ struct MessageConversationMessagesView: View {
                                 currentUserID: runtime.userID,
                                 showNickname: showNickname,
                                 showAvatar: showAvatar,
-                                isGroupedWithNext: isGroupedWithNext
+                                isGroupedWithNext: isGroupedWithNext,
+                                selectedImageSource: selectedImageSource,
+                                onSelectImage: { source in
+                                    selectedImageSource = source
+                                },
+                                onOpenQuickLook: { source in
+                                    selectedImageSource = source
+                                    openQuickLook(for: source)
+                                }
                             )
                                 .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
                                 .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
@@ -153,6 +166,11 @@ struct MessageConversationMessagesView: View {
             .background(.clear)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
+#if os(macOS)
+            .chatQuickLookSpaceMonitor(isEnabled: selectedImageSource != nil) {
+                openSelectedImageQuickLook()
+            }
+#endif
             .onChange(of: conversation.messages.last?.id) {
                 guard let lastMessage = conversation.messages.last else { return }
                 let isVisible = !isSearching || lastMessage.matchesSearch(normalizedSearchText)
@@ -262,6 +280,32 @@ struct MessageConversationMessagesView: View {
             isLoadingMore = false
         }
     }
+
+    private func openSelectedImageQuickLook() {
+#if os(macOS)
+        guard let selectedImageSource else { return }
+        openQuickLook(for: selectedImageSource)
+#endif
+    }
+
+    private func openQuickLook(for source: ChatImageQuickLookSource) {
+#if os(macOS)
+        Task {
+            do {
+                let localURL = try await source.quickLookURL(connectionID: runtime.id, runtime: runtime)
+                await MainActor.run {
+                    quickLookController.present(localURL: localURL, title: source.title)
+                }
+            } catch {
+                await MainActor.run {
+                    runtime.lastError = error
+                }
+            }
+        }
+        #else
+        _ = source
+        #endif
+    }
 }
 
 private struct MessageBubbleRow: View {
@@ -272,9 +316,20 @@ private struct MessageBubbleRow: View {
     let showNickname: Bool
     let showAvatar: Bool
     let isGroupedWithNext: Bool
+    var selectedImageSource: ChatImageQuickLookSource?
+    var onSelectImage: ((ChatImageQuickLookSource) -> Void)?
+    var onOpenQuickLook: ((ChatImageQuickLookSource) -> Void)?
 
     private var primaryImageURL: URL? {
         message.cachedPrimaryHTTPImageURL
+    }
+
+    private var imageAttachments: [ChatAttachmentDescriptor] {
+        message.attachments.filter(\.isImage)
+    }
+
+    private var fileAttachments: [ChatAttachmentDescriptor] {
+        message.attachments.filter { !$0.isImage }
     }
 
     private var trimmedMessageText: String {
@@ -287,7 +342,7 @@ private struct MessageBubbleRow: View {
     }
 
     private var shouldShowTextBubble: Bool {
-        !isImageOnlyMessage
+        !trimmedMessageText.isEmpty && !isImageOnlyMessage
     }
 
     private var isEmojiOnlyMessage: Bool {
@@ -344,6 +399,7 @@ private struct MessageBubbleRow: View {
         }
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .padding(.horizontal, 10)
     }
 
     @ViewBuilder
@@ -357,7 +413,7 @@ private struct MessageBubbleRow: View {
                 Text(message.text.attributedWithDetectedLinks(linkColor: linkColor))
                     .messageBubbleStyle(
                         isFromYou: isFromYou,
-                        showsTail: primaryImageURL == nil && !isGroupedWithNext
+                        showsTail: primaryImageURL == nil && imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext
                     )
                     .containerRelativeFrame(
                         .horizontal,
@@ -369,10 +425,42 @@ private struct MessageBubbleRow: View {
             }
 
             if let primaryImageURL {
+                let source = ChatImageQuickLookSource.remote(primaryImageURL)
                 ChatRemoteImageBubbleView(
                     url: primaryImageURL,
                     isFromYou: isFromYou,
-                    showsTail: !isGroupedWithNext
+                    showsTail: imageAttachments.isEmpty && fileAttachments.isEmpty && !isGroupedWithNext,
+                    isSelected: selectedImageSource?.selectionID == source.selectionID,
+                    onSelect: {
+                        onSelectImage?(source)
+                    },
+                    onOpenQuickLook: {
+                        onOpenQuickLook?(source)
+                    }
+                )
+            }
+
+            ForEach(Array(imageAttachments.enumerated()), id: \.element.id) { index, attachment in
+                let source = ChatImageQuickLookSource.attachment(attachment)
+                ChatAttachmentImageBubbleView(
+                    attachment: attachment,
+                    isFromYou: isFromYou,
+                    showsTail: index == imageAttachments.count - 1 && fileAttachments.isEmpty && !isGroupedWithNext,
+                    isSelected: selectedImageSource?.selectionID == source.selectionID,
+                    onSelect: {
+                        onSelectImage?(source)
+                    },
+                    onOpenQuickLook: {
+                        onOpenQuickLook?(source)
+                    }
+                )
+            }
+
+            ForEach(Array(fileAttachments.enumerated()), id: \.element.id) { index, attachment in
+                ChatAttachmentFileBubbleView(
+                    attachment: attachment,
+                    isFromYou: isFromYou,
+                    showsTail: index == fileAttachments.count - 1 && !isGroupedWithNext
                 )
             }
         }

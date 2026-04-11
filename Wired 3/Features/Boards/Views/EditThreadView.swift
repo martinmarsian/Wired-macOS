@@ -16,6 +16,8 @@ public struct EditThreadView: View {
 
     @State private var subject: String
     @State private var text: String = ""
+    @State private var attachments: [ComposerAttachmentItem] = []
+    @State private var initialAttachmentReferenceKeys: [String] = []
     @State private var isSubmitting = false
 
     init(thread: BoardThread) {
@@ -27,6 +29,10 @@ public struct EditThreadView: View {
         !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isSubmitting
+    }
+
+    private var attachmentReferencesChanged: Bool {
+        attachments.map(Self.attachmentReferenceKey(for:)) != initialAttachmentReferenceKeys
     }
 
     public var body: some View {
@@ -50,7 +56,12 @@ public struct EditThreadView: View {
             Divider()
 
             // Composer — edge-to-edge
-            MarkdownComposer(text: $text, onOptionEnter: save)
+            MarkdownComposer(
+                text: $text,
+                attachments: $attachments,
+                onOptionEnter: save,
+                onAttachmentError: { runtime.lastError = $0 }
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -73,9 +84,15 @@ public struct EditThreadView: View {
             // Prefill body with currently loaded first post when available.
             if let firstPost = thread.posts.first {
                 text = firstPost.text
+                let composerAttachments = firstPost.attachments.map(ComposerAttachmentItem.remote)
+                attachments = composerAttachments
+                initialAttachmentReferenceKeys = composerAttachments.map(Self.attachmentReferenceKey(for:))
             } else {
                 try? await runtime.getPosts(forThread: thread)
                 text = thread.posts.first?.text ?? ""
+                let composerAttachments = (thread.posts.first?.attachments ?? []).map(ComposerAttachmentItem.remote)
+                attachments = composerAttachments
+                initialAttachmentReferenceKeys = composerAttachments.map(Self.attachmentReferenceKey(for:))
             }
         }
     }
@@ -88,7 +105,9 @@ public struct EditThreadView: View {
                 try await runtime.editThread(
                     uuid: thread.uuid,
                     subject: subject.trimmingCharacters(in: .whitespacesAndNewlines),
-                    text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    attachments: attachments,
+                    sendAttachmentIDs: attachmentReferencesChanged
                 )
                 try await runtime.getPosts(forThread: thread)
                 await MainActor.run { dismiss() }
@@ -98,6 +117,15 @@ public struct EditThreadView: View {
                     isSubmitting = false
                 }
             }
+        }
+    }
+
+    private static func attachmentReferenceKey(for attachment: ComposerAttachmentItem) -> String {
+        switch attachment {
+        case .local(let draft):
+            return "local:\(draft.id.uuidString.lowercased())"
+        case .remote(let descriptor):
+            return "remote:\(descriptor.id.lowercased())"
         }
     }
 }

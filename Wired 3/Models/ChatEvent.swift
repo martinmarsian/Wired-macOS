@@ -42,6 +42,7 @@ final class ChatEvent: Identifiable {
     var text: String
     var type: ChatEventType
     var date = Date()
+    var attachments: [ChatAttachmentDescriptor]
 
     /// When non-nil, overrides `user.id == runtime.userID` for display alignment.
     /// Set for archived messages where the original userID may differ from the current session.
@@ -62,11 +63,29 @@ final class ChatEvent: Identifiable {
     }
 
     init(chat: Chat, user: User, type: ChatEventType, text: String, date: Date = Date()) {
+        self.attachments = []
         self.id = UUID()
         self.chat = chat
         self.user = user
         self.text = text
         self.type = type
         self.date = date
+    }
+
+    init(
+        chat: Chat,
+        user: User,
+        type: ChatEventType,
+        text: String,
+        date: Date = Date(),
+        attachments: [ChatAttachmentDescriptor]
+    ) {
+        self.id = UUID()
+        self.chat = chat
+        self.user = user
+        self.text = text
+        self.type = type
+        self.date = date
+        self.attachments = attachments
     }
 }

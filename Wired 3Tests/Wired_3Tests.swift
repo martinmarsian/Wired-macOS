@@ -1056,6 +1056,18 @@ private final class TestFileService: @preconcurrency FileServiceProtocol {
         connection: AsyncConnection
     ) async throws { }
 
+    func setFileComment(
+        path: String,
+        comment: String,
+        connection: AsyncConnection
+    ) async throws { }
+
+    func setFileLabel(
+        path: String,
+        label: FileLabelValue,
+        connection: AsyncConnection
+    ) async throws { }
+
     func setFilePermissions(
         path: String,
         permissions: DropboxPermissions,

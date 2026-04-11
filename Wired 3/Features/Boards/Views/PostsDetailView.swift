@@ -18,6 +18,10 @@ struct PostsDetailView: View {
     @State private var postToEdit: BoardPost?
     @State private var postToDelete: BoardPost?
     @State private var replyComposerContext: ReplyComposerContext?
+    @State private var selectedImageSource: ChatImageQuickLookSource?
+#if os(macOS)
+    @State private var quickLookController = ChatImageQuickLookController()
+#endif
 
     private struct ReplyComposerContext: Identifiable {
         let id = UUID()
@@ -157,43 +161,55 @@ struct PostsDetailView: View {
             Text(postToDelete?.text ?? "")
         }
         .background(Color.boardsTextBackground)
+        .onChange(of: threadUUID) {
+            selectedImageSource = nil
+        }
     }
 
     private func postsContainer(for thread: BoardThread) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    postsContent(for: thread)
-                    Color.clear
-                        .frame(height: 1)
-                        .id(bottomAnchorID)
+        GeometryReader { geometry in
+            let postContentWidth = max(280, geometry.size.width - 32)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        postsContent(for: thread, availableContentWidth: postContentWidth)
+                        Color.clear
+                            .frame(height: 1)
+                            .id(bottomAnchorID)
+                    }
                 }
-            }
-            .background(Color.boardsTextBackground)
-            .onAppear {
-                if thread.postsLoaded {
+                .background(Color.boardsTextBackground)
+#if os(macOS)
+                .chatQuickLookSpaceMonitor(isEnabled: selectedImageSource != nil) {
+                    openSelectedImageQuickLook()
+                }
+#endif
+                .onAppear {
+                    if thread.postsLoaded {
+                        if !scrollToPendingPostIfNeeded(proxy, animated: false) {
+                            scrollToBottom(proxy)
+                        }
+                    }
+                }
+                .onChange(of: thread.postsLoaded) { _, loaded in
+                    guard loaded else { return }
                     if !scrollToPendingPostIfNeeded(proxy, animated: false) {
                         scrollToBottom(proxy)
                     }
                 }
-            }
-            .onChange(of: thread.postsLoaded) { _, loaded in
-                guard loaded else { return }
-                if !scrollToPendingPostIfNeeded(proxy, animated: false) {
-                    scrollToBottom(proxy)
-                }
-            }
-            .onChange(of: thread.posts.count) { _, _ in
-                guard thread.postsLoaded else { return }
-                if !scrollToPendingPostIfNeeded(proxy) {
-                    scrollToBottom(proxy, animated: true)
+                .onChange(of: thread.posts.count) { _, _ in
+                    guard thread.postsLoaded else { return }
+                    if !scrollToPendingPostIfNeeded(proxy) {
+                        scrollToBottom(proxy, animated: true)
+                    }
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func postsContent(for thread: BoardThread) -> some View {
+    private func postsContent(for thread: BoardThread, availableContentWidth: CGFloat) -> some View {
         if !thread.postsLoaded {
             ProgressView("Loading posts…")
                 .padding(40)
@@ -202,7 +218,7 @@ struct PostsDetailView: View {
                 .padding(40)
         } else {
             ForEach(sortedPosts(thread.posts)) { post in
-                postRow(post)
+                postRow(post, availableContentWidth: availableContentWidth)
             }
         }
     }
@@ -211,21 +227,30 @@ struct PostsDetailView: View {
         runtime.hasPrivilege("wired.account.board.add_reactions")
     }
 
-    private func postRow(_ post: BoardPost) -> some View {
+    private func postRow(_ post: BoardPost, availableContentWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             PostRowView(
                 post: post,
                 highlightQuery: highlightQuery,
+                availableContentWidth: availableContentWidth,
                 canReply: canReplyToThread,
                 canEdit: canEditPost(post),
                 canDelete: canDeletePost(post),
                 canReact: canReact,
+                selectedImageSource: selectedImageSource,
                 onReply: { openReplyFromPost(post, selectedText: nil) },
                 onQuote: { selectedText in openReplyFromPost(post, selectedText: selectedText) },
                 onEdit: { postToEdit = post },
                 onDelete: { postToDelete = post },
                 onToggleReaction: { emoji in
                     Task { try? await runtime.toggleReaction(emoji: emoji, forPost: post) }
+                },
+                onSelectImage: { source in
+                    selectedImageSource = source
+                },
+                onOpenQuickLook: { source in
+                    selectedImageSource = source
+                    openQuickLook(for: source)
                 }
             )
             .padding(.horizontal)
@@ -239,4 +264,26 @@ struct PostsDetailView: View {
                 .padding(.horizontal)
         }
     }
+
+#if os(macOS)
+    private func openSelectedImageQuickLook() {
+        guard let selectedImageSource else { return }
+        openQuickLook(for: selectedImageSource)
+    }
+
+    private func openQuickLook(for source: ChatImageQuickLookSource) {
+        Task {
+            do {
+                let url = try await source.quickLookURL(connectionID: runtime.id, runtime: runtime)
+                await MainActor.run {
+                    quickLookController.present(localURL: url, title: source.title)
+                }
+            } catch {
+                await MainActor.run {
+                    runtime.lastError = error
+                }
+            }
+        }
+    }
+#endif
 }

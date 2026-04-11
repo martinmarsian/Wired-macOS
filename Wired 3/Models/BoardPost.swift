@@ -43,6 +43,7 @@ final class BoardPost: Identifiable {
     var isOwn: Bool
     var isUnread: Bool = false
     var isThreadBody: Bool = false
+    var attachments: [ChatAttachmentDescriptor]
     var reactions: [BoardReactionSummary] = []
     var reactionsLoaded: Bool = false
     /// Emojis that arrived from other users and haven't been animated yet (cleared after ~0.8 s).
@@ -55,7 +56,8 @@ final class BoardPost: Identifiable {
          postDate: Date,
          icon: Data? = nil,
          isOwn: Bool = false,
-         isThreadBody: Bool = false) {
+         isThreadBody: Bool = false,
+         attachments: [ChatAttachmentDescriptor] = []) {
         self.uuid       = uuid
         self.threadUUID = threadUUID
         self.text       = text
@@ -64,5 +66,6 @@ final class BoardPost: Identifiable {
         self.icon       = icon
         self.isOwn      = isOwn
         self.isThreadBody = isThreadBody
+        self.attachments = attachments
     }
 }

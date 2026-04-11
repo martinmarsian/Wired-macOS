@@ -28,6 +28,10 @@ struct ChatMessagesView: View {
     @State private var displayedMessageCount: Int = 100
     @State private var isLoadingMore = false
     @State private var archiveBoundaryMessageID: UUID?
+    @State private var selectedImageSource: ChatImageQuickLookSource?
+#if os(macOS)
+    @State private var quickLookController = ChatImageQuickLookController()
+#endif
 
     var chat: Chat
     var searchText: String = ""
@@ -235,6 +239,7 @@ struct ChatMessagesView: View {
         .onChange(of: chat.id) {
             displayedMessageCount = chatMaxMessages
             archiveBoundaryMessageID = nil
+            selectedImageSource = nil
         }
         .onChange(of: chatMaxMessages) { _, newMax in
             if displayedMessageCount < newMax {
@@ -294,6 +299,11 @@ struct ChatMessagesView: View {
             .background(.clear)
             .textSelection(.enabled)
             .frame(maxHeight: .infinity)
+#if os(macOS)
+            .chatQuickLookSpaceMonitor(isEnabled: selectedImageSource != nil) {
+                openSelectedImageQuickLook()
+            }
+#endif
             .onChange(of: chat.messages.last?.id) {
                 // When not searching: the last message is always in the windowed suffix.
                 // When searching: check directly — avoids building an O(n) Set on every call.
@@ -404,13 +414,31 @@ struct ChatMessagesView: View {
                 message: message,
                 showNickname: showNickname,
                 showAvatar: showAvatar,
-                isGroupedWithNext: isGroupedWithNext
+                isGroupedWithNext: isGroupedWithNext,
+                selectedImageSource: selectedImageSource,
+                onSelectImage: { source in
+                    selectedImageSource = source
+                },
+                onOpenQuickLook: { source in
+                    selectedImageSource = source
+                    openQuickLook(for: source)
+                }
             )
             .environment(runtime)
             .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
             .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
         } else if message.type == .me {
-            ChatMeMessageView(message: message)
+            ChatMeMessageView(
+                message: message,
+                selectedImageSource: selectedImageSource,
+                onSelectImage: { source in
+                    selectedImageSource = source
+                },
+                onOpenQuickLook: { source in
+                    selectedImageSource = source
+                    openQuickLook(for: source)
+                }
+            )
                 .environment(runtime)
                 .scaleEffect(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0.94) : 1)
                 .opacity(message.id == animatedNewMessageID ? (revealNewMessage ? 1 : 0) : 1)
@@ -692,6 +720,32 @@ struct ChatMessagesView: View {
         )
     }
 
+    private func openSelectedImageQuickLook() {
+#if os(macOS)
+        guard let selectedImageSource else { return }
+        openQuickLook(for: selectedImageSource)
+#endif
+    }
+
+    private func openQuickLook(for source: ChatImageQuickLookSource) {
+#if os(macOS)
+        Task {
+            do {
+                let localURL = try await source.quickLookURL(connectionID: runtime.id, runtime: runtime)
+                await MainActor.run {
+                    quickLookController.present(localURL: localURL, title: source.title)
+                }
+            } catch {
+                await MainActor.run {
+                    runtime.lastError = error
+                }
+            }
+        }
+#else
+        _ = source
+#endif
+    }
+
 }
 
 private enum ChatDisplayItem: Identifiable {
@@ -726,6 +780,7 @@ private enum ChatDisplayItem: Identifiable {
             return nil
         }
     }
+
 }
 
 private enum LiveSlotPresentation {

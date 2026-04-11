@@ -5,6 +5,38 @@ import UniformTypeIdentifiers
 import ObjectiveC
 import WiredSwift
 
+private final class TreeFileLabelDotView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = min(frameRect.width, frameRect.height) / 2
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = min(bounds.width, bounds.height) / 2
+    }
+
+    func configure(label: FileLabelValue) {
+        if label == .none {
+            isHidden = true
+            toolTip = nil
+            return
+        }
+
+        isHidden = false
+        layer?.backgroundColor = label.nsColor.cgColor
+        toolTip = label.title
+    }
+}
+
 private final class QuickLookOutlineView: NSOutlineView {
     var onQuickLook: (() -> Void)?
 
@@ -60,6 +92,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canSetLabel: Bool
+    let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let savedScrollOffset: CGPoint
     let onScrollOffsetChange: (CGPoint) -> Void
 
@@ -108,24 +142,24 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         let kindColumn = NSTableColumn(identifier: ColumnID.kind)
         kindColumn.title = "Kind"
         kindColumn.minWidth = 110
-        kindColumn.width = 140
-        kindColumn.resizingMask = .autoresizingMask
+        kindColumn.width = 110
+        kindColumn.resizingMask = .userResizingMask
         kindColumn.sortDescriptorPrototype = NSSortDescriptor(key: "kind", ascending: true)
         outlineView.addTableColumn(kindColumn)
 
         let modifiedColumn = NSTableColumn(identifier: ColumnID.modified)
         modifiedColumn.title = "Modified"
         modifiedColumn.minWidth = 140
-        modifiedColumn.width = 180
-        modifiedColumn.resizingMask = .autoresizingMask
+        modifiedColumn.width = 140
+        modifiedColumn.resizingMask = .userResizingMask
         modifiedColumn.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
         outlineView.addTableColumn(modifiedColumn)
 
         let sizeColumn = NSTableColumn(identifier: ColumnID.size)
         sizeColumn.title = "Size"
-        sizeColumn.minWidth = 90
-        sizeColumn.width = 120
-        sizeColumn.resizingMask = .autoresizingMask
+        sizeColumn.minWidth = 100
+        sizeColumn.width = 100
+        sizeColumn.resizingMask = .userResizingMask
         sizeColumn.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: true)
         outlineView.addTableColumn(sizeColumn)
 
@@ -414,7 +448,8 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     String(item.hasDirectoryCount),
                     String(item.dataSize),
                     String(item.rsrcSize),
-                    String(modified)
+                    String(modified),
+                    String(item.label.rawValue)
                 ].joined(separator: "|")
             }
         }
@@ -691,6 +726,11 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                 icon.imageScaling = .scaleProportionallyUpOrDown
                 cell.imageView = icon
 
+                let labelDot = TreeFileLabelDotView(frame: .zero)
+                labelDot.identifier = NSUserInterfaceItemIdentifier("FileLabelDot")
+                labelDot.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(labelDot)
+
                 let tf = NSTextField(labelWithString: "")
                 tf.translatesAutoresizingMaskIntoConstraints = false
                 tf.lineBreakMode = .byTruncatingMiddle
@@ -718,14 +758,18 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                     icon.widthAnchor.constraint(equalToConstant: 16),
                     icon.heightAnchor.constraint(equalToConstant: 16),
                     tf.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+                    labelDot.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -32),
+                    labelDot.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    labelDot.widthAnchor.constraint(equalToConstant: 8),
+                    labelDot.heightAnchor.constraint(equalToConstant: 8),
                     tf.trailingAnchor.constraint(lessThanOrEqualTo: statusIcon.leadingAnchor, constant: -6),
                     tf.trailingAnchor.constraint(lessThanOrEqualTo: statusSpinner.leadingAnchor, constant: -6),
                     tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                    statusIcon.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusIcon.trailingAnchor.constraint(equalTo: labelDot.leadingAnchor, constant: -8),
                     statusIcon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     statusIcon.widthAnchor.constraint(equalToConstant: 16),
                     statusIcon.heightAnchor.constraint(equalToConstant: 16),
-                    statusSpinner.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                    statusSpinner.trailingAnchor.constraint(equalTo: labelDot.leadingAnchor, constant: -8),
                     statusSpinner.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                     statusSpinner.widthAnchor.constraint(equalToConstant: 16),
                     statusSpinner.heightAnchor.constraint(equalToConstant: 16)
@@ -734,6 +778,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }()
             cell.textField?.stringValue = item.name
             cell.imageView?.image = remoteItemIconImage(for: item, size: 16)
+            let labelDot = cell.subviews.compactMap { $0 as? TreeFileLabelDotView }
+                .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("FileLabelDot") })
+            labelDot?.configure(label: item.label)
 
             let statusIcon = cell.subviews.compactMap { $0 as? NSImageView }
                 .first(where: { $0.identifier == NSUserInterfaceItemIdentifier("SyncStatusIcon") })
@@ -979,21 +1026,39 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         func makeContextMenu() -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
-            menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            var item = menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)
+            
             menu.addItem(NSMenuItem.separator())
-            menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
-            menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
-            menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
-            menu.addItem(withTitle: "Get Info", action: #selector(contextGetInfo), keyEquivalent: "")
+            item = menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Download", action: #selector(contextDownload), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+            
+            item = menu.addItem(withTitle: "Upload…", action: #selector(contextUpload), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "arrow.up.circle", accessibilityDescription: nil)
+
+            menu.addItem(makeLabelSubmenuItem(target: self))
+
+            menu.addItem(NSMenuItem.separator())
+            item = menu.addItem(withTitle: "Delete", action: #selector(contextDelete), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+            
             menu.addItem(NSMenuItem.separator())
             let statusItem = menu.addItem(withTitle: "Sync Status: Pair inactive", action: nil, keyEquivalent: "")
             statusItem.tag = SyncContextMenuItemTag.status
             let toggleItem = menu.addItem(withTitle: "Activate Sync Pair", action: #selector(contextToggleSyncPair), keyEquivalent: "")
             toggleItem.tag = SyncContextMenuItemTag.toggle
+            toggleItem.image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
+            
             let syncNowItem = menu.addItem(withTitle: "Sync Now", action: #selector(contextSyncNow), keyEquivalent: "")
             syncNowItem.tag = SyncContextMenuItemTag.syncNow
-            menu.addItem(NSMenuItem.separator())
-            menu.addItem(withTitle: "New Folder", action: #selector(contextNewFolder), keyEquivalent: "")
+            syncNowItem.image = NSImage(systemSymbolName: "arrow.trianglehead.2.clockwise", accessibilityDescription: nil)
+            
             for item in menu.items {
                 item.target = self
             }
@@ -1113,6 +1178,9 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             if let newFolderItem = menu.item(withTitle: "New Folder") {
                 newFolderItem.isEnabled = parent.canCreateFolderInDirectory(contextDirectoryTarget)
             }
+            if let labelItem = menu.item(withTag: LabelContextMenuItemTag.submenu) {
+                labelItem.isEnabled = parent.canSetLabel && !selectedItems.isEmpty
+            }
         }
 
         @objc private func contextQuickLook() { presentQuickLook() }
@@ -1150,6 +1218,37 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         @objc private func contextNewFolder() {
             guard parent.canCreateFolderInDirectory(contextDirectoryTarget) else { return }
             parent.onRequestCreateFolder()
+        }
+
+        @objc func contextSetLabel(_ sender: NSMenuItem) {
+            let rawValue = UInt32(sender.tag - LabelContextMenuItemTag.itemBase)
+            let label = FileLabelValue(rawValue: rawValue) ?? .none
+            let targets = selectedItems()
+            guard !targets.isEmpty else { return }
+            parent.onRequestSetLabel(targets, label)
+        }
+    }
+}
+
+private extension FileLabelValue {
+    var nsColor: NSColor {
+        switch self {
+        case .none:
+            return .secondaryLabelColor
+        case .red:
+            return .systemRed
+        case .orange:
+            return .systemOrange
+        case .yellow:
+            return .systemYellow
+        case .green:
+            return .systemGreen
+        case .blue:
+            return .systemBlue
+        case .purple:
+            return .systemPurple
+        case .gray:
+            return .systemGray
         }
     }
 }

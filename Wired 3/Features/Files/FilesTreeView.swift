@@ -29,6 +29,8 @@ struct FilesTreeView: View {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canSetLabel: Bool
+    let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let onUploadURLs: ([URL], FileItem) -> Void
     let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem) async throws -> Void
     @State private var finderDropTargetPath: String?
@@ -128,6 +130,8 @@ struct FilesTreeView: View {
             canDeleteForItem: canDeleteForItem,
             canUploadToDirectory: canUploadToDirectory,
             canCreateFolderInDirectory: canCreateFolderInDirectory,
+            canSetLabel: canSetLabel,
+            onRequestSetLabel: onRequestSetLabel,
             savedScrollOffset: filesViewModel.treeScrollOffset,
             onScrollOffsetChange: { filesViewModel.treeScrollOffset = $0 }
         )

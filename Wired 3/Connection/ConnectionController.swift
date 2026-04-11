@@ -1697,10 +1697,11 @@ final class ConnectionController {
                     if let chat = await runtime.chat(withID: chatID) {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.say") {
+                                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                                 await MainActor.run {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
-                                        ChatEvent(chat: chat, user: user, type: .say, text: say),
+                                        ChatEvent(chat: chat, user: user, type: .say, text: say, attachments: attachments),
                                         to: chat,
                                         runtime: runtime
                                     )
@@ -1748,10 +1749,11 @@ final class ConnectionController {
                     if let chat = await runtime.chat(withID: chatID) {
                         if let user = await chat.users.first(where: { $0.id == userID }) {
                             if let say = message.string(forField: "wired.chat.me") {
+                                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                                 await MainActor.run {
                                     runtime.clearIncomingChatTyping(chatID: chatID, userID: userID)
                                     appendChatMessage(
-                                        ChatEvent(chat: chat, user: user, type: .me, text: say),
+                                        ChatEvent(chat: chat, user: user, type: .me, text: say, attachments: attachments),
                                         to: chat,
                                         runtime: runtime
                                     )
@@ -1804,9 +1806,10 @@ final class ConnectionController {
         case "wired.message.message":
             if let senderUserID = message.uint32(forField: "wired.user.id"),
                let body = message.string(forField: "wired.message.message") {
+                let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                 await MainActor.run {
                     guard senderUserID != runtime.userID else { return }
-                    runtime.receivePrivateMessage(from: senderUserID, text: body)
+                    runtime.receivePrivateMessage(from: senderUserID, text: body, attachments: attachments)
                     let sender = runtime.messageConversations.first(where: {
                         $0.kind == .direct && $0.participantUserID == senderUserID
                     })?.title ?? "User"
@@ -1919,6 +1922,7 @@ final class ConnectionController {
                 let threadUUID = message.uuid(forField: "wired.board.thread"),
                 let text = message.string(forField: "wired.board.text")
             else { break }
+            let attachments = ChatAttachmentDescriptor.descriptors(from: message)
             await MainActor.run {
                 if let thread = runtime.thread(uuid: threadUUID) {
                     thread.postsLoaded = false
@@ -1931,7 +1935,8 @@ final class ConnectionController {
                         postDate: thread.postDate,
                         icon: message.data(forField: "wired.user.icon"),
                         isOwn: thread.isOwn,
-                        isThreadBody: true
+                        isThreadBody: true,
+                        attachments: attachments
                     )
                     thread.posts.append(rootPost)
                     runtime.refreshThreadUnreadState(for: thread)
@@ -1949,13 +1954,15 @@ final class ConnectionController {
             let isOwn = message.bool(forField: "wired.board.own_post") ?? false
             let icon = message.data(forField: "wired.user.icon")
             let editDate = message.date(forField: "wired.board.edit_date")
+            let attachments = ChatAttachmentDescriptor.descriptors(from: message)
             await MainActor.run {
                 if let thread = runtime.thread(uuid: threadUUID) {
                     guard !thread.posts.contains(where: { $0.uuid == postUUID }) else { return }
                     let post = BoardPost(uuid: postUUID, threadUUID: threadUUID,
                                         text: text, nick: nick, postDate: postDate,
                                         icon: icon,
-                                        isOwn: isOwn)
+                                        isOwn: isOwn,
+                                        attachments: attachments)
                     if let editDate {
                         post.editDate = editDate
                     }
@@ -2176,6 +2183,7 @@ final class ConnectionController {
                               let text = message.string(forField: "wired.board.text"),
                               let nick = message.string(forField: "wired.user.nick"),
                               let postDate = message.date(forField: "wired.board.post_date") {
+                        let attachments = ChatAttachmentDescriptor.descriptors(from: message)
                         // Remote reply while viewing: append incrementally to avoid full reload.
                         if let existing = thread.posts.first(where: { $0.uuid == postUUID }) {
                             existing.text = text
@@ -2184,6 +2192,7 @@ final class ConnectionController {
                             existing.icon = message.data(forField: "wired.user.icon")
                             existing.isOwn = message.bool(forField: "wired.board.own_post") ?? false
                             existing.editDate = message.date(forField: "wired.board.edit_date")
+                            existing.attachments = attachments
                             if let index = thread.posts.firstIndex(where: { $0 === existing }) {
                                 let post = thread.posts.remove(at: index)
                                 thread.posts.append(post)
@@ -2196,7 +2205,8 @@ final class ConnectionController {
                                 nick: nick,
                                 postDate: postDate,
                                 icon: message.data(forField: "wired.user.icon"),
-                                isOwn: message.bool(forField: "wired.board.own_post") ?? false
+                                isOwn: message.bool(forField: "wired.board.own_post") ?? false,
+                                attachments: attachments
                             )
                             post.editDate = message.date(forField: "wired.board.edit_date")
                             thread.posts.append(post)
