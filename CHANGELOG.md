@@ -2,6 +2,57 @@
 
 All notable changes to Wired Client are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [3.0-beta.20+37] — 2026-04-11
+
+### Bug Fixes
+- Fix swiftlint line length error in ChatAttachment ([`3ef725e`](https://github.com/nark/Wired-macOS/commit/3ef725e88558693bda8758fe9e98f945de50583f))
+
+- Fix board post lint issues ([`667dadf`](https://github.com/nark/Wired-macOS/commit/667dadf85396c1f6729d3d17e91862dd0381c6f6))
+
+- Fix easter egg overlay glyph bytes ([`f835adc`](https://github.com/nark/Wired-macOS/commit/f835adce63853d3ac5c15336e8e9b030357c30b6))
+
+- Fix file preview selection in column view ([`32fa956`](https://github.com/nark/Wired-macOS/commit/32fa956e83668fa8e8c1b25121f14d3f90b4f7d1))
+
+
+### Features
+- Add label picker to file context menus and fix column view UI ([`d5dff97`](https://github.com/nark/Wired-macOS/commit/d5dff977561d63a8c50db3b486980b06213fc211))
+
+- Add board attachment composition and preview UX ([`a9ac70e`](https://github.com/nark/Wired-macOS/commit/a9ac70e9fd2908d0087bb78cfdabaadbc8a8b308))
+
+- Add Quick Look for message images ([`c744b09`](https://github.com/nark/Wired-macOS/commit/c744b099211805655f26d19ed45e69ad3c1822bd))
+
+- Add attachment support to chats and private messages ([`9396453`](https://github.com/nark/Wired-macOS/commit/93964534d54035aa5d36acdc75452fe0423b1f77))
+
+- Add Connection menu and Window toolbar shortcuts ([`b12e12d`](https://github.com/nark/Wired-macOS/commit/b12e12ddb1ff54ab0709f23618a7c310b4f2e6a7))
+
+- Show directory counts in tree size column ([`faf794a`](https://github.com/nark/Wired-macOS/commit/faf794a9ef6d02e88e564932432d19c4b5f49860))
+
+
+### Other
+- Enrich FilePreviewColumn with label and sync pair info ([`1b61eee`](https://github.com/nark/Wired-macOS/commit/1b61eee2c59e7b07dd730c732c3204f6968e05b5))
+
+- Tint Finder folder icons with file label color ([`a86cb48`](https://github.com/nark/Wired-macOS/commit/a86cb482749621f6bace39160a9a52c58acce606))
+
+- Persist private message attachment metadata ([`f5edc29`](https://github.com/nark/Wired-macOS/commit/f5edc294b42dcbf86eed7840e88f08c6fcb8a377))
+
+- Restore private message avatar padding ([`bd5362c`](https://github.com/nark/Wired-macOS/commit/bd5362c6513b17f0654570d8fee9c0f19212932b))
+
+- Work around tree header overlap on first row ([`6fcf1ad`](https://github.com/nark/Wired-macOS/commit/6fcf1ad5fd8608ac81691d3944d32a367076f90e))
+
+- Persist tree view sort preferences ([`3722f9d`](https://github.com/nark/Wired-macOS/commit/3722f9d71d196c9b58e0b5ac669a932c4992f3e8))
+
+- Persist preferred files view mode ([`23a0207`](https://github.com/nark/Wired-macOS/commit/23a0207b074db6e9326f3bdb2fbd5ff42d9777cb))
+
+- Relax SwiftLint CI severity ([`7e4ed9d`](https://github.com/nark/Wired-macOS/commit/7e4ed9ddb3367d868501420ce5ce1d7e6d9aed86))
+
+
+### Performance
+- Optimize private message conversation rendering ([`b06b856`](https://github.com/nark/Wired-macOS/commit/b06b8561ec0f7ee813026307adff6163f7d934ed))
+
+
+### Refactoring
+- Split BoardsView files ([`33e6e7a`](https://github.com/nark/Wired-macOS/commit/33e6e7a26998a1f3abf517b541b5cfffa14301bb))
+
 ## [3.0-beta.19+36] — 2026-04-08
 
 ### Bug Fixes
