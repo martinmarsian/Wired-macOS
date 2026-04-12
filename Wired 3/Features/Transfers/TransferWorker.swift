@@ -877,6 +877,12 @@ actor TransferWorker {
         } catch {
             NSLog("[WiredTransfer] failed to apply Finder label to %@: %@", path, error.localizedDescription)
         }
+
+        if FileManager.default.setFinderUserTag(labelNumber: labelNumber, atPath: path, tagName: label.title) {
+            NSLog("[WiredTransfer] applied Finder user tag %d (%@) to %@", labelNumber, label.title, path)
+        } else {
+            NSLog("[WiredTransfer] failed to apply Finder user tag %d (%@) to %@", labelNumber, label.title, path)
+        }
     }
 
     /// Read the macOS Finder color label from a local file/folder.
