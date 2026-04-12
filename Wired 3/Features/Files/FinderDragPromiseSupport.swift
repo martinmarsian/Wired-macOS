@@ -87,23 +87,45 @@ final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProviderDeleg
         }
         didStartTransfer = true
 
-        let targetURL: URL = {
-            guard !isDirectory else { return destinationURL }
-            return destinationURL
+        let fm = FileManager.default
+
+        // For directories, Finder may rename the destination to avoid a conflict
+        // (e.g. "test" → "test 2"). Detect this so we can redirect back to the
+        // original name and let queueDownload show the overwrite prompt instead.
+        let finderRenamed = isDirectory && destinationURL.lastPathComponent != fileName
+        let targetURL: URL
+        if isDirectory {
+            if finderRenamed {
+                // Clean up the renamed placeholder Finder expects us to fill.
+                if fm.fileExists(atPath: destinationURL.path) {
+                    try? fm.removeItem(at: destinationURL)
+                }
+                // Redirect to the original (conflicting) path.
+                targetURL = destinationURL
+                    .deletingLastPathComponent()
+                    .appendingPathComponent(fileName, isDirectory: true)
+                log("writePromiseTo start path=\(targetURL.path) (redirected from \(destinationURL.lastPathComponent))")
+            } else {
+                targetURL = destinationURL
+                log("writePromiseTo start path=\(targetURL.path)")
+            }
+        } else {
+            targetURL = destinationURL
                 .deletingLastPathComponent()
                 .appendingPathComponent(partialName, isDirectory: false)
-        }()
-        let fm = FileManager.default
-        log("writePromiseTo start path=\(targetURL.path)")
+            log("writePromiseTo start path=\(targetURL.path)")
+        }
 
         do {
-            if isDirectory {
+            // For directories without a Finder rename, create the placeholder folder
+            // required by NSFilePromiseProvider.
+            if isDirectory && !finderRenamed {
                 if fm.fileExists(atPath: targetURL.path) {
                     try fm.removeItem(at: targetURL)
                 }
                 try fm.createDirectory(at: targetURL, withIntermediateDirectories: true)
             }
-            log("placeholder ready path=\(targetURL.path)")
+            log("placeholder ready path=\(targetURL.path) finderRenamed=\(finderRenamed)")
 
             let completionLock = NSLock()
             var terminalError: Error?
@@ -112,10 +134,10 @@ final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProviderDeleg
             if let connectionID, let transferManager {
                 Task { @MainActor in
                     let startedTransfer: Transfer?
-                    // For directories, this delegate already created the placeholder
-                    // folder above (required by NSFilePromiseProvider), so the destination
-                    // will always exist at this point. Skip the overwrite check in that case.
-                    let skipOverwriteCheck = self.isDirectory
+                    // When we created the placeholder ourselves (no Finder rename),
+                    // skip the overwrite check — it would be a false positive.
+                    // When Finder renamed (original exists), let the normal check run.
+                    let skipOverwriteCheck = self.isDirectory && !finderRenamed
                     switch transferManager.queueDownload(item, to: targetURL.path, with: connectionID, overwriteExistingFile: skipOverwriteCheck) {
                     case let .started(transfer), let .resumed(transfer):
                         startedTransfer = transfer
