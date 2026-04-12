@@ -197,25 +197,61 @@ struct TransfersView: View {
             .contextMenu {
                 let targets = actionTargets(for: transfer)
 
-                Button("Start") { start(targets) }
-                    .disabled(!canStart(targets))
+                Button { start(targets) } label: {
+                    Label {
+                        Text("Start")
+                    } icon: {
+                        Image(systemName: "play.fill")
+                    }
+                }
+                .disabled(!canStart(targets))
 
-                Button("Pause") { pause(targets) }
-                    .disabled(!canPause(targets))
+                Button { pause(targets) } label: {
+                    Label {
+                        Text("Pause")
+                    } icon: {
+                        Image(systemName: "pause.fill")
+                    }
+                }
+                .disabled(!canPause(targets))
 
-                Button("Stop") { stop(targets) }
-                    .disabled(!canStop(targets))
+                Button { stop(targets) } label: {
+                    Label {
+                        Text("Stop")
+                    } icon: {
+                        Image(systemName: "stop.fill")
+                    }
+                }
+                .disabled(!canStop(targets))
 
-                Button("Remove") { requestRemove(targets) }
-                    .disabled(targets.isEmpty)
+                Button { requestRemove(targets) } label: {
+                    Label {
+                        Text("Remove")
+                    } icon: {
+                        Image(systemName: "trash.fill")
+                    }
+                }
+                .disabled(targets.isEmpty)
 
                 Divider()
 
-                Button("Show in Finder") { showDownloadsInFinder(targets) }
-                    .disabled(!canShowFinder(targets))
+                Button { showDownloadsInFinder(targets) } label: {
+                    Label {
+                        Text("Show in Finder")
+                    } icon: {
+                        Image(systemName: "finder")
+                    }
+                }
+                .disabled(!canShowFinder(targets))
 
-                Button("Show Remote Location") { showRemoteLocation(targets) }
-                    .disabled(!canShowRemote(targets))
+                Button { showRemoteLocation(targets) } label: {
+                    Label {
+                        Text("Show Remote Location")
+                    } icon: {
+                        Image(systemName: "network")
+                    }
+                }
+                .disabled(!canShowRemote(targets))
             }
         }
     }
