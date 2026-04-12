@@ -909,23 +909,47 @@ struct BoardsView: View {
                                             let canMarkSmartBoardRead = smartBoardThreads.contains { $0.unreadPostsCount > 0 }
                                             let canMarkSmartBoardUnread = smartBoardThreads.contains { $0.unreadPostsCount == 0 }
 
-                                            Button("Mark as read") {
+                                            Button {
                                                 runtime.markThreadsAsRead(smartBoardThreads)
+                                            } label: {
+                                                Label {
+                                                    Text("Mark as read")
+                                                } icon: {
+                                                    Image(systemName: "checkmark.square")
+                                                }
                                             }
                                             .disabled(!canMarkSmartBoardRead)
 
-                                            Button("Mark as unread") {
+                                            Button {
                                                 runtime.markThreadsAsUnread(smartBoardThreads)
+                                            } label: {
+                                                Label {
+                                                    Text("Mark as unread")
+                                                } icon: {
+                                                    Image(systemName: "square")
+                                                }
                                             }
                                             .disabled(!canMarkSmartBoardUnread)
 
                                             Divider()
 
-                                            Button("Edit Smart Board") { smartBoardToEdit = smartBoard }
+                                            Button { smartBoardToEdit = smartBoard } label: {
+                                                Label {
+                                                    Text("Edit Smart Board")
+                                                } icon: {
+                                                    Image(systemName: "pencil")
+                                                }
+                                            }
 
                                             Divider()
 
-                                            Button("Delete Smart Board", role: .destructive) { smartBoardToDelete = smartBoard }
+                                            Button(role: .destructive) { smartBoardToDelete = smartBoard } label: {
+                                                Label {
+                                                    Text("Delete Smart Board")
+                                                } icon: {
+                                                    Image(systemName: "trash.fill")
+                                                }
+                                            }
                                         }
                                 }
                             }
@@ -987,33 +1011,74 @@ struct BoardsView: View {
                                     let canMarkBoardRead = boardThreads.contains { $0.unreadPostsCount > 0 }
                                     let canMarkBoardUnread = boardThreads.contains { $0.unreadPostsCount == 0 }
 
-                                    Button("Mark as read") {
+                                    Button {
                                         runtime.markThreadsAsRead(boardThreads)
+                                    } label: {
+                                        Label {
+                                            Text("Mark as read")
+                                        } icon: {
+                                            Image(systemName: "checkmark.square")
+                                        }
                                     }
                                     .disabled(!canMarkBoardRead)
-                                    Button("Mark as unread") {
+                                    
+                                    Button {
                                         runtime.markThreadsAsUnread(boardThreads)
+                                    } label: {
+                                        Label {
+                                            Text("Mark as unread")
+                                        } icon: {
+                                            Image(systemName: "square")
+                                        }
                                     }
                                     .disabled(!canMarkBoardUnread)
 
                                     if runtime.hasPrivilege("wired.account.board.rename_boards") {
                                         Divider()
 
-                                        Button("Rename Board") { boardToRename = board }
+                                        Button {
+                                            boardToRename = board
+                                        } label: {
+                                            Label {
+                                                Text("Rename Board")
+                                            } icon: {
+                                                Image(systemName: "pencil")
+                                            }
+                                        }
                                     }
 
                                     if runtime.hasPrivilege("wired.account.board.set_board_info") {
-                                        Button("Edit Permissions") { boardToEditPermissions = board }
+                                        Button {
+                                            boardToEditPermissions = board
+                                        } label: {
+                                           Label {
+                                               Text("Edit Permissions")
+                                           } icon: {
+                                               Image(systemName: "lock.fill")
+                                           }
+                                       }
                                     }
 
                                     if runtime.hasPrivilege("wired.account.board.move_boards") {
-                                        Button("Move Board") { boardToMove = board }
+                                        Button { boardToMove = board } label: {
+                                            Label {
+                                                Text("Move Board")
+                                            } icon: {
+                                                Image(systemName: "arrow.turn.up.right")
+                                            }
+                                        }
                                     }
 
                                     if runtime.hasPrivilege("wired.account.board.delete_boards") {
                                         Divider()
 
-                                        Button("Delete Board", role: .destructive) { boardToDelete = board }
+                                        Button(role: .destructive) { boardToDelete = board } label: {
+                                            Label {
+                                                Text("Delete Board")
+                                            } icon: {
+                                                Image(systemName: "trash.fill")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1358,23 +1423,56 @@ struct BoardsView: View {
                    let resultID = selection.first,
                    let result = runtime.boardSearchResults.first(where: { $0.id == resultID }),
                    let thread = thread(for: result) {
-                    Button(threadReadStateLabel(for: thread)) {
+                    Button {
                         toggleThreadReadState(thread)
+                    } label: {
+                        Label {
+                            Text(threadReadStateLabel(for: thread))
+                        } icon: {
+                            Image(systemName: "checkmark")
+                        }
                     }
                     Divider()
+                    
                     if canEditThread(thread) {
-                        Button("Edit Thread") { threadToEdit = thread }
+                        Button { threadToEdit = thread } label: {
+                            Label {
+                                Text("Edit Thread")
+                            } icon: {
+                                Image(systemName: "pencil")
+                            }
+                        }
                     }
+                    
                     if runtime.hasPrivilege("wired.account.board.move_threads") {
-                        Button("Move Thread") { threadToMove = thread }
+                        Button { threadToMove = thread } label: {
+                            Label {
+                                Text("Move Thread")
+                            } icon: {
+                                Image(systemName: "arrow.turn.up.right")
+                            }
+                        }
                     }
+                    
                     if canDeleteThread(thread) {
-                        Button("Delete Thread", role: .destructive) { threadToDelete = thread }
+                        Button(role: .destructive) { threadToDelete = thread } label: {
+                            Label {
+                                Text("Delete Thread")
+                            } icon: {
+                                Image(systemName: "trash.fill")
+                            }
+                        }
                     }
                     Divider()
-                    Button("Reveal in Board") {
+                    Button {
                         selectedBoardSearchResultID = result.id
                         revealSearchResultInBoard(result)
+                    } label: {
+                        Label {
+                            Text("Reveal in Board")
+                        } icon: {
+                            Image(systemName: "sidebar.leading")
+                        }
                     }
                 }
             }
@@ -1411,20 +1509,45 @@ struct BoardsView: View {
                         }
                         .contextMenu(forSelectionType: String.self) { selection in
                             if let thread = threadFromSelection(selection) {
-                                Button(threadReadStateLabel(for: thread)) {
+                                Button {
                                     toggleThreadReadState(thread)
+                                } label: {
+                                    Label {
+                                        Text(threadReadStateLabel(for: thread))
+                                    } icon: {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
+                                
                                 Divider()
                                 if canEditThread(thread) {
-                                    Button("Edit Thread") { threadToEdit = thread }
+                                    Button { threadToEdit = thread } label: {
+                                        Label {
+                                            Text("Edit Thread")
+                                        } icon: {
+                                            Image(systemName: "pencil")
+                                        }
+                                    }
                                 }
                                 if runtime.hasPrivilege("wired.account.board.move_threads") {
-                                    Button("Move Thread") { threadToMove = thread }
+                                    Button { threadToMove = thread } label: {
+                                        Label {
+                                            Text("Move Thread")
+                                        } icon: {
+                                            Image(systemName: "arrow.turn.up.right")
+                                        }
+                                    }
                                 }
                                 if canDeleteThread(thread) {
                                     Divider()
 
-                                    Button("Delete Thread", role: .destructive) { threadToDelete = thread }
+                                    Button(role: .destructive) { threadToDelete = thread } label: {
+                                        Label {
+                                            Text("Delete Thread")
+                                        } icon: {
+                                            Image(systemName: "trash.fill")
+                                        }
+                                    }
                                 }
                             }
                         } primaryAction: { selection in
@@ -1453,18 +1576,42 @@ struct BoardsView: View {
                         }
                         .contextMenu(forSelectionType: String.self) { selection in
                             if let thread = threadFromSelection(selection) {
-                                Button(threadReadStateLabel(for: thread)) {
+                                Button {
                                     toggleThreadReadState(thread)
+                                } label: {
+                                    Label {
+                                        Text(threadReadStateLabel(for: thread))
+                                    } icon: {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                                 Divider()
                                 if canEditThread(thread) {
-                                    Button("Edit Thread") { threadToEdit = thread }
+                                    Button { threadToEdit = thread } label: {
+                                        Label {
+                                            Text("Edit Thread")
+                                        } icon: {
+                                            Image(systemName: "pencil")
+                                        }
+                                    }
                                 }
                                 if runtime.hasPrivilege("wired.account.board.move_threads") {
-                                    Button("Move Thread") { threadToMove = thread }
+                                    Button { threadToMove = thread } label: {
+                                        Label {
+                                            Text("Move Thread")
+                                        } icon: {
+                                            Image(systemName: "arrow.turn.up.right")
+                                        }
+                                    }
                                 }
                                 if canDeleteThread(thread) {
-                                    Button("Delete Thread", role: .destructive) { threadToDelete = thread }
+                                    Button(role: .destructive) { threadToDelete = thread } label: {
+                                        Label {
+                                            Text("Delete Thread")
+                                        } icon: {
+                                            Image(systemName: "trash.fill")
+                                        }
+                                    }
                                 }
                             }
                         } primaryAction: { selection in
