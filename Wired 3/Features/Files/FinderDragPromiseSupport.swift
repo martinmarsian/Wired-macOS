@@ -112,7 +112,11 @@ final class DragPlaceholderPromiseDelegate: NSObject, NSFilePromiseProviderDeleg
             if let connectionID, let transferManager {
                 Task { @MainActor in
                     let startedTransfer: Transfer?
-                    switch transferManager.queueDownload(item, to: targetURL.path, with: connectionID, overwriteExistingFile: false) {
+                    // For directories, this delegate already created the placeholder
+                    // folder above (required by NSFilePromiseProvider), so the destination
+                    // will always exist at this point. Skip the overwrite check in that case.
+                    let skipOverwriteCheck = self.isDirectory
+                    switch transferManager.queueDownload(item, to: targetURL.path, with: connectionID, overwriteExistingFile: skipOverwriteCheck) {
                     case let .started(transfer), let .resumed(transfer):
                         startedTransfer = transfer
                     case let .needsOverwrite(destination):
