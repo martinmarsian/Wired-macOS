@@ -112,6 +112,37 @@ enum FileLabelValue: UInt32, CaseIterable, Identifiable {
         case .gray:   return .gray
         }
     }
+
+    /// macOS Finder label number (0–7) corresponding to this Wired label.
+    ///
+    /// Finder label numbers:
+    ///   0 = None, 1 = Gray, 2 = Green, 3 = Purple, 4 = Blue, 5 = Yellow, 6 = Red, 7 = Orange
+    var finderLabelNumber: Int {
+        switch self {
+        case .none:   return 0
+        case .red:    return 6
+        case .orange: return 7
+        case .yellow: return 5
+        case .green:  return 2
+        case .blue:   return 4
+        case .purple: return 3
+        case .gray:   return 1
+        }
+    }
+
+    /// Initialise from a macOS Finder label number (0–7).
+    init(finderLabelNumber: Int) {
+        switch finderLabelNumber {
+        case 1:  self = .gray
+        case 2:  self = .green
+        case 3:  self = .purple
+        case 4:  self = .blue
+        case 5:  self = .yellow
+        case 6:  self = .red
+        case 7:  self = .orange
+        default: self = .none
+        }
+    }
 }
 
 public struct FileItem: Identifiable, Hashable {

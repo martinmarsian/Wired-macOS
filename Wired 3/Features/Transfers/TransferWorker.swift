@@ -95,7 +95,13 @@ actor TransferWorker {
             if transfer.isFolder {
                 switch transfer.type {
                 case .download:
+                    // Snapshot the root folder label now — runDownloadFolder overwrites transfer.file.
+                    let folderLabel = await MainActor.run { self.transfer.file?.label ?? .none }
+                    let localRoot   = await MainActor.run { self.transfer.localPath ?? "" }
                     try await runDownloadFolder()
+                    if !localRoot.isEmpty {
+                        applyFinderLabel(folderLabel, toPath: localRoot)
+                    }
                 case .upload:
                     try await runUploadFolder()
                 }
@@ -140,6 +146,7 @@ actor TransferWorker {
         let type: FileType
         let dataSize: UInt64
         let rsrcSize: UInt64
+        let label: FileLabelValue
     }
 
     private func runDownloadFolder() async throws {
@@ -169,7 +176,7 @@ actor TransferWorker {
 
         // Build local dirs and file list
         var directories: Set<String> = []
-        var files: [(remote: String, local: String, size: Int64)] = []
+        var files: [(remote: String, local: String, size: Int64, label: FileLabelValue)] = []
 
         for e in entries {
             let rel = relativePath(full: e.path, root: remoteRoot)
@@ -181,7 +188,7 @@ actor TransferWorker {
                 directories.insert(localPath)
             case .file:
                 let s = Int64(e.dataSize + e.rsrcSize)
-                files.append((remote: e.path, local: localPath, size: s))
+                files.append((remote: e.path, local: localPath, size: s, label: e.label))
             }
         }
 
@@ -200,8 +207,10 @@ actor TransferWorker {
         for f in files {
             if let term = await terminationReason() { throw term }
 
-            // Update current file
-            transfer.file = FileItem((f.remote as NSString).lastPathComponent, path: f.remote)
+            // Update current file (carry the label so runDownloadSingle can apply it).
+            var fileItem = FileItem((f.remote as NSString).lastPathComponent, path: f.remote)
+            fileItem.label = f.label
+            transfer.file = fileItem
             await mutate { $0.currentLocalFilePath = f.local }
 
             try await runDownloadSingle(remotePath: f.remote, localPath: f.local, expectedSize: f.size)
@@ -222,6 +231,9 @@ actor TransferWorker {
         guard transfer.remotePath != nil else {
             throw WiredError(withTitle: "Upload Error", message: "Missing remote path")
         }
+
+        // Read the root folder Finder label upfront.
+        let rootFinderLabel = readFinderLabel(atPath: localRoot)
 
         await mutate { $0.state = .listing }
         await mutate { $0.totalFiles = 0 }
@@ -272,6 +284,12 @@ actor TransferWorker {
             }
 
             await mutate { $0.transferredFiles += 1 }
+        }
+
+        // Mirror the root folder Finder color label to the server (best-effort).
+        if rootFinderLabel != .none, let remoteRoot = transfer.remotePath {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await setLabelOnServer(remotePath: remoteRoot, label: rootFinderLabel)
         }
 
         // Clear current local file
@@ -586,11 +604,19 @@ actor TransferWorker {
             )
             throw error
         }
+
+        // Apply the remote Wired label as a Finder color label on the downloaded file.
+        let fileLabel = await MainActor.run { self.transfer.file?.label ?? .none }
+        NSLog("[WiredTransfer] download done file=%@ wiredLabel=%d (%@)", finalPath, fileLabel.rawValue, fileLabel.title)
+        applyFinderLabel(fileLabel, toPath: finalPath)
     }
 
     // MARK: - Single file upload
 
     private func runUploadSingle(localPath: String, remotePath: String, expectedSize: Int64) async throws {
+        // Read the local Finder color label upfront (before any I/O changes access).
+        let localFinderLabel = readFinderLabel(atPath: localPath)
+
         let tconn = await ensureTransferConnection()
         tconn.interactive = false
 
@@ -727,6 +753,13 @@ actor TransferWorker {
         tconn.disconnect()
 
         if let term = await terminationReason() { throw term }
+
+        // Mirror the local Finder color label to the server (best-effort).
+        // Wait briefly so the server can finalize the uploaded file before we set metadata.
+        if localFinderLabel != .none {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await setLabelOnServer(remotePath: remotePath, label: localFinderLabel)
+        }
     }
 
     private func isRemoteFileExistsError() async -> Bool {
@@ -810,8 +843,10 @@ actor TransferWorker {
             let type = FileType(rawValue: typeRaw) ?? .file
             let dataSize = response.uint64(forField: "wired.file.data_size") ?? 0
             let rsrcSize = response.uint64(forField: "wired.file.rsrc_size") ?? 0
+            let labelRaw = response.uint32(forField: "wired.file.label") ?? 0
+            let label = FileLabelValue(wiredValue: labelRaw)
 
-            results.append(ListedEntry(path: filePath, type: type, dataSize: dataSize, rsrcSize: rsrcSize))
+            results.append(ListedEntry(path: filePath, type: type, dataSize: dataSize, rsrcSize: rsrcSize, label: label))
         }
 
         return results
@@ -823,6 +858,103 @@ actor TransferWorker {
         let response = try await connection.sendAsync(message)
         if response?.name == "wired.error" {
             throw WiredError(message: response!)
+        }
+    }
+
+    // MARK: - Finder label / Wired label sync
+
+    /// Apply a Wired label as a macOS Finder color label on the local file/folder at `path`.
+    /// Uses `URLResourceKey.labelNumberKey` which is locale-independent (numeric 0–7).
+    private func applyFinderLabel(_ label: FileLabelValue, toPath path: String) {
+        guard label != .none else { return }
+        let labelNumber = label.finderLabelNumber
+        var url = URL(fileURLWithPath: path)
+        var values = URLResourceValues()
+        values.labelNumber = labelNumber
+        do {
+            try url.setResourceValues(values)
+            NSLog("[WiredTransfer] applied Finder label %d (%@) to %@", labelNumber, label.title, path)
+        } catch {
+            NSLog("[WiredTransfer] failed to apply Finder label to %@: %@", path, error.localizedDescription)
+        }
+    }
+
+    /// Read the macOS Finder color label from a local file/folder.
+    ///
+    /// Modern macOS stores color tags in the `com.apple.metadata:_kMDItemUserTags` xattr
+    /// as a plist array of `"TagName\nColorIndex"` strings. The color index (1–7) uses
+    /// the same numbering as the legacy `labelNumber` and is locale-independent.
+    /// We also check `labelNumberKey` as a fallback for files labelled by older tools.
+    private nonisolated func readFinderLabel(atPath path: String) -> FileLabelValue {
+        // 1) Try the legacy labelNumber (covers files tagged by our own download code).
+        let url = URL(fileURLWithPath: path)
+        if let values = try? url.resourceValues(forKeys: [.labelNumberKey]),
+           let num = values.labelNumber, num != 0 {
+            let result = FileLabelValue(finderLabelNumber: num)
+            NSLog("[WiredTransfer] read Finder labelNumber %d (%@) from %@", num, result.title, path)
+            return result
+        }
+
+        // 2) Read modern Finder color tags from _kMDItemUserTags xattr.
+        let xattrName = "com.apple.metadata:_kMDItemUserTags"
+        let size = getxattr(path, xattrName, nil, 0, 0, 0)
+        guard size > 0 else {
+            NSLog("[WiredTransfer] no Finder label found for %@", path)
+            return .none
+        }
+
+        var data = Data(count: size)
+        let bytesRead = data.withUnsafeMutableBytes { ptr in
+            getxattr(path, xattrName, ptr.baseAddress, size, 0, 0)
+        }
+        guard bytesRead == size else {
+            NSLog("[WiredTransfer] failed to read _kMDItemUserTags for %@", path)
+            return .none
+        }
+
+        // Decode the binary plist → [String], each entry is "TagName\nColorIndex".
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let tags = plist as? [String] else {
+            NSLog("[WiredTransfer] failed to decode _kMDItemUserTags plist for %@", path)
+            return .none
+        }
+
+        // Pick the first tag that carries a non-zero color index.
+        for tag in tags {
+            let parts = tag.split(separator: "\n", maxSplits: 1)
+            if parts.count == 2, let colorIndex = Int(parts[1]), colorIndex > 0 {
+                let result = FileLabelValue(finderLabelNumber: colorIndex)
+                NSLog("[WiredTransfer] read Finder tag '%@' colorIndex=%d (%@) from %@",
+                      tag, colorIndex, result.title, path)
+                return result
+            }
+        }
+
+        NSLog("[WiredTransfer] _kMDItemUserTags present but no color index in %@: %@", path, tags.description)
+        return .none
+    }
+
+    /// Send `wired.file.set_label` on the control connection for `remotePath`.
+    /// Silently ignores errors (label sync is best-effort).
+    private func setLabelOnServer(remotePath: String, label: FileLabelValue) async {
+        guard label != .none else { return }
+        guard let control = await MainActor.run(body: { self.transfer.connection }) else {
+            NSLog("[WiredTransfer] set_label skipped: no control connection for %@", remotePath)
+            return
+        }
+        let message = P7Message(withName: "wired.file.set_label", spec: spec)
+        message.addParameter(field: "wired.file.path", value: remotePath)
+        message.addParameter(field: "wired.file.label", value: label.rawValue)
+        NSLog("[WiredTransfer] sending set_label=%d (%@) for %@", label.rawValue, label.title, remotePath)
+        do {
+            let response = try await control.sendAsync(message)
+            if let response {
+                NSLog("[WiredTransfer] set_label response: %@", response.name ?? "<unnamed>")
+            } else {
+                NSLog("[WiredTransfer] set_label: no response (nil)")
+            }
+        } catch {
+            NSLog("[WiredTransfer] set_label failed: %@", error.localizedDescription)
         }
     }
 
