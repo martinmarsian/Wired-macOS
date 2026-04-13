@@ -2,6 +2,31 @@
 
 All notable changes to Wired Client are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [3.0-beta.21+38] — 2026-04-13
+
+### Bug Fixes
+- Fix remote file drag and drop move/link behavior ([`326ec0c`](https://github.com/nark/Wired-macOS/commit/326ec0cb66e6aac7a79833f8f8d7e3c40daabe2d))
+
+- Handle folder overwrite prompt correctly on drag-and-drop ([`6936447`](https://github.com/nark/Wired-macOS/commit/693644709b958ffedcbb16f4895267d41527ad51))
+
+- Skip false overwrite prompt when dragging folders from server ([`00724f0`](https://github.com/nark/Wired-macOS/commit/00724f0b893c0f3c2c32a1709d38b6a5fc27adf5))
+
+
+### Features
+- Add interactive files breadcrumb and server stats ([`cf1d7e2`](https://github.com/nark/Wired-macOS/commit/cf1d7e23f9aeec18222e96f8e445d49fd0c3cf00))
+
+- Sync Wired file labels with macOS Finder color tags ([`600740d`](https://github.com/nark/Wired-macOS/commit/600740d9b05bdcdedaf5676c195c8569d4f6f6b3))
+
+
+### Other
+- Preserve executable metadata in file browser and uploads ([`c5a4876`](https://github.com/nark/Wired-macOS/commit/c5a4876ed298771f7e72addd3687d73c9d35b343))
+
+- Add icons to context menus ([`193035f`](https://github.com/nark/Wired-macOS/commit/193035fecca90af2768028e7f2f3ee7ad3bb601b))
+
+- Add icons to context menus ([`0696638`](https://github.com/nark/Wired-macOS/commit/069663844852e9614717a30c9a41401b3ac4632e))
+
+- Write modern Finder color tags on downloads ([`c6b9068`](https://github.com/nark/Wired-macOS/commit/c6b90689c39c1937c99948a1b948b5562897d466))
+
 ## [3.0-beta.20+37] — 2026-04-11
 
 ### Bug Fixes
