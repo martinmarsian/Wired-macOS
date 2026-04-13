@@ -92,6 +92,20 @@ struct FilesView: View {
         !forwardDirectoryHistory.isEmpty
     }
 
+    var breadcrumbPath: String {
+        switch filesViewModel.selectedFileViewType {
+        case .columns:
+            return primarySelectionPath
+                ?? filesViewModel.selectedItem?.path
+                ?? filesViewModel.columns.last?.path
+                ?? currentDirectoryPath
+        case .tree:
+            return primarySelectionPath
+                ?? filesViewModel.treeSelectionPath
+                ?? filesViewModel.treeRootPath
+        }
+    }
+
     func itemForPath(_ path: String) -> FileItem? {
         if let item = filesViewModel.columns
             .flatMap(\.items)
@@ -990,6 +1004,24 @@ struct FilesView: View {
             case .columns:
                 columnsContent
             }
+            
+            Divider()
+            
+            HStack {
+                FilesBreadcrumb(
+                    currentPath: breadcrumbPath,
+                    itemForPath: itemForPath(_:),
+                    onNavigate: { path in
+                        Task { @MainActor in
+                            await navigateToBreadcrumbPath(path)
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                FilesServerInfos()
+            }
+            .frame(height: 40)
         }
         .searchable(text: $filesViewModel.searchText)
         .wiredSearchFieldFocus()
