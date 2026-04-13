@@ -104,6 +104,7 @@
 		4CBF0A0D2F879555004196FD /* String+EmojiSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A0C2F879555004196FD /* String+EmojiSearch.swift */; };
 		4CBF0A272F8CCBB2004196FD /* FilesBreadcrumbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A262F8CCBA5004196FD /* FilesBreadcrumbView.swift */; };
 		4CBF0A292F8CD448004196FD /* FilesServerInfos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBF0A282F8CD448004196FD /* FilesServerInfos.swift */; };
+		4CBF0A2B2F8CE999004196FD /* Executable.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CBF0A2A2F8CE999004196FD /* Executable.icns */; };
 		4CDBA0012F80000100213277 /* RelativeDateText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDBA0022F80000100213277 /* RelativeDateText.swift */; };
 		4CF01A922F20000100213277 /* FileInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF01A912F20000100213277 /* FileInfoSheet.swift */; };
 		4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4CF01A962F200A1100213277 /* UploadsBadge.icns */; };
@@ -254,6 +255,7 @@
 		4CBF0A0C2F879555004196FD /* String+EmojiSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+EmojiSearch.swift"; sourceTree = "<group>"; };
 		4CBF0A262F8CCBA5004196FD /* FilesBreadcrumbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesBreadcrumbView.swift; sourceTree = "<group>"; };
 		4CBF0A282F8CD448004196FD /* FilesServerInfos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesServerInfos.swift; sourceTree = "<group>"; };
+		4CBF0A2A2F8CE999004196FD /* Executable.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Executable.icns; sourceTree = "<group>"; };
 		4CDBA0022F80000100213277 /* RelativeDateText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeDateText.swift; sourceTree = "<group>"; };
 		4CF01A912F20000100213277 /* FileInfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInfoSheet.swift; sourceTree = "<group>"; };
 		4CF01A962F200A1100213277 /* UploadsBadge.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = UploadsBadge.icns; sourceTree = "<group>"; };
@@ -322,6 +324,7 @@
 			isa = PBXGroup;
 			children = (
 				4C0C2DE02EF437DE00213277 /* Assets.xcassets */,
+				4CBF0A2A2F8CE999004196FD /* Executable.icns */,
 				4CF01A962F200A1100213277 /* UploadsBadge.icns */,
 				4CF01A972F200A1100213277 /* DropBoxBadge.icns */,
 				4C90D0022FA1000100213277 /* SyncBadge.icns */,
@@ -774,6 +777,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4C0C2DE62EF437DE00213277 /* Assets.xcassets in Resources */,
+				4CBF0A2B2F8CE999004196FD /* Executable.icns in Resources */,
 				4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */,
 				4CF01A952F200A1100213277 /* DropBoxBadge.icns in Resources */,
 				4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */,

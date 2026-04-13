@@ -132,8 +132,12 @@ func remoteItemIconImage(for item: FileItem, size: CGFloat) -> NSImage {
     switch item.type {
     case .file:
         let ext = (item.name as NSString).pathExtension
-        let contentType = ext.isEmpty ? UTType.data : (UTType(filenameExtension: ext) ?? .data)
-        icon = NSWorkspace.shared.icon(for: contentType)
+        if item.executable && ext.isEmpty {
+            icon = executableFileIcon(size: size)
+        } else {
+            let contentType = ext.isEmpty ? UTType.data : (UTType(filenameExtension: ext) ?? .data)
+            icon = NSWorkspace.shared.icon(for: contentType)
+        }
     case .directory:
         icon = RemoteFolderIconCache.shared.icon(for: .directory, label: item.label, size: size)
     case .uploads:
@@ -147,6 +151,19 @@ func remoteItemIconImage(for item: FileItem, size: CGFloat) -> NSImage {
     let copy = (icon.copy() as? NSImage) ?? icon
     copy.size = NSSize(width: size, height: size)
     return copy
+}
+
+private func executableFileIcon(size: CGFloat) -> NSImage {
+    if let url = Bundle.main.url(forResource: "Executable", withExtension: "icns"),
+       let image = NSImage(contentsOf: url) {
+        let copy = (image.copy() as? NSImage) ?? image
+        copy.size = NSSize(width: size, height: size)
+        return copy
+    }
+
+    let fallback = NSWorkspace.shared.icon(for: UTType.data)
+    fallback.size = NSSize(width: size, height: size)
+    return fallback
 }
 
 private extension FileLabelValue {

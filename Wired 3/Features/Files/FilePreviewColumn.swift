@@ -79,6 +79,10 @@ struct FilePreviewColumn: View {
                 cardDivider
                 metaRow("Modified", dateFormatter.string(from: modified))
             }
+            if item.type == .file && item.executable {
+                cardDivider
+                metaRow("Executable", "Yes")
+            }
             if item.type.isDirectoryLike {
                 cardDivider
                 metaRow("Contains", containsString(for: item))

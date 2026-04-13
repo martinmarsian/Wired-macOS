@@ -632,7 +632,11 @@ actor TransferWorker {
         await mutate { $0.state = .waiting }
 
         // Send upload_file
-        if !tconn.send(message: uploadFileMessage(remotePath: remotePath, totalSize: UInt64(max(expectedSize, 0)))) {
+        if !tconn.send(message: uploadFileMessage(
+            remotePath: remotePath,
+            totalSize: UInt64(max(expectedSize, 0)),
+            localPath: localPath
+        )) {
             throw WiredError(withTitle: "Upload Error", message: "Cannot send upload_file")
         }
 
@@ -984,11 +988,14 @@ actor TransferWorker {
         return message
     }
 
-    private func uploadFileMessage(remotePath: String, totalSize: UInt64) -> P7Message {
+    private func uploadFileMessage(remotePath: String, totalSize: UInt64, localPath: String) -> P7Message {
         let message = P7Message(withName: "wired.transfer.upload_file", spec: spec)
         message.addParameter(field: "wired.file.path", value: remotePath)
         message.addParameter(field: "wired.transfer.data_size", value: totalSize)
         message.addParameter(field: "wired.transfer.rsrc_size", value: UInt64(0))
+        if isExecutableFile(atPath: localPath) {
+            message.addParameter(field: "wired.file.executable", value: true)
+        }
         return message
     }
 
@@ -1075,6 +1082,19 @@ actor TransferWorker {
             // Ignore and treat as missing.
         }
         return 0
+    }
+
+    private func isExecutableFile(atPath path: String) -> Bool {
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            if let permissions = attrs[.posixPermissions] as? NSNumber {
+                return (permissions.uint16Value & 0o111) != 0
+            }
+        } catch {
+            return false
+        }
+        return false
     }
 
     // MARK: - Destinations

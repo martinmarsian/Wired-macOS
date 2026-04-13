@@ -157,6 +157,7 @@ public struct FileItem: Identifiable, Hashable {
 
     var dataSize: UInt64 = 0
     var rsrcSize: UInt64 = 0
+    var executable = false
     var creationDate: Date?
     var modificationDate: Date?
     var label: FileLabelValue = .none
@@ -206,6 +207,9 @@ public struct FileItem: Identifiable, Hashable {
         }
         if let s = message.uint64(forField: "wired.file.rsrc_size") {
             self.rsrcSize = s
+        }
+        if let value = message.bool(forField: "wired.file.executable") {
+            self.executable = value
         }
         if let s = message.uint32(forField: "wired.file.directory_count") {
             self.directoryCount = Int(s)
