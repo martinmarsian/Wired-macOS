@@ -29,10 +29,11 @@ struct FilesTreeView: View {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canDropRemoteItem: (String, FileItem, Bool) -> Bool
     let canSetLabel: Bool
     let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let onUploadURLs: ([URL], FileItem) -> Void
-    let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem) async throws -> Void
+    let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem, _ link: Bool) async throws -> Void
     @State private var finderDropTargetPath: String?
     @State private var selectedPaths: Set<String> = []
 
@@ -54,6 +55,7 @@ struct FilesTreeView: View {
                 )
             },
             onUploadURLs: onUploadURLs,
+            onMoveRemoteItem: onMoveRemoteItem,
             selectedPaths: $selectedPaths,
             onSelectionChange: { newSelection in
                 let orderedNodes = filesViewModel.visibleTreeNodes()
@@ -130,6 +132,7 @@ struct FilesTreeView: View {
             canDeleteForItem: canDeleteForItem,
             canUploadToDirectory: canUploadToDirectory,
             canCreateFolderInDirectory: canCreateFolderInDirectory,
+            canDropRemoteItem: canDropRemoteItem,
             canSetLabel: canSetLabel,
             onRequestSetLabel: onRequestSetLabel,
             savedScrollOffset: filesViewModel.treeScrollOffset,

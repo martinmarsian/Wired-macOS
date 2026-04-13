@@ -92,6 +92,20 @@ struct FilesView: View {
         !forwardDirectoryHistory.isEmpty
     }
 
+    var breadcrumbPath: String {
+        switch filesViewModel.selectedFileViewType {
+        case .columns:
+            return primarySelectionPath
+                ?? filesViewModel.selectedItem?.path
+                ?? filesViewModel.columns.last?.path
+                ?? currentDirectoryPath
+        case .tree:
+            return primarySelectionPath
+                ?? filesViewModel.treeSelectionPath
+                ?? filesViewModel.treeRootPath
+        }
+    }
+
     func itemForPath(_ path: String) -> FileItem? {
         if let item = filesViewModel.columns
             .flatMap(\.items)
@@ -456,6 +470,28 @@ struct FilesView: View {
             return directory.writable
         }
         return runtime.hasPrivilege("wired.account.file.create_directories")
+    }
+
+    func canDropRemoteItem(from sourcePath: String, to destinationDirectory: FileItem, link: Bool) -> Bool {
+        guard destinationDirectory.type.isDirectoryLike else { return false }
+        guard sourcePath != "/", let sourceItem = itemForPath(sourcePath) else { return false }
+
+        let requiredPrivilege = link ? "wired.account.file.create_links" : "wired.account.file.move_files"
+        let sourceAllowed: Bool
+
+        if sourceItem.type.isManagedAccessType {
+            sourceAllowed = link ? sourceItem.readable : sourceItem.writable
+        } else {
+            sourceAllowed = runtime.hasPrivilege(requiredPrivilege)
+        }
+
+        guard sourceAllowed else { return false }
+
+        if destinationDirectory.type.isManagedAccessType {
+            return destinationDirectory.writable
+        }
+
+        return runtime.hasPrivilege(requiredPrivilege)
     }
 
     func canGetInfo(for item: FileItem) -> Bool {
@@ -851,6 +887,9 @@ struct FilesView: View {
             canCreateFolderInDirectory: { directory in
                 canCreateFolder(in: directory)
             },
+            canDropRemoteItem: { sourcePath, destinationDirectory, link in
+                canDropRemoteItem(from: sourcePath, to: destinationDirectory, link: link)
+            },
             canSetLabel: runtime.hasPrivilege("wired.account.file.set_label"),
             onRequestSetLabel: { items, label in
                 setLabel(label, on: items)
@@ -858,8 +897,8 @@ struct FilesView: View {
             onUploadURLs: { urls, target in
                 upload(urls: urls, to: target)
             },
-            onMoveRemoteItem: { sourcePath, destinationDirectory in
-                try await moveRemoteItem(from: sourcePath, to: destinationDirectory)
+            onMoveRemoteItem: { sourcePath, destinationDirectory, link in
+                try await moveRemoteItem(from: sourcePath, to: destinationDirectory, link: link)
             }
         )
         .environment(connectionController)
@@ -934,6 +973,9 @@ struct FilesView: View {
             canCreateFolderInDirectory: { directory in
                 canCreateFolder(in: directory)
             },
+            canDropRemoteItem: { sourcePath, destinationDirectory, link in
+                canDropRemoteItem(from: sourcePath, to: destinationDirectory, link: link)
+            },
             canSetLabel: runtime.hasPrivilege("wired.account.file.set_label"),
             onRequestSetLabel: { items, label in
                 setLabel(label, on: items)
@@ -941,8 +983,8 @@ struct FilesView: View {
             onUploadURLs: { urls, target in
                 upload(urls: urls, to: target)
             },
-            onMoveRemoteItem: { sourcePath, destinationDirectory in
-                try await moveRemoteItem(from: sourcePath, to: destinationDirectory)
+            onMoveRemoteItem: { sourcePath, destinationDirectory, link in
+                try await moveRemoteItem(from: sourcePath, to: destinationDirectory, link: link)
             }
         )
         .environment(connectionController)
@@ -990,6 +1032,24 @@ struct FilesView: View {
             case .columns:
                 columnsContent
             }
+            
+            Divider()
+            
+            HStack {
+                FilesBreadcrumb(
+                    currentPath: breadcrumbPath,
+                    itemForPath: itemForPath(_:),
+                    onNavigate: { path in
+                        Task { @MainActor in
+                            await navigateToBreadcrumbPath(path)
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                FilesServerInfos()
+            }
+            .frame(height: 40)
         }
         .searchable(text: $filesViewModel.searchText)
         .wiredSearchFieldFocus()

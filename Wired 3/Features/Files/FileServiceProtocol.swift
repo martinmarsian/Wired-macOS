@@ -53,6 +53,12 @@ protocol FileServiceProtocol {
         connection: AsyncConnection
     ) async throws
 
+    func linkFile(
+        from sourcePath: String,
+        to destinationPath: String,
+        connection: AsyncConnection
+    ) async throws
+
     func setFileType(
         path: String,
         type: FileType,
@@ -189,6 +195,26 @@ final class FileService: FileServiceProtocol {
     ) async throws {
         let message = P7Message(
             withName: "wired.file.move",
+            spec: spec
+        )
+
+        message.addParameter(field: "wired.file.path", value: sourcePath)
+        message.addParameter(field: "wired.file.new_path", value: destinationPath)
+
+        let response = try await connection.sendAsync(message)
+
+        if response?.name == "wired.error" {
+            throw WiredError(message: response!)
+        }
+    }
+
+    func linkFile(
+        from sourcePath: String,
+        to destinationPath: String,
+        connection: AsyncConnection
+    ) async throws {
+        let message = P7Message(
+            withName: "wired.file.link",
             spec: spec
         )
 

@@ -149,8 +149,8 @@ extension FilesView {
         }
     }
 
-    func moveRemoteItem(from sourcePath: String, to destinationDirectory: FileItem) async throws {
-        try await filesViewModel.moveRemoteItem(from: sourcePath, to: destinationDirectory.path)
+    func moveRemoteItem(from sourcePath: String, to destinationDirectory: FileItem, link: Bool = false) async throws {
+        try await filesViewModel.moveRemoteItem(from: sourcePath, to: destinationDirectory.path, link: link)
     }
 
     func requestDelete(_ items: [FileItem]) {
@@ -358,6 +358,52 @@ extension FilesView {
         defer { isApplyingHistoryNavigation = false }
         await applyHistoryNavigation(to: next)
         currentDirectoryPath = normalizedRemotePath(next)
+    }
+
+    @MainActor
+    func navigateToBreadcrumbPath(_ path: String) async {
+        let normalized = normalizedRemotePath(path)
+
+        switch filesViewModel.selectedFileViewType {
+        case .columns:
+            let didReveal = await filesViewModel.revealRemotePath(normalized)
+            guard didReveal else { return }
+
+            if normalized != "/",
+               let item = itemForPath(normalized),
+               item.type.isDirectoryLike,
+               let columnIndex = filesViewModel.columns.indices.last,
+               let selectedID = filesViewModel.columns[columnIndex].selection {
+                filesViewModel.selectColumnItem(
+                    id: selectedID,
+                    at: columnIndex,
+                    onColumnAppended: { _ in }
+                )
+            }
+
+            updatePrimarySelectionPath(normalized)
+            registerNavigation(fromPrimarySelectionPath: normalized)
+
+        case .tree:
+            if let item = itemForPath(normalized), item.type.isDirectoryLike {
+                guard await filesViewModel.setTreeRoot(normalized) else { return }
+                updatePrimarySelectionPath(normalized)
+                registerNavigation(toDirectoryPath: normalized)
+                return
+            }
+
+            let parentPath = directoryPath(from: normalized) ?? "/"
+            guard await filesViewModel.setTreeRoot(parentPath) else { return }
+
+            if let refreshedItem = itemForPath(normalized) ?? filesViewModel.currentItem(path: normalized) {
+                await filesViewModel.selectTreeItem(refreshedItem)
+            } else {
+                filesViewModel.treeSelectionPath = normalized
+            }
+
+            updatePrimarySelectionPath(normalized)
+            registerNavigation(toDirectoryPath: parentPath)
+        }
     }
 
     func presentInfo(for item: FileItem) {
