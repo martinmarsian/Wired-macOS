@@ -149,8 +149,8 @@ extension FilesView {
         }
     }
 
-    func moveRemoteItem(from sourcePath: String, to destinationDirectory: FileItem) async throws {
-        try await filesViewModel.moveRemoteItem(from: sourcePath, to: destinationDirectory.path)
+    func moveRemoteItem(from sourcePath: String, to destinationDirectory: FileItem, link: Bool = false) async throws {
+        try await filesViewModel.moveRemoteItem(from: sourcePath, to: destinationDirectory.path, link: link)
     }
 
     func requestDelete(_ items: [FileItem]) {

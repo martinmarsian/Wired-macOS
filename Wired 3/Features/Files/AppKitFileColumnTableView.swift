@@ -39,6 +39,8 @@ private final class FileLabelDotView: NSView {
 
 private final class QuickLookTableView: NSTableView {
     var onQuickLook: (() -> Void)?
+    var onDraggingExited: (() -> Void)?
+    var onDraggingEnded: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
@@ -48,6 +50,117 @@ private final class QuickLookTableView: NSTableView {
         }
 
         super.keyDown(with: event)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDraggingExited?()
+        super.draggingExited(sender)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onDraggingEnded?()
+        super.draggingEnded(sender)
+    }
+}
+
+fileprivate enum RemoteDropOperationBadgeKind {
+    case move
+    case link
+
+    var title: String {
+        switch self {
+        case .move:
+            return "Move"
+        case .link:
+            return "Link"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .move:
+            return "arrow.right"
+        case .link:
+            return "link"
+        }
+    }
+
+    var tintColor: NSColor {
+        switch self {
+        case .move:
+            return .systemBlue
+        case .link:
+            return .systemGreen
+        }
+    }
+}
+
+private final class RemoteDropOperationBadgeView: NSVisualEffectView {
+    private let imageView = NSImageView()
+    private let textField = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .hudWindow
+        blendingMode = .withinWindow
+        state = .active
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.masksToBounds = true
+
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
+        stack.addArrangedSubview(imageView)
+
+        textField.font = .systemFont(ofSize: 12, weight: .semibold)
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(textField)
+
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 12),
+            imageView.heightAnchor.constraint(equalToConstant: 12),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
+        ])
+
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(_ kind: RemoteDropOperationBadgeKind) {
+        textField.stringValue = kind.title
+        textField.textColor = kind.tintColor
+        imageView.contentTintColor = kind.tintColor
+        imageView.image = NSImage(systemSymbolName: kind.symbolName, accessibilityDescription: kind.title)
+    }
+}
+
+private final class RemoteColumnDropHighlightView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.borderWidth = 2
+        layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.9).cgColor
+        layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.12).cgColor
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
@@ -61,7 +174,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
     let onSelectionChange: (Set<String>, String?) -> Void
     let onDownloadSingleFile: (FileItem) -> Void
     let onUploadURLs: ([URL], FileItem) -> Void
-    let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem) async throws -> Void
+    let onMoveRemoteItem: (_ sourcePath: String, _ destinationDirectory: FileItem, _ link: Bool) async throws -> Void
     let onRequestCreateFolder: (FileItem) -> Void
     let onRequestUploadInDirectory: (FileItem) -> Void
     let onRequestDeleteSelection: ([FileItem]) -> Void
@@ -79,6 +192,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
     let canDeleteForItem: (FileItem) -> Bool
     let canUploadToDirectory: (FileItem) -> Bool
     let canCreateFolderInDirectory: (FileItem) -> Bool
+    let canDropRemoteItem: (String, FileItem, Bool) -> Bool
     let canSetLabel: Bool
     let onRequestSetLabel: ([FileItem], FileLabelValue) -> Void
     let savedScrollOffset: CGFloat
@@ -107,12 +221,18 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
-        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+        tableView.setDraggingSourceOperationMask([.move, .copy, .link], forLocal: true)
         tableView.registerForDraggedTypes([.fileURL, wiredRemotePathPasteboardType])
         tableView.target = context.coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
         tableView.onQuickLook = { [weak coordinator = context.coordinator] in
             coordinator?.presentQuickLook()
+        }
+        tableView.onDraggingExited = { [weak coordinator = context.coordinator] in
+            coordinator?.showDropFeedback(nil, highlightColumnBackground: false)
+        }
+        tableView.onDraggingEnded = { [weak coordinator = context.coordinator] in
+            coordinator?.showDropFeedback(nil, highlightColumnBackground: false)
         }
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ColumnName"))
@@ -164,6 +284,8 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         private var lastSyncPairStatusVersion: Int = -1
         private var isApplyingSelectionFromSwiftUI = false
         private var contextDirectoryTarget: FileItem
+        private weak var dropBadgeView: RemoteDropOperationBadgeView?
+        private weak var dropHighlightView: RemoteColumnDropHighlightView?
         private lazy var quickLookController = FilesQuickLookController(
             connectionID: parent.bookmarkID,
             sourceFrameProvider: { [weak self] path in
@@ -514,7 +636,20 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-            context == .withinApplication ? .move : .copy
+            context == .withinApplication ? [.move, .copy, .link] : .copy
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+            let draggedPaths = rowIndexes.compactMap { index -> String? in
+                guard index >= 0, index < items.count else { return nil }
+                return items[index].path
+            }
+
+            guard !draggedPaths.isEmpty else { return }
+            session.draggingPasteboard.setString(
+                draggedPaths.joined(separator: "\n"),
+                forType: wiredRemotePathPasteboardType
+            )
         }
 
         private func finderDroppedURLs(from info: NSDraggingInfo) -> [URL] {
@@ -533,43 +668,137 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
                 .filter { !$0.isEmpty }
         }
 
-        private func destinationForDrop(proposedRow row: Int) -> FileItem? {
+        private func resolvedDropTarget(in tableView: NSTableView, info: NSDraggingInfo, proposedRow row: Int) -> (destination: FileItem, row: Int?, highlightsColumnBackground: Bool)? {
+            let localPoint = tableView.convert(info.draggingLocation, from: nil)
+            let hoveredRow = tableView.row(at: localPoint)
+
+            if hoveredRow >= 0, hoveredRow < items.count {
+                let item = items[hoveredRow]
+                if isDirectory(item) {
+                    return (item, hoveredRow, false)
+                }
+                return nil
+            }
+
             if row >= 0, row < items.count {
                 let item = items[row]
                 if isDirectory(item) {
-                    return item
+                    return (item, row, false)
                 }
             }
-            return columnDirectory()
+
+            return (columnDirectory(), nil, true)
+        }
+
+        fileprivate func showDropFeedback(_ kind: RemoteDropOperationBadgeKind?, highlightColumnBackground: Bool) {
+            guard let scrollView else { return }
+
+            if let highlightView = dropHighlightView {
+                highlightView.isHidden = !highlightColumnBackground
+            } else if highlightColumnBackground {
+                let created = RemoteColumnDropHighlightView(frame: .zero)
+                created.translatesAutoresizingMaskIntoConstraints = false
+                scrollView.addSubview(created, positioned: .below, relativeTo: tableView)
+                NSLayoutConstraint.activate([
+                    created.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 6),
+                    created.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -6),
+                    created.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 6),
+                    created.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -6)
+                ])
+                created.isHidden = false
+                dropHighlightView = created
+            }
+
+            if kind == nil {
+                dropBadgeView?.isHidden = true
+                return
+            }
+
+            let badgeView: RemoteDropOperationBadgeView
+            if let existing = dropBadgeView {
+                badgeView = existing
+            } else {
+                let created = RemoteDropOperationBadgeView(frame: .zero)
+                created.translatesAutoresizingMaskIntoConstraints = false
+                scrollView.addSubview(created)
+                NSLayoutConstraint.activate([
+                    created.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -12),
+                    created.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 12)
+                ])
+                dropBadgeView = created
+                badgeView = created
+            }
+
+            badgeView.configure(kind!)
+            badgeView.isHidden = false
+        }
+
+        private func prefersLinkOperation(_ info: NSDraggingInfo) -> Bool {
+            let flags = NSApp.currentEvent?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
+            return flags.contains(.command) && flags.contains(.option)
         }
 
         func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-            guard let destination = destinationForDrop(proposedRow: row) else { return [] }
+            guard let target = resolvedDropTarget(in: tableView, info: info, proposedRow: row) else {
+                showDropFeedback(nil, highlightColumnBackground: false)
+                return []
+            }
+            let destination = target.destination
+            let remotePaths = remoteDroppedPaths(from: info)
+
+            if !remotePaths.isEmpty {
+                let shouldLink = prefersLinkOperation(info)
+                if remotePaths.contains(where: { $0 == destination.path || destination.path.hasPrefix($0 + "/") }) {
+                    showDropFeedback(nil, highlightColumnBackground: false)
+                    return []
+                }
+                if remotePaths.contains(where: { !parent.canDropRemoteItem($0, destination, shouldLink) }) {
+                    showDropFeedback(nil, highlightColumnBackground: false)
+                    return []
+                }
+                if let targetRow = target.row {
+                    tableView.setDropRow(targetRow, dropOperation: .on)
+                } else {
+                    tableView.setDropRow(-1, dropOperation: .above)
+                }
+                showDropFeedback(shouldLink ? .link : .move, highlightColumnBackground: target.highlightsColumnBackground)
+                return shouldLink ? .link : .move
+            }
 
             if !finderDroppedURLs(from: info).isEmpty {
-                if row >= 0 {
-                    tableView.setDropRow(row, dropOperation: .on)
+                showDropFeedback(nil, highlightColumnBackground: target.highlightsColumnBackground)
+                if let targetRow = target.row {
+                    tableView.setDropRow(targetRow, dropOperation: .on)
                 } else {
                     tableView.setDropRow(-1, dropOperation: .above)
                 }
                 return .copy
             }
 
-            let remotePaths = remoteDroppedPaths(from: info)
-            guard !remotePaths.isEmpty else { return [] }
-            if remotePaths.contains(where: { $0 == destination.path || destination.path.hasPrefix($0 + "/") }) {
-                return []
-            }
-            if row >= 0 {
-                tableView.setDropRow(row, dropOperation: .on)
-            } else {
-                tableView.setDropRow(-1, dropOperation: .above)
-            }
-            return .move
+            return []
         }
 
         func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-            guard let destination = destinationForDrop(proposedRow: row) else { return false }
+            defer { showDropFeedback(nil, highlightColumnBackground: false) }
+            guard let target = resolvedDropTarget(in: tableView, info: info, proposedRow: row) else { return false }
+            let destination = target.destination
+
+            let remotePaths = remoteDroppedPaths(from: info)
+            if !remotePaths.isEmpty {
+                let shouldLink = prefersLinkOperation(info)
+                guard !remotePaths.contains(where: { !parent.canDropRemoteItem($0, destination, shouldLink) }) else {
+                    return false
+                }
+                for source in remotePaths {
+                    Task {
+                        do {
+                            try await parent.onMoveRemoteItem(source, destination, shouldLink)
+                        } catch {
+                        }
+                    }
+                }
+                return true
+            }
 
             let urls = finderDroppedURLs(from: info)
             if !urls.isEmpty {
@@ -579,17 +808,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
                 return true
             }
 
-            let remotePaths = remoteDroppedPaths(from: info)
-            guard !remotePaths.isEmpty else { return false }
-            for source in remotePaths {
-                Task {
-                    do {
-                        try await parent.onMoveRemoteItem(source, destination)
-                    } catch {
-                    }
-                }
-            }
-            return true
+            return false
         }
 
         func makeContextMenu() -> NSMenu {

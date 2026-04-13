@@ -1050,6 +1050,12 @@ private final class TestFileService: @preconcurrency FileServiceProtocol {
         connection: AsyncConnection
     ) async throws { }
 
+    func linkFile(
+        from sourcePath: String,
+        to destinationPath: String,
+        connection: AsyncConnection
+    ) async throws { }
+
     func setFileType(
         path: String,
         type: FileType,

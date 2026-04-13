@@ -656,7 +656,7 @@ final class FilesViewModel: ObservableObject {
     }
 
     @MainActor
-    func moveRemoteItem(from sourcePath: String, to targetDirectoryPath: String) async throws {
+    func moveRemoteItem(from sourcePath: String, to targetDirectoryPath: String, link: Bool = false) async throws {
         guard let connection = runtime?.connection as? AsyncConnection,
               let fileService else { return }
         let sourceName = (sourcePath as NSString).lastPathComponent
@@ -667,7 +667,11 @@ final class FilesViewModel: ObservableObject {
         }
 
         try await withFileNetworkActivity {
-            try await fileService.moveFile(from: sourcePath, to: destinationPath, connection: connection)
+            if link {
+                try await fileService.linkFile(from: sourcePath, to: destinationPath, connection: connection)
+            } else {
+                try await fileService.moveFile(from: sourcePath, to: destinationPath, connection: connection)
+            }
         }
         await reloadAll()
     }
