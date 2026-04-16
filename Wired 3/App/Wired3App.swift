@@ -723,6 +723,50 @@ final class ErrorLogStore {
     }
 }
 
+@MainActor
+final class DefaultTrackerBookmarkSeeder {
+    private var modelContext: ModelContext?
+    private let defaults: UserDefaults
+    private let seedKey = "DidSeedDefaultTrackerBookmark"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func attach(modelContext: ModelContext) {
+        guard self.modelContext == nil else { return }
+        self.modelContext = modelContext
+        seedIfNeeded()
+    }
+
+    private func seedIfNeeded() {
+        guard let modelContext else { return }
+        guard !defaults.bool(forKey: seedKey) else { return }
+
+        let existingBookmarks = (try? modelContext.fetch(FetchDescriptor<TrackerBookmark>())) ?? []
+        guard existingBookmarks.isEmpty else {
+            defaults.set(true, forKey: seedKey)
+            return
+        }
+
+        let bookmark = TrackerBookmark(
+            name: "Wired Tracker",
+            hostname: "wired.read-write.fr",
+            port: 4871,
+            login: "guest",
+            sortOrder: 0
+        )
+        modelContext.insert(bookmark)
+
+        do {
+            try modelContext.save()
+            defaults.set(true, forKey: seedKey)
+        } catch {
+            modelContext.delete(bookmark)
+        }
+    }
+}
+
 #if os(macOS)
 private struct ErrorLogWindowView: View {
     @Environment(\.modelContext) private var modelContext
@@ -800,6 +844,7 @@ struct Wired3App: App {
     @State private var socketClient = SocketClient()
     @State private var controller: ConnectionController
     @State private var trackerBrowser = TrackerBrowserController()
+    @State private var defaultTrackerSeeder = DefaultTrackerBookmarkSeeder()
     @State private var transfers: TransferManager
     @State private var errorLogStore = ErrorLogStore()
     @State private var errorToastCenter = ErrorToastCenter()
@@ -911,7 +956,7 @@ struct Wired3App: App {
     var body: some Scene {
 #if os(macOS)
         WindowGroup(appDisplayName, id: "main") {
-            AppRootView(appTerminationDelegate: appTerminationDelegate)
+            AppRootView(defaultTrackerSeeder: defaultTrackerSeeder, appTerminationDelegate: appTerminationDelegate)
                 .environment(controller)
                 .environment(trackerBrowser)
                 .environment(errorLogStore)
@@ -944,7 +989,7 @@ struct Wired3App: App {
         .defaultSize(width: 1000, height: 700)
 #else
         WindowGroup {
-            AppRootView()
+            AppRootView(defaultTrackerSeeder: defaultTrackerSeeder)
                 .environment(controller)
                 .environment(trackerBrowser)
                 .environment(errorLogStore)
@@ -983,6 +1028,7 @@ private struct AppRootView: View {
     @Environment(ErrorLogStore.self) private var errorLogStore
     @Environment(ErrorToastCenter.self) private var errorToastCenter
     @EnvironmentObject private var transfers: TransferManager
+    let defaultTrackerSeeder: DefaultTrackerBookmarkSeeder
 #if os(macOS)
     let appTerminationDelegate: AppTerminationDelegate
 #endif
@@ -1002,6 +1048,7 @@ private struct AppRootView: View {
                 // Attach SwiftData once, and restore persisted transfers.
                 transfers.attach(modelContext: modelContext)
                 connectionController.attach(modelContext: modelContext)
+                defaultTrackerSeeder.attach(modelContext: modelContext)
                 errorLogStore.attach(modelContext: modelContext)
 
 #if os(macOS)
