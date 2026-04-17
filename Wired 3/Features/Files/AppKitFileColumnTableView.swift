@@ -40,7 +40,6 @@ private final class FileLabelDotView: NSView {
 private final class QuickLookTableView: NSTableView {
     var onQuickLook: (() -> Void)?
     var onDraggingExited: (() -> Void)?
-    var onDraggingEnded: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
@@ -55,11 +54,6 @@ private final class QuickLookTableView: NSTableView {
     override func draggingExited(_ sender: NSDraggingInfo?) {
         onDraggingExited?()
         super.draggingExited(sender)
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        onDraggingEnded?()
-        super.draggingEnded(sender)
     }
 }
 
@@ -229,10 +223,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             coordinator?.presentQuickLook()
         }
         tableView.onDraggingExited = { [weak coordinator = context.coordinator] in
-            coordinator?.showDropFeedback(nil, highlightColumnBackground: false)
-        }
-        tableView.onDraggingEnded = { [weak coordinator = context.coordinator] in
-            coordinator?.showDropFeedback(nil, highlightColumnBackground: false)
+            coordinator?.clearDropState()
         }
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ColumnName"))
@@ -286,6 +277,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
         private var contextDirectoryTarget: FileItem
         private weak var dropBadgeView: RemoteDropOperationBadgeView?
         private weak var dropHighlightView: RemoteColumnDropHighlightView?
+        private var activeDropTargetRow: Int?
         private lazy var quickLookController = FilesQuickLookController(
             connectionID: parent.bookmarkID,
             sourceFrameProvider: { [weak self] path in
@@ -597,16 +589,9 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             return tableView.window?.convertToScreen(rectInWindow)
         }
 
-        func tableView(_ tableView: NSTableView, writeRowsWith rowIndexes: IndexSet, to pboard: NSPasteboard) -> Bool {
+        func tableView(_ tableView: NSTableView, writeRowsWith rowIndexes: IndexSet, to _: NSPasteboard) -> Bool {
             let selectedRows = rowIndexes.compactMap { ($0 >= 0 && $0 < items.count) ? $0 : nil }
-            guard !selectedRows.isEmpty else { return false }
-
-            let remotePaths = selectedRows.map { items[$0].path }
-            let pasteboardItem = NSPasteboardItem()
-            pasteboardItem.setString(remotePaths.joined(separator: "\n"), forType: wiredRemotePathPasteboardType)
-            pboard.clearContents()
-            pboard.writeObjects([pasteboardItem])
-            return true
+            return !selectedRows.isEmpty
         }
 
         func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
@@ -639,7 +624,12 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             context == .withinApplication ? [.move, .copy, .link] : .copy
         }
 
-        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        func tableView(_ tableView: NSTableView, draggingSession _: NSDraggingSession, endedAt _: NSPoint, operation _: NSDragOperation) {
+            clearDropFeedbackOnly()
+            refreshExternalDragConfiguration()
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt _: NSPoint, forRowIndexes rowIndexes: IndexSet) {
             let draggedPaths = rowIndexes.compactMap { index -> String? in
                 guard index >= 0, index < items.count else { return nil }
                 return items[index].path
@@ -666,6 +656,51 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
                 .split(separator: "\n")
                 .map(String.init)
                 .filter { !$0.isEmpty }
+        }
+
+        fileprivate func clearDropState() {
+            showDropFeedback(nil, highlightColumnBackground: false)
+            updateDropTargetRow(nil)
+            tableView?.needsDisplay = true
+        }
+
+        fileprivate func clearDropFeedbackOnly() {
+            showDropFeedback(nil, highlightColumnBackground: false)
+        }
+
+        private func refreshExternalDragConfiguration() {
+            guard let tableView else { return }
+            tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+            tableView.setDraggingSourceOperationMask([.move, .copy, .link], forLocal: true)
+            tableView.registerForDraggedTypes([.fileURL, wiredRemotePathPasteboardType])
+        }
+
+        private func updateDropTargetRow(_ row: Int?) {
+            guard let tableView else { return }
+
+            let previousRow = activeDropTargetRow
+            activeDropTargetRow = row
+
+            if let row {
+                tableView.setDropRow(row, dropOperation: .on)
+            } else {
+                tableView.setDropRow(-1, dropOperation: .above)
+            }
+
+            var rowsNeedingDisplay = IndexSet()
+            if let previousRow, previousRow >= 0, previousRow < tableView.numberOfRows {
+                rowsNeedingDisplay.insert(previousRow)
+            }
+            if let row, row >= 0, row < tableView.numberOfRows {
+                rowsNeedingDisplay.insert(row)
+            }
+            rowsNeedingDisplay.formUnion(tableView.selectedRowIndexes)
+
+            guard !rowsNeedingDisplay.isEmpty, tableView.numberOfColumns > 0 else { return }
+            tableView.reloadData(
+                forRowIndexes: rowsNeedingDisplay,
+                columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+            )
         }
 
         private func resolvedDropTarget(in tableView: NSTableView, info: NSDraggingInfo, proposedRow row: Int) -> (destination: FileItem, row: Int?, highlightsColumnBackground: Bool)? {
@@ -740,7 +775,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
 
         func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
             guard let target = resolvedDropTarget(in: tableView, info: info, proposedRow: row) else {
-                showDropFeedback(nil, highlightColumnBackground: false)
+                clearDropState()
                 return []
             }
             let destination = target.destination
@@ -749,37 +784,30 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
             if !remotePaths.isEmpty {
                 let shouldLink = prefersLinkOperation(info)
                 if remotePaths.contains(where: { $0 == destination.path || destination.path.hasPrefix($0 + "/") }) {
-                    showDropFeedback(nil, highlightColumnBackground: false)
+                    clearDropState()
                     return []
                 }
                 if remotePaths.contains(where: { !parent.canDropRemoteItem($0, destination, shouldLink) }) {
-                    showDropFeedback(nil, highlightColumnBackground: false)
+                    clearDropState()
                     return []
                 }
-                if let targetRow = target.row {
-                    tableView.setDropRow(targetRow, dropOperation: .on)
-                } else {
-                    tableView.setDropRow(-1, dropOperation: .above)
-                }
+                updateDropTargetRow(target.row)
                 showDropFeedback(shouldLink ? .link : .move, highlightColumnBackground: target.highlightsColumnBackground)
                 return shouldLink ? .link : .move
             }
 
             if !finderDroppedURLs(from: info).isEmpty {
                 showDropFeedback(nil, highlightColumnBackground: target.highlightsColumnBackground)
-                if let targetRow = target.row {
-                    tableView.setDropRow(targetRow, dropOperation: .on)
-                } else {
-                    tableView.setDropRow(-1, dropOperation: .above)
-                }
+                updateDropTargetRow(target.row)
                 return .copy
             }
 
+            clearDropState()
             return []
         }
 
         func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-            defer { showDropFeedback(nil, highlightColumnBackground: false) }
+            defer { clearDropState() }
             guard let target = resolvedDropTarget(in: tableView, info: info, proposedRow: row) else { return false }
             let destination = target.destination
 
@@ -802,6 +830,7 @@ struct AppKitFileColumnTableView: NSViewRepresentable {
 
             let urls = finderDroppedURLs(from: info)
             if !urls.isEmpty {
+                refreshExternalDragConfiguration()
                 DispatchQueue.main.async {
                     self.parent.onUploadURLs(urls, destination)
                 }
