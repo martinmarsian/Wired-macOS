@@ -68,7 +68,7 @@ struct SmartBoardEditorView: View {
     }
 
     private var title: String {
-        initialValue == nil ? "Nouvelle discussion intelligente" : "Modifier la discussion intelligente"
+        initialValue == nil ? "New Smart Board" : "Edit Smart Board"
     }
 
     var body: some View {
@@ -77,18 +77,18 @@ struct SmartBoardEditorView: View {
                 .font(.headline)
 
             HStack {
-                Text("Nom :")
+                Text("Name:")
                     .frame(width: 90, alignment: .trailing)
                 TextField("Unread", text: $name)
             }
 
-            GroupBox("Filtres de sujets") {
+            GroupBox("Thread Filters") {
                 VStack(spacing: 10) {
                     HStack {
-                        Text("Discussion :")
+                        Text("Board:")
                             .frame(width: 90, alignment: .trailing)
                         Picker("", selection: $discussionPath) {
-                            Text("Toutes").tag("")
+                            Text("All Boards").tag("")
                             ForEach(discussionOptions, id: \.self) { option in
                                 Text(option).tag(option)
                             }
@@ -97,27 +97,27 @@ struct SmartBoardEditorView: View {
                     }
 
                     HStack {
-                        Text("Sujet :")
+                        Text("Subject:")
                             .frame(width: 90, alignment: .trailing)
                         TextField("", text: $subjectContains)
                     }
 
                     HStack {
-                        Text("Réponse :")
+                        Text("Reply:")
                             .frame(width: 90, alignment: .trailing)
                         TextField("", text: $replyContains)
                     }
 
                     HStack {
-                        Text("Pseudo :")
+                        Text("Nick:")
                             .frame(width: 90, alignment: .trailing)
                         TextField("", text: $nickContains)
                     }
 
                     HStack(spacing: 8) {
-                        Text("Non-lu :")
+                        Text("Unread:")
                             .frame(width: 90, alignment: .trailing)
-                        Toggle("Oui", isOn: $unreadOnly)
+                        Toggle("Yes", isOn: $unreadOnly)
                             #if os(macOS)
                             .toggleStyle(.checkbox)
                             #endif
@@ -129,10 +129,10 @@ struct SmartBoardEditorView: View {
 
             HStack {
                 Spacer()
-                Button("Annuler") {
+                Button("Cancel") {
                     dismiss()
                 }
-                Button("Sauvegarder") {
+                Button("Save") {
                     let value = SmartBoardDefinition(
                         id: initialValue?.id ?? UUID().uuidString,
                         name: name.trimmingCharacters(in: .whitespacesAndNewlines),

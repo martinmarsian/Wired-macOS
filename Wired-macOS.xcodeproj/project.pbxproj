@@ -134,6 +134,7 @@
 		CC100009FA00000100213277 /* ChatHistoryDayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100004FA00000100213277 /* ChatHistoryDayList.swift */; };
 		CC10000AFA00000100213277 /* ChatHistoryMessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */; };
 		CC10000BFA00000100213277 /* ArchiveMessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */; };
+		09384B2E75CDFD4041BA5425 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D313D2D267BF39158BC11A99 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -285,6 +286,8 @@
 		CC100004FA00000100213277 /* ChatHistoryDayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryDayList.swift; sourceTree = "<group>"; };
 		CC100005FA00000100213277 /* ChatHistoryMessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryMessagesView.swift; sourceTree = "<group>"; };
 		CC100006FA00000100213277 /* ArchiveMessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMessageBubbleView.swift; sourceTree = "<group>"; };
+		84F9192333CB2A6EFE6941E0 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		5D426E2D2F723AA85053E8C8 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -319,6 +322,18 @@
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin PBXVariantGroup section */
+		D313D2D267BF39158BC11A99 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				84F9192333CB2A6EFE6941E0 /* en */,
+				5D426E2D2F723AA85053E8C8 /* fr */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin PBXGroup section */
 		4C0C2DE52EF437DE00213277 /* Wired 3 */ = {
 			isa = PBXGroup;
@@ -336,6 +351,7 @@
 				4C0C2E032EF5659100213277 /* Connection */,
 				4C0C2E232EFDB8BF00213277 /* Additions */,
 				4C0C2DE32EF437DE00213277 /* Wired_3.entitlements */,
+				D313D2D267BF39158BC11A99 /* Localizable.strings */,
 			);
 			path = "Wired 3";
 			sourceTree = "<group>";
@@ -781,6 +797,7 @@
 				4CF01A942F200A1100213277 /* UploadsBadge.icns in Resources */,
 				4CF01A952F200A1100213277 /* DropBoxBadge.icns in Resources */,
 				4C90D0012FA1000100213277 /* SyncBadge.icns in Resources */,
+				09384B2E75CDFD4041BA5425 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -992,13 +1009,10 @@
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_ENTITLEMENTS = "Wired 3/Wired_3.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 38;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 7KTXA5Y36K;
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7KTXA5Y36K;
+				DEVELOPMENT_TEAM = VGB467J8DZ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1029,8 +1043,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
 				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -1052,13 +1064,10 @@
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_ENTITLEMENTS = "Wired 3/Wired_3.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 38;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 7KTXA5Y36K;
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7KTXA5Y36K;
+				DEVELOPMENT_TEAM = VGB467J8DZ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -1089,8 +1098,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.read-write.Wired3";
 				PRODUCT_NAME = "Wired Client";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Wired 3";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Wired 3";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";

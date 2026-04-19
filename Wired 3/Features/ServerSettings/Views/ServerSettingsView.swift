@@ -14,12 +14,12 @@ private enum ServerSettingsCategory: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: return "Réglages"
-        case .monitor: return "Moniteur"
-        case .events: return "Évènements"
+        case .general: return "Settings"
+        case .monitor: return "Monitor"
+        case .events: return "Events"
         case .log: return "Log"
-        case .accounts: return "Comptes"
-        case .bans: return "Banissements"
+        case .accounts: return "Accounts"
+        case .bans: return "Bans"
         }
     }
 
@@ -82,7 +82,7 @@ struct ServerSettingsView: View {
                         Label(category.title, systemImage: category.iconName)
                     }
                 }
-                .navigationTitle("Réglages")
+                .navigationTitle("Settings")
                 .navigationDestination(for: ServerSettingsCategory.self) { category in
                     detailContent(for: category)
                         .navigationTitle(category.title)
@@ -95,7 +95,7 @@ struct ServerSettingsView: View {
         } else {
             NavigationSplitView {
                 categorySidebar
-                    .navigationTitle("Réglages")
+                    .navigationTitle("Settings")
             } detail: {
                 detailContent
             }
@@ -122,19 +122,19 @@ struct ServerSettingsView: View {
             if let runtime {
                 GeneralServerSettingsView(runtime: runtime)
             } else {
-                PlaceholderCategoryView(title: "Réglages")
+                PlaceholderCategoryView(title: "Settings")
             }
         case .monitor:
             if let runtime {
                 ServerMonitorSettingsView(runtime: runtime)
             } else {
-                PlaceholderCategoryView(title: "Moniteur")
+                PlaceholderCategoryView(title: "Monitor")
             }
         case .events:
             if let runtime {
                 ServerEventsSettingsView(runtime: runtime)
             } else {
-                PlaceholderCategoryView(title: "Évènements")
+                PlaceholderCategoryView(title: "Events")
             }
         case .log:
             if let runtime {
@@ -146,13 +146,13 @@ struct ServerSettingsView: View {
             if let runtime {
                 AccountsSettingsView(runtime: runtime)
             } else {
-                PlaceholderCategoryView(title: "Comptes")
+                PlaceholderCategoryView(title: "Accounts")
             }
         case .bans:
             if let runtime {
                 BansSettingsView(runtime: runtime)
             } else {
-                PlaceholderCategoryView(title: "Banissements")
+                PlaceholderCategoryView(title: "Bans")
             }
         }
     }
@@ -167,9 +167,9 @@ private enum ServerMonitorTransferFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "Tous"
-        case .downloading: return "Téléchargements"
-        case .uploading: return "Téléversements"
+        case .all: return "All"
+        case .downloading: return "Downloads"
+        case .uploading: return "Uploads"
         }
     }
 }
@@ -258,9 +258,9 @@ private struct ServerMonitorSettingsView: View {
         Group {
             if !canViewMonitor || permissionDeniedByServer {
                 ContentUnavailableView(
-                    "Accès refusé",
+                    "Access Denied",
                     systemImage: "lock",
-                    description: Text("Permission requise: wired.account.user.get_users")
+                    description: Text("Required permission: wired.account.user.get_users")
                 )
             } else {
                 VStack(alignment: .leading, spacing: 16) {
@@ -306,12 +306,12 @@ private struct ServerMonitorSettingsView: View {
                 systemImage: "person.3.fill"
             )
             summaryCard(
-                title: "Téléchargement",
+                title: "Download",
                 value: speedString(totalDownloadSpeed),
                 systemImage: "arrow.down.circle.fill"
             )
             summaryCard(
-                title: "Téléversement",
+                title: "Upload",
                 value: speedString(totalUploadSpeed),
                 systemImage: "arrow.up.circle.fill"
             )
@@ -320,27 +320,27 @@ private struct ServerMonitorSettingsView: View {
 
     private var controlsView: some View {
         HStack(spacing: 12) {
-            Picker("Filtre", selection: $filter) {
+            Picker("Filter", selection: $filter) {
                 ForEach(ServerMonitorTransferFilter.allCases) { option in
                     Text(option.title).tag(option)
                 }
             }
             .pickerStyle(.segmented)
 
-            TextField("Rechercher un utilisateur", text: $searchText)
+            TextField("Search user", text: $searchText)
                 .textFieldStyle(.roundedBorder)
 
             Button {
                 Task { await loadUsers(showSpinner: true) }
             } label: {
-                Label("Rafraîchir", systemImage: "arrow.clockwise")
+                Label("Refresh", systemImage: "arrow.clockwise")
             }
 
             Button {
                 guard let selectedUser else { return }
                 disconnectRequest = MonitorDisconnectRequest(user: selectedUser)
             } label: {
-                Label("Déconnecter", systemImage: "plug.circle.fill")
+                Label("Disconnect", systemImage: "plug.circle.fill")
             }
             .disabled(selectedUser == nil || !canDisconnectUsers)
         }
@@ -350,9 +350,9 @@ private struct ServerMonitorSettingsView: View {
         Group {
             if filteredUsers.isEmpty && !isLoading {
                 ContentUnavailableView(
-                    "Aucun utilisateur",
+                    "No Users",
                     systemImage: "person.crop.rectangle",
-                    description: Text("Aucun utilisateur ne correspond au filtre courant.")
+                    description: Text("No user matches the current filter.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -567,7 +567,7 @@ private struct MonitorUserRowView: View {
         }
 
         guard let idleTime = user.idleTime else {
-            return user.idle ? "Inactif" : "Connecté"
+            return user.idle ? "Idle" : "Connected"
         }
 
         let elapsed = max(0, Date().timeIntervalSince(idleTime))
@@ -575,10 +575,10 @@ private struct MonitorUserRowView: View {
         let formattedDate = Self.dateFormatter.string(from: idleTime)
 
         if user.idle {
-            return "Inactif \(duration), depuis \(formattedDate)"
+            return "Idle \(duration), since \(formattedDate)"
         }
 
-        return "Actif, dernière activité \(formattedDate)"
+        return "Active, last activity \(formattedDate)"
     }
 }
 
@@ -594,17 +594,17 @@ private struct MonitorDisconnectSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Déconnecter l’utilisateur")
+            Text("Disconnect User")
                 .font(.title3.weight(.semibold))
 
-            Text("Cible: \(user.nick)")
+            Text("Target: \(user.nick)")
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Message")
                     .font(.headline)
 
-                TextField("Message optionnel", text: $reason, axis: .vertical)
+                TextField("Optional message", text: $reason, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(3...6)
             }
@@ -612,12 +612,12 @@ private struct MonitorDisconnectSheet: View {
             HStack {
                 Spacer()
 
-                Button("Annuler") {
+                Button("Cancel") {
                     onDismiss()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Déconnecter") {
+                Button("Disconnect") {
                     Task { await submit() }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -678,15 +678,15 @@ private struct GeneralServerSettingsView: View {
         Group {
             if permissionDeniedByServer {
                 ContentUnavailableView(
-                    "Accès refusé",
+                    "Access Denied",
                     systemImage: "lock",
-                    description: Text("Permission requise: wired.account.settings.get_settings")
+                    description: Text("Required permission: wired.account.settings.get_settings")
                 )
             } else if isBootstrapping && !didLoadSettings && !isLoading {
                 ContentUnavailableView(
-                    "Chargement des réglages",
+                    "Loading Settings",
                     systemImage: "gearshape",
-                    description: Text("Récupération des permissions et des paramètres serveur…")
+                    description: Text("Retrieving server permissions and settings…")
                 )
             } else {
                 settingsContent
@@ -802,7 +802,7 @@ private struct GeneralServerSettingsView: View {
                 directorySection
 
                 HStack {
-                    Button("Recharger") {
+                    Button("Reload") {
                         Task { await loadSettings() }
                     }
                     .disabled(isLoading || isSaving)
@@ -819,7 +819,7 @@ private struct GeneralServerSettingsView: View {
 
     private var basicSettingsSection: some View {
         Group {
-            settingsFieldRow("Nom du serveur") {
+            settingsFieldRow("Server Name") {
                 TextField("", text: $serverName)
                     .textFieldStyle(.roundedBorder)
                     .disabled(!canSetSettings)
@@ -831,7 +831,7 @@ private struct GeneralServerSettingsView: View {
                     .disabled(!canSetSettings)
             }
 
-            settingsFieldRow("Bannière", alignment: .top) {
+            settingsFieldRow("Banner", alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     if let data = currentBannerData,
                        let bannerImage = Image(data: data) {
@@ -844,18 +844,18 @@ private struct GeneralServerSettingsView: View {
                             .fill(.quaternary.opacity(0.5))
                             .frame(width: 400, height: 64)
                             .overlay {
-                                Text("Taille maximale 400x64")
+                                Text("Max size 400x64")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                     }
 
-                    Text("Taille maximale 400x64")
+                    Text("Max size 400x64")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     if canSetSettings {
-                        Button("Choisir une image…") {
+                        Button("Choose an image…") {
                             isPickingBanner = true
                         }
                         .disabled(isSaving || isLoading)
@@ -869,12 +869,12 @@ private struct GeneralServerSettingsView: View {
     private var limitsSection: some View {
         Grid(horizontalSpacing: 16, verticalSpacing: 10) {
             GridRow {
-                settingsNumericRow("Téléchargements simultanés", value: $maxDownloads)
-                speedLimitRow("Vit. de téléchargement", value: $downloadSpeedLimit)
+                settingsNumericRow("Concurrent Downloads", value: $maxDownloads)
+                speedLimitRow("DL Speed", value: $downloadSpeedLimit)
             }
             GridRow {
-                settingsNumericRow("Téléversements simultanés", value: $maxUploads)
-                speedLimitRow("Vit. de téléversement", value: $uploadSpeedLimit)
+                settingsNumericRow("Concurrent Uploads", value: $maxUploads)
+                speedLimitRow("UL Speed", value: $uploadSpeedLimit)
             }
         }
     }
@@ -897,7 +897,7 @@ private struct GeneralServerSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             registerWithTrackersToggle
 
-            Text("Chaque annuaire est enregistré sous forme d'URL `wired://hote[:port]/Categorie`. L'interface édite les différentes parties, puis les sérialise automatiquement.")
+            Text("Each directory is registered as a `wired://host[:port]/Category` URL. The interface edits the parts and serializes them automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -911,7 +911,7 @@ private struct GeneralServerSettingsView: View {
                 trackers.append(TrackerRow())
                 scheduleAutoSave()
             } label: {
-                Label("Ajouter un annuaire", systemImage: "plus")
+                Label("Add Directory", systemImage: "plus")
             }
             .disabled(!canSetSettings || isSaving)
         }
@@ -921,16 +921,16 @@ private struct GeneralServerSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             trackerEnabledToggle
 
-            Text("Quand cette option est activée, ce serveur répond aux messages `wired.tracker.*` et expose les catégories ci-dessous.")
+            Text("When enabled, this server responds to `wired.tracker.*` messages and exposes the categories below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            settingsFieldRow("Catégories d'annuaire", labelWidth: 0, alignment: .top) {
+            settingsFieldRow("Directory Categories", labelWidth: 0, alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
                     List(selection: $selectedCategoryIndex) {
                         ForEach(Array(trackerCategories.indices), id: \.self) { index in
                             TextField(
-                                "Catégorie",
+                                "New Category",
                                 text: Binding(
                                     get: { trackerCategories[index] },
                                     set: { trackerCategories[index] = $0 }
@@ -944,7 +944,7 @@ private struct GeneralServerSettingsView: View {
 
                     HStack(spacing: 8) {
                         Button {
-                            trackerCategories.append("Nouvelle catégorie")
+                            trackerCategories.append("New Category")
                             selectedCategoryIndex = trackerCategories.count - 1
                             scheduleAutoSave()
                         } label: {
@@ -976,27 +976,27 @@ private struct GeneralServerSettingsView: View {
     @ViewBuilder
     private var registerWithTrackersToggle: some View {
         #if os(macOS)
-        Toggle("Enregistrer le serveur auprès des annuaires suivants", isOn: $registerWithTrackers)
+        Toggle("Register server with the following directories", isOn: $registerWithTrackers)
             .toggleStyle(.checkbox)
         #else
-        Toggle("Enregistrer le serveur auprès des annuaires suivants", isOn: $registerWithTrackers)
+        Toggle("Register server with the following directories", isOn: $registerWithTrackers)
         #endif
     }
 
     @ViewBuilder
     private var trackerEnabledToggle: some View {
         #if os(macOS)
-        Toggle("Activer l'annuaire", isOn: $trackerEnabled)
+        Toggle("Enable Directory", isOn: $trackerEnabled)
             .toggleStyle(.checkbox)
         #else
-        Toggle("Activer l'annuaire", isOn: $trackerEnabled)
+        Toggle("Enable Directory", isOn: $trackerEnabled)
         #endif
     }
 
     private func trackerCard(index: Int, tracker: Binding<TrackerRow>) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Annuaire \(index + 1)")
+                Text("Directory \(index + 1)")
                     .font(.headline)
 
                 Spacer()
@@ -1009,7 +1009,7 @@ private struct GeneralServerSettingsView: View {
                         }
                         scheduleAutoSave()
                     } label: {
-                        Label("Supprimer", systemImage: "trash")
+                        Label("Delete", systemImage: "trash")
                     }
                     .buttonStyle(.borderless)
                     .disabled(!canSetSettings || isSaving)
@@ -1018,7 +1018,7 @@ private struct GeneralServerSettingsView: View {
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
-                    trackerField("Hôte") {
+                    trackerField("Host") {
                         TextField("wired.read-write.fr", text: tracker.host)
                             .textFieldStyle(.roundedBorder)
                             .disabled(!canSetSettings)
@@ -1031,12 +1031,12 @@ private struct GeneralServerSettingsView: View {
                 }
 
                 GridRow {
-                    trackerField("Identifiant") {
+                    trackerField("Login") {
                         TextField("guest", text: tracker.login)
                             .textFieldStyle(.roundedBorder)
                             .disabled(!canSetSettings)
                     }
-                    trackerField("Mot de passe") {
+                    trackerField("Password") {
                         SecureField("", text: tracker.password)
                             .textFieldStyle(.roundedBorder)
                             .disabled(!canSetSettings)
@@ -1044,7 +1044,7 @@ private struct GeneralServerSettingsView: View {
                 }
 
                 GridRow {
-                    trackerField("Catégorie") {
+                    trackerField("Category") {
                         TextField("Chat", text: tracker.category)
                             .textFieldStyle(.roundedBorder)
                             .disabled(!canSetSettings)
@@ -1054,7 +1054,7 @@ private struct GeneralServerSettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("URL enregistrée")
+                Text("Registered URL")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(tracker.wrappedValue.serializedValue)
@@ -1434,9 +1434,9 @@ private struct BansSettingsView: View {
         Group {
             if !canListBans {
                 ContentUnavailableView(
-                    "Accès refusé",
+                    "Access Denied",
                     systemImage: "lock",
-                    description: Text("Permission requise: wired.account.banlist.get_bans")
+                    description: Text("Required permission: wired.account.banlist.get_bans")
                 )
             } else {
                 content
@@ -1472,14 +1472,14 @@ private struct BansSettingsView: View {
                 Button {
                     showAddSheet = true
                 } label: {
-                    Label("Ajouter", systemImage: "plus")
+                    Label("Add", systemImage: "plus")
                 }
                 .disabled(!canAddBans || isMutating)
 
                 Button {
                     deleteSelectedBans()
                 } label: {
-                    Label("Supprimer", systemImage: "minus")
+                    Label("Delete", systemImage: "minus")
                 }
                 .disabled(!canDeleteBans || selectedEntries.isEmpty || isMutating)
 
@@ -1488,7 +1488,7 @@ private struct BansSettingsView: View {
                 Button {
                     Task { await reloadBans() }
                 } label: {
-                    Label("Rafraîchir", systemImage: "arrow.clockwise")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(isLoading || isMutating)
             }
@@ -1496,7 +1496,7 @@ private struct BansSettingsView: View {
             .padding(.top, 14)
 
             if bans.isEmpty, !isLoading {
-                ContentUnavailableView("Aucun bannissement", systemImage: "minus.circle")
+                ContentUnavailableView("No Bans", systemImage: "minus.circle")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 bansTable
@@ -1516,7 +1516,7 @@ private struct BansSettingsView: View {
             TableColumn("IP", value: \.ipPattern)
                 .width(min: 220, ideal: 280, max: .infinity)
 
-            TableColumn("Date d'expiration") { entry in
+            TableColumn("Expiration Date") { entry in
                 Text(Self.expirationText(for: entry.expirationDate))
                     .foregroundStyle(entry.expirationDate == nil ? .secondary : .primary)
             }
@@ -1580,7 +1580,7 @@ private struct BansSettingsView: View {
     }
 
     private static func expirationText(for date: Date?) -> String {
-        guard let date else { return "Jamais" }
+        guard let date else { return "Never" }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 }
@@ -1598,34 +1598,34 @@ private struct BanListEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Ajouter un bannissement")
+            Text("Add Ban")
                 .font(.title3.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("IP")
                     .font(.headline)
 
-                TextField("192.168.* ou 192.168.0.0/16", text: $ipPattern)
+                TextField("192.168.* or 192.168.0.0/16", text: $ipPattern)
                     .textFieldStyle(.roundedBorder)
 
-                Text("Les IP exactes, wildcards, CIDR et masques réseau sont acceptés.")
+                Text("Exact IPs, wildcards, CIDR and network masks are supported.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Expire")
+                Text("Expires")
                     .font(.headline)
 
-                Picker("Expire", selection: $hasExpirationDate) {
-                    Text("Jamais").tag(false)
+                Picker("Expires", selection: $hasExpirationDate) {
+                    Text("Never").tag(false)
                     Text("Date").tag(true)
                 }
                 .pickerStyle(.segmented)
 
                 if hasExpirationDate {
                     DatePicker(
-                        "Date d'expiration",
+                        "Expiration date",
                         selection: $expirationDate,
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
@@ -1637,7 +1637,7 @@ private struct BanListEditorSheet: View {
             HStack {
                 Spacer()
 
-                Button("Annuler") {
+                Button("Cancel") {
                     onDismiss()
                 }
                 .disabled(isSaving)
@@ -1695,10 +1695,10 @@ private enum EventArchiveScope: Hashable, Identifiable {
     func title(calendar: Calendar) -> String {
         switch self {
         case .current:
-            return "Évènements récents"
+            return "Recent Events"
         case .archive(let date):
             let weekStart = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
-            return "Semaine du \(weekStart.formatted(date: .abbreviated, time: .omitted))"
+            return "Week of \(weekStart.formatted(date: .abbreviated, time: .omitted))"
         }
     }
 
@@ -1945,9 +1945,9 @@ private struct ServerEventsSettingsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !canViewEvents {
                 ContentUnavailableView(
-                    "Accès refusé",
+                    "Access Denied",
                     systemImage: "lock",
-                    description: Text("Permission requise: wired.account.events.view_events")
+                    description: Text("Required permission: wired.account.events.view_events")
                 )
             } else {
                 content
@@ -1987,7 +1987,7 @@ private struct ServerEventsSettingsView: View {
             filtersBar
 
             if viewModel.filteredEvents.isEmpty, !viewModel.isLoading {
-                ContentUnavailableView("Aucun évènement", systemImage: "flag")
+                ContentUnavailableView("No Events", systemImage: "flag")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 eventsTable
@@ -2003,7 +2003,7 @@ private struct ServerEventsSettingsView: View {
     private var filtersBar: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                Picker("Période", selection: $viewModel.selectedScope) {
+                Picker("Period", selection: $viewModel.selectedScope) {
                     ForEach(viewModel.availableScopes) { scope in
                         Text(scope.title(calendar: .current)).tag(scope)
                     }
@@ -2018,22 +2018,22 @@ private struct ServerEventsSettingsView: View {
                         await viewModel.loadSelectedScopeIfNeeded()
                     }
                 } label: {
-                    Label("Rafraîchir", systemImage: "arrow.clockwise")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(viewModel.isLoading)
             }
 
             HStack(spacing: 10) {
-                Picker("Pseudo", selection: $viewModel.selectedNick) {
-                    Text("Tous les pseudos").tag(Optional<String>.none)
+                Picker("Nick", selection: $viewModel.selectedNick) {
+                    Text("All Nicks").tag(Optional<String>.none)
                     ForEach(viewModel.availableNicks, id: \.self) { nick in
                         Text(nick).tag(Optional(nick))
                     }
                 }
                 .frame(maxWidth: 180)
 
-                Picker("Identifiant", selection: $viewModel.selectedLogin) {
-                    Text("Tous les identifiants").tag(Optional<String>.none)
+                Picker("Login", selection: $viewModel.selectedLogin) {
+                    Text("All Logins").tag(Optional<String>.none)
                     ForEach(viewModel.availableLogins, id: \.self) { login in
                         Text(login).tag(Optional(login))
                     }
@@ -2041,22 +2041,22 @@ private struct ServerEventsSettingsView: View {
                 .frame(maxWidth: 180)
 
                 Picker("IP", selection: $viewModel.selectedIP) {
-                    Text("Toutes les IP").tag(Optional<String>.none)
+                    Text("All IPs").tag(Optional<String>.none)
                     ForEach(viewModel.availableIPs, id: \.self) { ip in
                         Text(ip).tag(Optional(ip))
                     }
                 }
                 .frame(maxWidth: 160)
 
-                Picker("Catégorie", selection: $viewModel.selectedCategory) {
-                    Text("Toutes les catégories").tag(Optional<WiredServerEventCategory>.none)
+                Picker("New Category", selection: $viewModel.selectedCategory) {
+                    Text("All Categories").tag(Optional<WiredServerEventCategory>.none)
                     ForEach(viewModel.availableCategories, id: \.self) { category in
                         Text(category.title).tag(Optional(category))
                     }
                 }
                 .frame(maxWidth: 160)
 
-                TextField("Rechercher", text: $viewModel.searchText)
+                TextField("Search", text: $viewModel.searchText)
                     .textFieldStyle(.roundedBorder)
             }
         }
@@ -2080,18 +2080,18 @@ private struct ServerEventsSettingsView: View {
                     .lineLimit(2)
             }
 
-            TableColumn("Date et heure") { event in
+            TableColumn("Date & Time") { event in
                 Text(event.time.formatted(date: .abbreviated, time: .shortened))
                     .monospacedDigit()
             }
             .width(170)
 
-            TableColumn("Pseudonyme") { event in
+            TableColumn("Nick") { event in
                 Text(event.nick.isEmpty ? " " : event.nick)
             }
             .width(min: 110, ideal: 120, max: 140)
 
-            TableColumn("Identifiant") { event in
+            TableColumn("Login") { event in
                 Text(event.login.isEmpty ? " " : event.login)
             }
             .width(min: 110, ideal: 120, max: 140)
@@ -2131,7 +2131,7 @@ private struct PlaceholderCategoryView: View {
             Spacer()
             Text(title)
                 .font(.title3.weight(.semibold))
-            Text("Section en cours d'implémentation")
+            Text("Section under development")
                 .foregroundStyle(.secondary)
             Spacer()
         }
@@ -2258,9 +2258,9 @@ private struct ServerLogSettingsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !canViewLog {
                 ContentUnavailableView(
-                    "Accès refusé",
+                    "Access Denied",
                     systemImage: "lock",
-                    description: Text("Permission requise: wired.account.log.view_log")
+                    description: Text("Required permission: wired.account.log.view_log")
                 )
             } else {
                 content
@@ -2294,7 +2294,7 @@ private struct ServerLogSettingsView: View {
             filtersBar
 
             if viewModel.filteredEntries.isEmpty, !viewModel.isLoading {
-                ContentUnavailableView("Aucune entrée", systemImage: "doc.text")
+                ContentUnavailableView("No Entries", systemImage: "doc.text")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 logTable
@@ -2309,8 +2309,8 @@ private struct ServerLogSettingsView: View {
 
     private var filtersBar: some View {
         HStack(spacing: 10) {
-            Picker("Niveau", selection: $viewModel.levelFilter) {
-                Text("Tous les niveaux").tag(Optional<WiredLogLevel>.none)
+            Picker("Level", selection: $viewModel.levelFilter) {
+                Text("All Levels").tag(Optional<WiredLogLevel>.none)
                 ForEach(WiredLogLevel.allCases, id: \.self) { level in
                     Label(level.title, systemImage: level.systemImageName)
                         .tag(Optional(level))
@@ -2318,13 +2318,13 @@ private struct ServerLogSettingsView: View {
             }
             .frame(maxWidth: 200)
 
-            TextField("Rechercher", text: $viewModel.searchText)
+            TextField("Search", text: $viewModel.searchText)
                 .textFieldStyle(.roundedBorder)
 
             Button {
                 Task { await viewModel.refresh() }
             } label: {
-                Label("Rafraîchir", systemImage: "arrow.clockwise")
+                Label("Refresh", systemImage: "arrow.clockwise")
             }
             .disabled(viewModel.isLoading)
         }
@@ -2344,13 +2344,13 @@ private struct ServerLogSettingsView: View {
             .width(28)
             .alignment(.center)
 
-            TableColumn("Date et heure") { entry in
+            TableColumn("Date & Time") { entry in
                 Text(entry.time.formatted(date: .abbreviated, time: .standard))
                     .monospacedDigit()
             }
             .width(170)
 
-            TableColumn("Niveau") { entry in
+            TableColumn("Level") { entry in
                 Text(entry.level.title)
                     .foregroundStyle(levelColor(entry.level))
             }

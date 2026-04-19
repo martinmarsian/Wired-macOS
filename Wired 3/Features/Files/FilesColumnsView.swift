@@ -98,7 +98,7 @@ struct FilesColumnsView: View {
             onDownloadTransferError: { item, message in
                 filesViewModel.error = WiredError(
                     withTitle: "Download Error",
-                    message: "Impossible de télécharger \"\(item.name)\":\n\(message)"
+                    message: "Unable to download \"\(item.name)\":\n\(message)"
                 )
             },
             column: column,

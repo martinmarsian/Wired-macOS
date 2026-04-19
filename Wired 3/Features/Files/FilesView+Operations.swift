@@ -215,7 +215,7 @@ extension FilesView {
             DispatchQueue.main.async {
                 filesViewModel.error = WiredError(
                     withTitle: "Download Error",
-                    message: "Impossible de télécharger \"\(item.name)\":\n\(message)"
+                    message: "Unable to download \"\(item.name)\":\n\(message)"
                 )
             }
         }

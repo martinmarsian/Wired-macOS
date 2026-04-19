@@ -29,7 +29,7 @@ struct ThreadSortMenuView: View {
             }
             Divider()
             Toggle(
-                "Tri ascendant",
+                "Ascending",
                 isOn: Binding(
                     get: { ascending },
                     set: { isSelected in
@@ -40,7 +40,7 @@ struct ThreadSortMenuView: View {
                 )
             )
             Toggle(
-                "Tri descendant",
+                "Descending",
                 isOn: Binding(
                     get: { !ascending },
                     set: { isSelected in
@@ -54,7 +54,7 @@ struct ThreadSortMenuView: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
         }
         .frame(maxWidth: 30)
-        .help("Trier les threads")
+        .help("Sort threads")
         .menuStyle(.borderlessButton)
     }
 }

@@ -21,9 +21,9 @@ enum AccountFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "Tous"
-        case .users: return "Utilisateurs"
-        case .groups: return "Groupes"
+        case .all: return "All"
+        case .users: return "Users"
+        case .groups: return "Groups"
         }
     }
 }
@@ -36,7 +36,7 @@ enum AccountDetailTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .account: return "Compte"
+        case .account: return "Account"
         case .permissions: return "Permissions"
         }
     }
@@ -50,8 +50,8 @@ enum AccountType: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .user: return "Utilisateur"
-        case .group: return "Groupe"
+        case .user: return "User"
+        case .group: return "Group"
         }
     }
 }
@@ -478,7 +478,7 @@ final class AccountsSettingsViewModel: ObservableObject {
             }
         }
 
-        throw NSError(domain: "Wired3.Accounts", code: 1, userInfo: [NSLocalizedDescriptionKey: "Aucune réponse wired.account.user reçue"])
+        throw NSError(domain: "Wired3.Accounts", code: 1, userInfo: [NSLocalizedDescriptionKey: "No wired.account.user response received"])
     }
 
     private func readGroup(name: String, connection: AsyncConnection) async throws -> AccountEditor {
@@ -495,7 +495,7 @@ final class AccountsSettingsViewModel: ObservableObject {
             }
         }
 
-        throw NSError(domain: "Wired3.Accounts", code: 2, userInfo: [NSLocalizedDescriptionKey: "Aucune réponse wired.account.group reçue"])
+        throw NSError(domain: "Wired3.Accounts", code: 2, userInfo: [NSLocalizedDescriptionKey: "No wired.account.group response received"])
     }
 
     private func editUser(_ editor: AccountEditor, connection: AsyncConnection) async throws {
@@ -837,10 +837,10 @@ struct AccountsSettingsView: View {
                 ),
                 presenting: accountPendingDeletion
             ) { account in
-                Button("Annuler", role: .cancel) {
+                Button("Cancel", role: .cancel) {
                     accountPendingDeletion = nil
                 }
-                Button("Supprimer", role: .destructive) {
+                Button("Delete", role: .destructive) {
                     accountPendingDeletion = nil
                     Task {
                         await viewModel.deleteAccount(account)
@@ -866,12 +866,12 @@ struct AccountsSettingsView: View {
         if horizontalSizeClass == .compact {
             NavigationStack {
                 accountCompactList
-                    .navigationTitle("Comptes")
+                    .navigationTitle("Accounts")
             }
         } else {
             NavigationSplitView {
                 accountSidebar
-                    .navigationTitle("Comptes")
+                    .navigationTitle("Accounts")
             } detail: {
                 detailView
             }
@@ -903,20 +903,20 @@ struct AccountsSettingsView: View {
                     Button {
                         creationDraft = AccountCreationDraft(type: .user)
                     } label: {
-                        Label("Utilisateur", systemImage: "person.badge.plus")
+                        Label("User", systemImage: "person.badge.plus")
                     }
                     .disabled(!viewModel.canCreateUsers || isBusy)
 
                     Button {
                         creationDraft = AccountCreationDraft(type: .group)
                     } label: {
-                        Label("Groupe", systemImage: "person.3.sequence")
+                        Label("Group", systemImage: "person.3.sequence")
                     }
                     .disabled(!viewModel.canCreateGroups || isBusy)
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("Ajouter")
+                .help("Add")
                 .disabled(!canCreateAccounts || isBusy)
 
                 Button {
@@ -924,7 +924,7 @@ struct AccountsSettingsView: View {
                 } label: {
                     Image(systemName: "minus")
                 }
-                .help("Supprimer")
+                .help("Delete")
                 .disabled(!canDeleteSelectedAccount || isBusy)
 
                 Button {
@@ -932,7 +932,7 @@ struct AccountsSettingsView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Recharger")
+                .help("Reload")
                 .disabled(isBusy)
 
                 Spacer()
@@ -977,32 +977,32 @@ struct AccountsSettingsView: View {
                     Button {
                         creationDraft = AccountCreationDraft(type: .user)
                     } label: {
-                        Label("Utilisateur", systemImage: "person.badge.plus")
+                        Label("User", systemImage: "person.badge.plus")
                     }
                     .disabled(!viewModel.canCreateUsers || isBusy)
 
                     Button {
                         creationDraft = AccountCreationDraft(type: .group)
                     } label: {
-                        Label("Groupe", systemImage: "person.3.sequence")
+                        Label("Group", systemImage: "person.3.sequence")
                     }
                     .disabled(!viewModel.canCreateGroups || isBusy)
                 } label: {
-                    Label("Ajouter", systemImage: "plus")
+                    Label("Add", systemImage: "plus")
                 }
                 .disabled(!canCreateAccounts || isBusy)
 
                 Button {
                     accountPendingDeletion = selectedAccount
                 } label: {
-                    Label("Supprimer", systemImage: "minus")
+                    Label("Delete", systemImage: "minus")
                 }
                 .disabled(!canDeleteSelectedAccount || isBusy)
 
                 Button {
                     Task { await viewModel.reloadAccounts() }
                 } label: {
-                    Label("Recharger", systemImage: "arrow.clockwise")
+                    Label("Reload", systemImage: "arrow.clockwise")
                 }
                 .disabled(isBusy)
                 Spacer()
@@ -1028,7 +1028,7 @@ struct AccountsSettingsView: View {
     }
 
     private func accountName(for id: String) -> String {
-        viewModel.filteredAccounts.first(where: { $0.id == id })?.name ?? "Compte"
+        viewModel.filteredAccounts.first(where: { $0.id == id })?.name ?? "Account"
     }
 
     private var selectedAccount: AccountSummary? {
@@ -1055,25 +1055,25 @@ struct AccountsSettingsView: View {
     }
 
     private var deletionAlertTitle: String {
-        guard let accountPendingDeletion else { return "Supprimer le compte" }
-        return accountPendingDeletion.type == .user ? "Supprimer l'utilisateur" : "Supprimer le groupe"
+        guard let accountPendingDeletion else { return "Delete Account" }
+        return accountPendingDeletion.type == .user ? "Delete User" : "Delete Group"
     }
 
     private func deletionAlertMessage(for account: AccountSummary) -> String {
         switch account.type {
         case .user:
-            return "L'utilisateur \"\(account.name)\" sera supprimé. Les sessions actives seront déconnectées si nécessaire."
+            return "User \"\(account.name)\" will be deleted. Active sessions will be disconnected if necessary."
         case .group:
-            return "Le groupe \"\(account.name)\" sera supprimé."
+            return "Group \"\(account.name)\" will be deleted."
         }
     }
 
     @ViewBuilder
     private var detailView: some View {
         if !viewModel.canListAccounts {
-            ContentUnavailableView("Accès refusé", systemImage: "lock", description: Text("Permission requise: wired.account.account.list_accounts"))
+            ContentUnavailableView("Access Denied", systemImage: "lock", description: Text("Required permission: wired.account.account.list_accounts"))
         } else if viewModel.filteredAccounts.isEmpty {
-            ContentUnavailableView("Aucun compte", systemImage: "person.2")
+            ContentUnavailableView("No Accounts", systemImage: "person.2")
         } else if let editor = viewModel.editor {
             VStack(spacing: 12) {
                 Picker("", selection: $viewModel.selectedDetailTab) {
@@ -1104,7 +1104,7 @@ struct AccountsSettingsView: View {
 
                 HStack {
                     Spacer()
-                    Button("Sauvegarder") {
+                    Button("Save") {
                         Task { await viewModel.saveSelectedAccount() }
                     }
                     .disabled(!canSave(editor: editor))
@@ -1113,7 +1113,7 @@ struct AccountsSettingsView: View {
                 .padding(.bottom, 12)
             }
         } else {
-            ContentUnavailableView("Sélectionne un compte", systemImage: "person.crop.square")
+            ContentUnavailableView("Select an Account", systemImage: "person.crop.square")
         }
     }
 
@@ -1143,17 +1143,17 @@ private struct AccountEditorForm: View {
                 GroupBox {
                     VStack(spacing: 10) {
                         row(label: "Type") {
-                            Text(editor.type == .group ? "Groupe" : "Utilisateur")
+                            Text(editor.type == .group ? "Group" : "User")
                                 .foregroundStyle(.secondary)
                         }
 
-                        editableRow(label: "Nom", text: editor.name) { value in
+                        editableRow(label: "Name", text: editor.name) { value in
                             var copy = editor
                             copy.name = value
                             onUpdate(copy)
                         }
 
-                        editableRow(label: "Nom complet", text: editor.fullName) { value in
+                        editableRow(label: "Full Name", text: editor.fullName) { value in
                             var copy = editor
                             copy.fullName = value
                             onUpdate(copy)
@@ -1174,7 +1174,7 @@ private struct AccountEditorForm: View {
                                 }
                             }
 
-                            row(label: "Mot de passe") {
+                            row(label: "Password") {
                                 HStack(spacing: 4) {
                                     SecureField("", text: Binding(
                                         get: { editor.password },
@@ -1195,25 +1195,25 @@ private struct AccountEditorForm: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .buttonStyle(.plain)
-                                        .help("Supprimer le mot de passe")
+                                        .help("Remove Password")
                                     }
                                 }
                             }
 
-                            editableRow(label: "Groupe primaire", text: editor.primaryGroup) { value in
+                            editableRow(label: "Primary Group", text: editor.primaryGroup) { value in
                                 var copy = editor
                                 copy.primaryGroup = value
                                 onUpdate(copy)
                             }
 
-                            editableRow(label: "Groupes secondaires", text: editor.secondaryGroupsString) { value in
+                            editableRow(label: "Secondary Groups", text: editor.secondaryGroupsString) { value in
                                 var copy = editor
                                 copy.secondaryGroupsString = value
                                 onUpdate(copy)
                             }
                         }
 
-                        editableMultilineRow(label: "Commentaire", text: editor.comment) { value in
+                        editableMultilineRow(label: "Comment", text: editor.comment) { value in
                             var copy = editor
                             copy.comment = value
                             onUpdate(copy)
@@ -1224,12 +1224,12 @@ private struct AccountEditorForm: View {
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 6) {
-                        dateLine("Création", value: editor.creationTime)
-                        dateLine("Modification", value: editor.modificationTime)
-                        dateLine("Dernière connexion", value: editor.loginTime)
-                        line("Modifié par", value: editor.editedBy)
-                        line("Téléchargements", value: "\(editor.downloads) terminé, \(formatBytes(editor.downloadTransferred)) transféré")
-                        line("Téléversements", value: "\(editor.uploads) terminé, \(formatBytes(editor.uploadTransferred)) transféré")
+                        dateLine("Created", value: editor.creationTime)
+                        dateLine("Modified", value: editor.modificationTime)
+                        dateLine("Last Login", value: editor.loginTime)
+                        line("Modified By", value: editor.editedBy)
+                        line("Downloads", value: "\(editor.downloads) completed, \(formatBytes(editor.downloadTransferred)) transferred")
+                        line("Uploads", value: "\(editor.uploads) completed, \(formatBytes(editor.uploadTransferred)) transferred")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
@@ -1570,7 +1570,7 @@ private struct AccountCreationSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(draft.type == .user ? "Ajouter un utilisateur" : "Ajouter un groupe")
+            Text(draft.type == .user ? "Add User" : "Add Group")
                 .font(.title3.weight(.semibold))
 
             Picker("Type", selection: $draft.type) {
@@ -1581,53 +1581,53 @@ private struct AccountCreationSheet: View {
             .pickerStyle(.segmented)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Nom")
+                Text("Name")
                     .font(.headline)
 
-                TextField("Nom du compte", text: $draft.name)
+                TextField("Account Name", text: $draft.name)
                     .textFieldStyle(.roundedBorder)
             }
 
             if draft.type == .user {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Nom complet")
+                    Text("Full Name")
                         .font(.headline)
 
-                    TextField("Nom complet", text: $draft.fullName)
+                    TextField("Full Name", text: $draft.fullName)
                         .textFieldStyle(.roundedBorder)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Mot de passe")
+                    Text("Password")
                         .font(.headline)
 
-                    SecureField("Mot de passe initial", text: $draft.password)
+                    SecureField("Initial password", text: $draft.password)
                         .textFieldStyle(.roundedBorder)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Groupe primaire")
+                    Text("Primary Group")
                         .font(.headline)
 
-                    TextField("Optionnel", text: $draft.primaryGroup)
+                    TextField("Optional", text: $draft.primaryGroup)
                         .textFieldStyle(.roundedBorder)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Groupes secondaires")
+                    Text("Secondary Groups")
                         .font(.headline)
 
-                    TextField("Séparés par des virgules", text: $draft.secondaryGroupsText)
+                    TextField("Comma-separated", text: $draft.secondaryGroupsText)
                         .textFieldStyle(.roundedBorder)
 
-                    Text("Exemple: staff, moderators")
+                    Text("Example: staff, moderators")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Commentaire")
+                Text("Comment")
                     .font(.headline)
 
                 TextEditor(text: $draft.comment)
@@ -1641,12 +1641,12 @@ private struct AccountCreationSheet: View {
             HStack {
                 Spacer()
 
-                Button("Annuler") {
+                Button("Cancel") {
                     onDismiss()
                 }
                 .disabled(isSaving)
 
-                Button("Créer") {
+                Button("Create") {
                     create()
                 }
                 .keyboardShortcut(.defaultAction)

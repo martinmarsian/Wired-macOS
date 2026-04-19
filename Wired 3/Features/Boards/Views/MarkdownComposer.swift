@@ -199,22 +199,22 @@ struct MarkdownComposer: View {
 
     private var toolbar: some View {
         HStack(spacing: 2) {
-            toolbarButton(icon: "bold", help: "Gras") {
+            toolbarButton(icon: "bold", help: "Bold") {
                 wrapSelection(prefix: "**", suffix: "**", placeholder: "bold")
             }
-            toolbarButton(icon: "italic", help: "Italique") {
+            toolbarButton(icon: "italic", help: "Italic") {
                 wrapSelection(prefix: "*", suffix: "*", placeholder: "italic")
             }
-            toolbarButton(icon: "chevron.left.forwardslash.chevron.right", help: "Code inline") {
+            toolbarButton(icon: "chevron.left.forwardslash.chevron.right", help: "Inline Code") {
                 wrapSelection(prefix: "`", suffix: "`", placeholder: "code")
             }
             Divider().frame(height: 14).padding(.horizontal, 3)
-            toolbarButton(icon: "link", help: "Lien") { insertLink() }
+            toolbarButton(icon: "link", help: "Link") { insertLink() }
             toolbarButton(icon: "photo", help: "Image") { insertImage() }
             toolbarButton(icon: "paperclip", help: "Attach file") { chooseFiles() }
             Divider().frame(height: 14).padding(.horizontal, 3)
-            toolbarButton(icon: "text.quote", help: "Citation") { prefixLines(with: "> ") }
-            toolbarButton(icon: "list.bullet", help: "Liste") { prefixLines(with: "- ") }
+            toolbarButton(icon: "text.quote", help: "Quote") { prefixLines(with: "> ") }
+            toolbarButton(icon: "list.bullet", help: "List") { prefixLines(with: "- ") }
             Spacer(minLength: 0)
             Divider().frame(height: 14).padding(.horizontal, 4)
             Button {
@@ -224,7 +224,7 @@ struct MarkdownComposer: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.borderless)
-            .help(showPreview ? "Éditer" : "Aperçu")
+            .help(showPreview ? "Edit" : "Preview")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -235,7 +235,7 @@ struct MarkdownComposer: View {
         ScrollView {
             Group {
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Rien à prévisualiser")
+                    Text("Nothing to preview")
                         .foregroundStyle(.tertiary)
                         .italic()
                 } else if let attributed = try? AttributedString(

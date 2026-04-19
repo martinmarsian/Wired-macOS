@@ -1,0 +1,160 @@
+/* Wired 3 – French Localizable.strings */
+
+/* ── Navigation / Server Settings categories ── */
+"Settings" = "Réglages";
+"Monitor" = "Moniteur";
+"Events" = "Évènements";
+"Accounts" = "Comptes";
+"Bans" = "Bannissements";
+
+/* ── General ── */
+"Cancel" = "Annuler";
+"Save" = "Enregistrer";
+"Delete" = "Supprimer";
+"OK" = "OK";
+"Reload" = "Recharger";
+"Refresh" = "Rafraîchir";
+"Add" = "Ajouter";
+"Create" = "Créer";
+"Disconnect" = "Déconnecter";
+"Search" = "Rechercher";
+"Filter" = "Filtre";
+"Type" = "Type";
+"Name" = "Nom";
+"Password" = "Mot de passe";
+"Group" = "Groupe";
+"User" = "Utilisateur";
+"Account" = "Compte";
+"Permissions" = "Permissions";
+"Comment" = "Commentaire";
+"All" = "Tous";
+"Level" = "Niveau";
+"Never" = "Jamais";
+"Date" = "Date";
+"Category" = "Catégorie";
+
+/* ── Monitor view ── */
+"Access Denied" = "Accès refusé";
+"Required permission: wired.account.user.get_users" = "Permission requise : wired.account.user.get_users";
+"Users" = "Utilisateurs";
+"Download" = "Téléchargement";
+"Upload" = "Téléversement";
+"Search user" = "Rechercher un utilisateur";
+"No Users" = "Aucun utilisateur";
+"No user matches the current filter." = "Aucun utilisateur ne correspond au filtre courant.";
+"Disconnect User" = "Déconnecter l'utilisateur";
+"Message" = "Message";
+"Optional message" = "Message optionnel";
+"Idle" = "Inactif";
+"Connected" = "Connecté";
+
+/* ── Server Settings ── */
+"Required permission: wired.account.settings.get_settings" = "Permission requise : wired.account.settings.get_settings";
+"Loading Settings" = "Chargement des réglages";
+"Retrieving server permissions and settings…" = "Récupération des permissions et des paramètres serveur…";
+"Server Name" = "Nom du serveur";
+"Banner" = "Bannière";
+"Max size 400x64" = "Taille maximale 400x64";
+"Choose an image…" = "Choisir une image…";
+"Concurrent Downloads" = "Téléchargements simultanés";
+"DL Speed" = "Vit. téléchargement";
+"Concurrent Uploads" = "Téléversements simultanés";
+"UL Speed" = "Vit. téléversement";
+
+/* ── Tracker / Directory ── */
+"Each directory is registered as a `wired://host[:port]/Category` URL. The interface edits the parts and serializes them automatically." = "Chaque annuaire est enregistré sous forme d'URL `wired://hote[:port]/Categorie`. L'interface édite les différentes parties, puis les sérialise automatiquement.";
+"Add Directory" = "Ajouter un annuaire";
+"When enabled, this server responds to `wired.tracker.*` messages and exposes the categories below." = "Quand cette option est activée, ce serveur répond aux messages `wired.tracker.*` et expose les catégories ci-dessous.";
+"Directory Categories" = "Catégories d'annuaire";
+"New Category" = "Nouvelle catégorie";
+"Register server with the following directories" = "Enregistrer le serveur auprès des annuaires suivants";
+"Enable Directory" = "Activer l'annuaire";
+"Directory %lld" = "Annuaire %lld";
+"Host" = "Hôte";
+"Login" = "Identifiant";
+"Port" = "Port";
+"Registered URL" = "URL enregistrée";
+
+/* ── Bans ── */
+"No Bans" = "Aucun bannissement";
+"Required permission: wired.account.banlist.get_bans" = "Permission requise : wired.account.banlist.get_bans";
+"Add Ban" = "Ajouter un bannissement";
+"IP" = "IP";
+"Exact IPs, wildcards, CIDR and network masks are supported." = "Les IP exactes, wildcards, CIDR et masques réseau sont acceptés.";
+"Expires" = "Expire";
+
+/* ── Events ── */
+"Recent Events" = "Évènements récents";
+"Required permission: wired.account.events.view_events" = "Permission requise : wired.account.events.view_events";
+"No Events" = "Aucun évènement";
+"Period" = "Période";
+"Nick" = "Pseudo";
+"All Nicks" = "Tous les pseudos";
+"All Logins" = "Tous les identifiants";
+"All IPs" = "Toutes les IP";
+"All Categories" = "Toutes les catégories";
+"All Levels" = "Tous les niveaux";
+"Section under development" = "Section en cours d'implémentation";
+
+/* ── Log ── */
+"No Entries" = "Aucune entrée";
+"Required permission: wired.account.log.view_log" = "Permission requise : wired.account.log.view_log";
+
+/* ── Accounts ── */
+"Groups" = "Groupes";
+"Delete Account" = "Supprimer le compte";
+"Delete User" = "Supprimer l'utilisateur";
+"Delete Group" = "Supprimer le groupe";
+"Required permission: wired.account.account.list_accounts" = "Permission requise : wired.account.account.list_accounts";
+"No Accounts" = "Aucun compte";
+"Select an Account" = "Sélectionne un compte";
+"Remove Password" = "Supprimer le mot de passe";
+"Account Name" = "Nom du compte";
+"Full Name" = "Nom complet";
+"Primary Group" = "Groupe primaire";
+"Optional" = "Optionnel";
+"Secondary Groups" = "Groupes secondaires";
+"Comma-separated" = "Séparés par des virgules";
+"Example: staff, moderators" = "Exemple : staff, moderators";
+
+/* ── Smart Board Editor ── */
+"New Smart Board" = "Nouvelle discussion intelligente";
+"Edit Smart Board" = "Modifier la discussion intelligente";
+"Name:" = "Nom :";
+"Thread Filters" = "Filtres de sujets";
+"Board:" = "Discussion :";
+"All Boards" = "Toutes";
+"Subject:" = "Sujet :";
+"Reply:" = "Réponse :";
+"Nick:" = "Pseudo :";
+"Unread:" = "Non-lu :";
+"Yes" = "Oui";
+
+/* ── Markdown Composer ── */
+"Bold" = "Gras";
+"Italic" = "Italique";
+"Inline Code" = "Code inline";
+"Link" = "Lien";
+"Quote" = "Citation";
+"List" = "Liste";
+"Edit" = "Éditer";
+"Preview" = "Aperçu";
+"Nothing to preview" = "Rien à prévisualiser";
+
+/* ── Files ── */
+"Unable to download \"%@\":\n%@" = "Impossible de télécharger \"%@\" :\n%@";
+
+/* ── Sort / Boards ── */
+"Sort threads" = "Trier les threads";
+"Ascending" = "Tri ascendant";
+"Descending" = "Tri descendant";
+
+/* ── User actions (kick/ban sheet) ── */
+"Expire" = "Expire";
+"Expiration date" = "Date d'expiration";
+
+/* ── Boards permissions ── */
+"None" = "Aucun";
+"Owner" = "Propriétaire";
+"Owner access" = "Accès propriétaire";
+"Group access" = "Accès groupe";
