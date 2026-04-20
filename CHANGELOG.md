@@ -2,6 +2,17 @@
 
 All notable changes to Wired Client are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [3.0-beta.22+42] — 2026-04-20
+
+### Bug Fixes
+- Fix Finder drag and drop state in FilesView ([`bc31644`](https://github.com/nark/Wired-macOS/commit/bc316443564b8cb678e0f89f6abcac49b02ee6b6))
+
+- Fix tracker reload background execution ([`bef7e95`](https://github.com/nark/Wired-macOS/commit/bef7e959de361bad7b406ecb86688f920052bfc9))
+
+
+### Other
+- Seed default tracker on first launch ([`3e47203`](https://github.com/nark/Wired-macOS/commit/3e4720331ab89328262492de66165f7851b405f7))
+
 ## [3.0-beta.21+38] — 2026-04-13
 
 ### Bug Fixes
