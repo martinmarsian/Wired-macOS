@@ -165,6 +165,7 @@ struct MainView: View {
             set: { if !$0 {
                 connectionController.presentChangePassword = nil
                 connectionController.presentChangePasswordWindowNumber = nil
+                connectionController.presentChangePasswordIsMandatory = false
             }}
         )
     }
@@ -228,8 +229,11 @@ struct MainView: View {
             #endif
             .sheet(isPresented: changePasswordSheetBinding) {
                 if let connectionID = connectionController.presentChangePassword {
-                    ChangePasswordView(connectionID: connectionID)
-                        .environment(connectionController)
+                    ChangePasswordView(
+                        connectionID: connectionID,
+                        isMandatory: connectionController.presentChangePasswordIsMandatory
+                    )
+                    .environment(connectionController)
                 }
             }
             .sheet(item: newConnectionSheetBinding) { draft in

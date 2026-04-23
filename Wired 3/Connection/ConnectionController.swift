@@ -194,6 +194,9 @@ enum SocketEvent {
     case received(UUID, Connection, P7Message)
     case serverInfoChanged(UUID, Connection)
     case disconnected(UUID, Connection?, Error?)
+    /// Fired when the server signals that a legacy SHA1 account (migrated from Wired 2.5)
+    /// has logged in and must set a new password immediately.
+    case requiresPasswordChange(UUID)
 
     var id: UUID {
         switch self {
@@ -201,6 +204,7 @@ enum SocketEvent {
         case .received(let id, _, _): return id
         case .serverInfoChanged(let id, _): return id
         case .disconnected(let id, _, _): return id
+        case .requiresPasswordChange(let id): return id
         }
     }
 }
@@ -314,6 +318,9 @@ final class ConnectionController {
     var suppressPresentedNewConnectionSheet: Bool = false
     var presentChangePassword: UUID?
     var presentChangePasswordWindowNumber: Int?
+    /// `true` when the change-password sheet was triggered by a mandatory legacy-auth upgrade
+    /// (migrated Wired 2.5 account).  The view uses this to hide the Cancel button.
+    var presentChangePasswordIsMandatory: Bool = false
     var requestedSelectionID: UUID?
     var activeConnectionID: UUID?
     var didPerformInitialLaunchFlow: Bool = false
@@ -1123,6 +1130,14 @@ final class ConnectionController {
             await MainActor.run {
                 guard let runtime = self.runtimeStores.first(where: { $0.id == id }) else { return }
                 runtime.serverInfo = connection.serverInfo
+            }
+
+        case .requiresPasswordChange(let id):
+            // The server flagged this account as migrated from Wired 2.5 (SHA1 password).
+            // Open the change-password sheet immediately so the user can set a proper password.
+            await MainActor.run {
+                self.presentChangePasswordIsMandatory = true
+                self.presentChangePassword = id
             }
         }
     }

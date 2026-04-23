@@ -37,6 +37,10 @@ final class DelegateProxy: NSObject, ConnectionDelegate, ClientInfoDelegate, Ser
         onEvent(.received(id, connection, message))
     }
 
+    func connectionRequiresPasswordChange(connection: Connection) {
+        onEvent(.requiresPasswordChange(id))
+    }
+
     func connectionDidReceivePriviledges(connection: Connection, message: P7Message) {
         onEvent(.received(id, connection, message))
     }
