@@ -893,6 +893,65 @@ struct Wired_3Tests {
 
     @MainActor
     @Test
+    func defaultTrackerBookmarkSeederCreatesDefaultTrackerOnlyOnce() throws {
+        let isolatedDefaults = TestData.makeDefaults()
+        defer { isolatedDefaults.defaults.removePersistentDomain(forName: isolatedDefaults.suiteName) }
+
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: TrackerBookmark.self, configurations: configuration)
+        let context = ModelContext(container)
+
+        let firstSeeder = DefaultTrackerBookmarkSeeder(defaults: isolatedDefaults.defaults)
+        firstSeeder.attach(modelContext: context)
+
+        var bookmarks = try context.fetch(FetchDescriptor<TrackerBookmark>())
+        #expect(bookmarks.count == 1)
+        #expect(bookmarks.first?.name == "Wired Tracker")
+        #expect(bookmarks.first?.hostname == "wired.read-write.fr")
+        #expect(bookmarks.first?.port == 4871)
+        #expect(bookmarks.first?.login == "guest")
+
+        let secondSeeder = DefaultTrackerBookmarkSeeder(defaults: isolatedDefaults.defaults)
+        secondSeeder.attach(modelContext: context)
+
+        bookmarks = try context.fetch(FetchDescriptor<TrackerBookmark>())
+        #expect(bookmarks.count == 1)
+    }
+
+    @MainActor
+    @Test
+    func defaultTrackerBookmarkSeederSkipsSeedingWhenTrackerAlreadyExists() throws {
+        let isolatedDefaults = TestData.makeDefaults()
+        defer { isolatedDefaults.defaults.removePersistentDomain(forName: isolatedDefaults.suiteName) }
+
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: TrackerBookmark.self, configurations: configuration)
+        let context = ModelContext(container)
+
+        context.insert(
+            TrackerBookmark(
+                name: "Custom Tracker",
+                hostname: "tracker.example.org",
+                port: 2000,
+                login: "alice",
+                sortOrder: 0
+            )
+        )
+        try context.save()
+
+        let seeder = DefaultTrackerBookmarkSeeder(defaults: isolatedDefaults.defaults)
+        seeder.attach(modelContext: context)
+
+        let bookmarks = try context.fetch(FetchDescriptor<TrackerBookmark>())
+        #expect(bookmarks.count == 1)
+        #expect(bookmarks.first?.name == "Custom Tracker")
+        #expect(bookmarks.first?.hostname == "tracker.example.org")
+        #expect(bookmarks.first?.port == 2000)
+        #expect(bookmarks.first?.login == "alice")
+    }
+
+    @MainActor
+    @Test
     func filesViewModelClearSearchLoadsRootWhenNoSavedBrowseStateExists() async {
         let runtime = TestData.makeRuntime()
         let service = TestFileService()

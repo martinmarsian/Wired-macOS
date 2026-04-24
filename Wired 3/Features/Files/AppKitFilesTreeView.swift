@@ -40,7 +40,6 @@ private final class TreeFileLabelDotView: NSView {
 private final class QuickLookOutlineView: NSOutlineView {
     var onQuickLook: (() -> Void)?
     var onDraggingExited: (() -> Void)?
-    var onDraggingEnded: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
@@ -55,11 +54,6 @@ private final class QuickLookOutlineView: NSOutlineView {
     override func draggingExited(_ sender: NSDraggingInfo?) {
         onDraggingExited?()
         super.draggingExited(sender)
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        onDraggingEnded?()
-        super.draggingEnded(sender)
     }
 }
 
@@ -227,10 +221,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             coordinator?.presentQuickLook()
         }
         outlineView.onDraggingExited = { [weak coordinator = context.coordinator] in
-            coordinator?.showDropBadge(nil)
-        }
-        outlineView.onDraggingEnded = { [weak coordinator = context.coordinator] in
-            coordinator?.showDropBadge(nil)
+            coordinator?.clearDropState()
         }
         outlineView.allowsColumnReordering = false
         outlineView.allowsColumnResizing = true
@@ -1057,6 +1048,11 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
         }
 
+        private func prefersLinkOperation(_ info: NSDraggingInfo) -> Bool {
+            let flags = NSApp.currentEvent?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
+            return flags.contains(.command) && flags.contains(.option)
+        }
+
         private func remoteDroppedPaths(from info: NSDraggingInfo) -> [String] {
             let raw = info.draggingPasteboard.string(forType: wiredRemotePathPasteboardType) ?? ""
             return raw
@@ -1065,20 +1061,26 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                 .filter { !$0.isEmpty }
         }
 
-        private func prefersLinkOperation(_ info: NSDraggingInfo) -> Bool {
-            let flags = NSApp.currentEvent?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
-            return flags.contains(.command) && flags.contains(.option)
+        fileprivate func clearDropState() {
+            showDropBadge(nil)
+            outlineView?.setDropItem(nil, dropChildIndex: -1)
+            outlineView?.needsDisplay = true
         }
 
-        func outlineView(_ outlineView: NSOutlineView, writeItems items: [Any], to pasteboard: NSPasteboard) -> Bool {
-            let remotePaths = items.compactMap { ($0 as? OutlineNode)?.item.path }
-            guard !remotePaths.isEmpty else { return false }
+        fileprivate func clearDropFeedbackOnly() {
+            showDropBadge(nil)
+        }
 
-            let pasteboardItem = NSPasteboardItem()
-            pasteboardItem.setString(remotePaths.joined(separator: "\n"), forType: wiredRemotePathPasteboardType)
-            pasteboard.clearContents()
-            pasteboard.writeObjects([pasteboardItem])
-            return true
+        private func refreshExternalDragConfiguration() {
+            guard let outlineView else { return }
+            outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
+            outlineView.setDraggingSourceOperationMask([.move, .copy, .link], forLocal: true)
+            outlineView.registerForDraggedTypes([.fileURL, wiredRemotePathPasteboardType])
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, writeItems items: [Any], to _: NSPasteboard) -> Bool {
+            let remotePaths = items.compactMap { ($0 as? OutlineNode)?.item.path }
+            return !remotePaths.isEmpty
         }
 
         func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem itemRef: Any) -> NSPasteboardWriting? {
@@ -1111,7 +1113,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             context == .withinApplication ? [.move, .copy, .link] : .copy
         }
 
-        func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
+        func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt _: NSPoint, forItems draggedItems: [Any]) {
             let draggedPaths = draggedItems.compactMap { itemRef -> String? in
                 (itemRef as? OutlineNode)?.item.path
             }
@@ -1121,6 +1123,11 @@ struct AppKitFilesTreeView: NSViewRepresentable {
                 draggedPaths.joined(separator: "\n"),
                 forType: wiredRemotePathPasteboardType
             )
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, draggingSession _: NSDraggingSession, endedAt _: NSPoint, operation _: NSDragOperation) {
+            clearDropFeedbackOnly()
+            refreshExternalDragConfiguration()
         }
 
         private func finderDroppedURLs(from info: NSDraggingInfo) -> [URL] {
@@ -1174,7 +1181,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
             if !remotePaths.isEmpty {
                 if remotePaths.contains(where: { $0 == destination.path || destination.path.hasPrefix($0 + "/") }) {
-                    showDropBadge(nil)
+                    clearDropState()
                     return []
                 }
 
@@ -1186,7 +1193,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
                 let shouldLink = prefersLinkOperation(info)
                 if remotePaths.contains(where: { !parent.canDropRemoteItem($0, destination, shouldLink) }) {
-                    showDropBadge(nil)
+                    clearDropState()
                     return []
                 }
                 showDropBadge(shouldLink ? .link : .move)
@@ -1194,7 +1201,10 @@ struct AppKitFilesTreeView: NSViewRepresentable {
             }
 
             let urls = finderDroppedURLs(from: info)
-            guard !urls.isEmpty else { return [] }
+            guard !urls.isEmpty else {
+                clearDropState()
+                return []
+            }
 
             if item == nil || destination.path == currentRootPath {
                 outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
@@ -1206,7 +1216,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
         }
 
         func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-            defer { showDropBadge(nil) }
+            defer { clearDropState() }
             guard let destination = dropDestination(for: item) else { return false }
 
             let remotePaths = remoteDroppedPaths(from: info)
@@ -1228,6 +1238,7 @@ struct AppKitFilesTreeView: NSViewRepresentable {
 
             let urls = finderDroppedURLs(from: info)
             if !urls.isEmpty {
+                refreshExternalDragConfiguration()
                 DispatchQueue.main.async {
                     self.parent.onUploadURLs(urls, destination)
                 }

@@ -135,7 +135,7 @@ final class TrackerBrowserController {
         states[bookmarkID] = nil
     }
 
-    private static func browse(
+    private nonisolated static func browse(
         snapshot: TrackerBookmarkSnapshot,
         password: String
     ) async -> Result<(categories: [String], servers: [TrackerServerNode], loadedAt: Date), Error> {
@@ -172,7 +172,7 @@ final class TrackerBrowserController {
         }
     }
 
-    private static func parseServer(from message: P7Message) -> TrackerServerNode {
+    private nonisolated static func parseServer(from message: P7Message) -> TrackerServerNode {
         TrackerServerNode(
             name: message.string(forField: "wired.info.name") ?? "Server",
             serverDescription: message.string(forField: "wired.info.description") ?? "",
@@ -185,7 +185,7 @@ final class TrackerBrowserController {
         )
     }
 
-    private static func normalizeCategoryPath(_ value: String) -> String {
+    private nonisolated static func normalizeCategoryPath(_ value: String) -> String {
         value
             .split(separator: "/")
             .map(String.init)
@@ -193,7 +193,7 @@ final class TrackerBrowserController {
             .joined(separator: "/")
     }
 
-    private static func buildTree(
+    private nonisolated static func buildTree(
         categories rawCategories: [String],
         servers: [TrackerServerNode]
     ) -> (categories: [TrackerCategoryNode], rootServers: [TrackerServerNode]) {
@@ -283,7 +283,7 @@ final class TrackerBrowserController {
         return (categories, rootServers)
     }
 
-    private static func errorMessage(from error: Error) -> String {
+    private nonisolated static func errorMessage(from error: Error) -> String {
         if let asyncError = error as? AsyncConnectionError {
             switch asyncError {
             case .notConnected:
