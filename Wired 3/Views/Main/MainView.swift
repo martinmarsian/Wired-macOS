@@ -239,8 +239,16 @@ struct MainView: View {
             .sheet(item: newConnectionSheetBinding) { draft in
                 NewConnectionFormView(draft: draft) { id in
                     connectionController.suppressPresentedNewConnectionSheet = true
-                    connectionController.requestedSelectionID = id
-                    openMainTab()
+                    if windowConnectionID == nil {
+                        // Reuse the current (empty) window — avoids a duplicate tab
+                        // that would also pick up the same connection via restoreWindowConnectionIfNeeded.
+                        windowConnectionID = id
+                        listSelection = .connection(id)
+                        connectionController.activeConnectionID = id
+                    } else {
+                        connectionController.requestedSelectionID = id
+                        openMainTab()
+                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         connectionController.suppressPresentedNewConnectionSheet = false
                     }
@@ -1090,8 +1098,14 @@ struct MainView: View {
         }
 
 #if os(macOS)
-        connectionController.requestedSelectionID = connectionID
-        openMainTab()
+        if windowConnectionID == nil {
+            windowConnectionID = connectionID
+            listSelection = .connection(connectionID)
+            connectionController.activeConnectionID = connectionID
+        } else {
+            connectionController.requestedSelectionID = connectionID
+            openMainTab()
+        }
 #else
         selectConnection(connectionID)
 #endif
