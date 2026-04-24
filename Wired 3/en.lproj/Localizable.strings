@@ -1,0 +1,162 @@
+/* Wired 3 – English Localizable.strings
+   All string literals used as SwiftUI Text/Button/Label etc. keys.
+   English is the development language, so these values equal the keys. */
+
+/* ── Navigation / Server Settings categories ── */
+"Settings" = "Settings";
+"Monitor" = "Monitor";
+"Events" = "Events";
+"Accounts" = "Accounts";
+"Bans" = "Bans";
+
+/* ── General ── */
+"Cancel" = "Cancel";
+"Save" = "Save";
+"Delete" = "Delete";
+"OK" = "OK";
+"Reload" = "Reload";
+"Refresh" = "Refresh";
+"Add" = "Add";
+"Create" = "Create";
+"Disconnect" = "Disconnect";
+"Search" = "Search";
+"Filter" = "Filter";
+"Type" = "Type";
+"Name" = "Name";
+"Password" = "Password";
+"Group" = "Group";
+"User" = "User";
+"Account" = "Account";
+"Permissions" = "Permissions";
+"Comment" = "Comment";
+"All" = "All";
+"Level" = "Level";
+"Never" = "Never";
+"Date" = "Date";
+"Category" = "Category";
+
+/* ── Monitor view ── */
+"Access Denied" = "Access Denied";
+"Required permission: wired.account.user.get_users" = "Required permission: wired.account.user.get_users";
+"Users" = "Users";
+"Download" = "Download";
+"Upload" = "Upload";
+"Search user" = "Search user";
+"No Users" = "No Users";
+"No user matches the current filter." = "No user matches the current filter.";
+"Disconnect User" = "Disconnect User";
+"Message" = "Message";
+"Optional message" = "Optional message";
+"Idle" = "Idle";
+"Connected" = "Connected";
+
+/* ── Server Settings ── */
+"Required permission: wired.account.settings.get_settings" = "Required permission: wired.account.settings.get_settings";
+"Loading Settings" = "Loading Settings";
+"Retrieving server permissions and settings…" = "Retrieving server permissions and settings…";
+"Server Name" = "Server Name";
+"Banner" = "Banner";
+"Max size 400x64" = "Max size 400x64";
+"Choose an image…" = "Choose an image…";
+"Concurrent Downloads" = "Concurrent Downloads";
+"DL Speed" = "DL Speed";
+"Concurrent Uploads" = "Concurrent Uploads";
+"UL Speed" = "UL Speed";
+
+/* ── Tracker / Directory ── */
+"Each directory is registered as a `wired://host[:port]/Category` URL. The interface edits the parts and serializes them automatically." = "Each directory is registered as a `wired://host[:port]/Category` URL. The interface edits the parts and serializes them automatically.";
+"Add Directory" = "Add Directory";
+"When enabled, this server responds to `wired.tracker.*` messages and exposes the categories below." = "When enabled, this server responds to `wired.tracker.*` messages and exposes the categories below.";
+"Directory Categories" = "Directory Categories";
+"New Category" = "New Category";
+"Register server with the following directories" = "Register server with the following directories";
+"Enable Directory" = "Enable Directory";
+"Directory %lld" = "Directory %lld";
+"Host" = "Host";
+"Login" = "Login";
+"Port" = "Port";
+"Registered URL" = "Registered URL";
+
+/* ── Bans ── */
+"No Bans" = "No Bans";
+"Required permission: wired.account.banlist.get_bans" = "Required permission: wired.account.banlist.get_bans";
+"Add Ban" = "Add Ban";
+"IP" = "IP";
+"Exact IPs, wildcards, CIDR and network masks are supported." = "Exact IPs, wildcards, CIDR and network masks are supported.";
+"Expires" = "Expires";
+
+/* ── Events ── */
+"Recent Events" = "Recent Events";
+"Required permission: wired.account.events.view_events" = "Required permission: wired.account.events.view_events";
+"No Events" = "No Events";
+"Period" = "Period";
+"Nick" = "Nick";
+"All Nicks" = "All Nicks";
+"All Logins" = "All Logins";
+"All IPs" = "All IPs";
+"All Categories" = "All Categories";
+"All Levels" = "All Levels";
+"Section under development" = "Section under development";
+
+/* ── Log ── */
+"No Entries" = "No Entries";
+"Required permission: wired.account.log.view_log" = "Required permission: wired.account.log.view_log";
+
+/* ── Accounts ── */
+"Groups" = "Groups";
+"Delete Account" = "Delete Account";
+"Delete User" = "Delete User";
+"Delete Group" = "Delete Group";
+"Required permission: wired.account.account.list_accounts" = "Required permission: wired.account.account.list_accounts";
+"No Accounts" = "No Accounts";
+"Select an Account" = "Select an Account";
+"Remove Password" = "Remove Password";
+"Account Name" = "Account Name";
+"Full Name" = "Full Name";
+"Primary Group" = "Primary Group";
+"Optional" = "Optional";
+"Secondary Groups" = "Secondary Groups";
+"Comma-separated" = "Comma-separated";
+"Example: staff, moderators" = "Example: staff, moderators";
+
+/* ── Smart Board Editor ── */
+"New Smart Board" = "New Smart Board";
+"Edit Smart Board" = "Edit Smart Board";
+"Name:" = "Name:";
+"Thread Filters" = "Thread Filters";
+"Board:" = "Board:";
+"All Boards" = "All Boards";
+"Subject:" = "Subject:";
+"Reply:" = "Reply:";
+"Nick:" = "Nick:";
+"Unread:" = "Unread:";
+"Yes" = "Yes";
+
+/* ── Markdown Composer ── */
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Inline Code" = "Inline Code";
+"Link" = "Link";
+"Quote" = "Quote";
+"List" = "List";
+"Edit" = "Edit";
+"Preview" = "Preview";
+"Nothing to preview" = "Nothing to preview";
+
+/* ── Files ── */
+"Unable to download \"%@\":\n%@" = "Unable to download \"%@\":\n%@";
+
+/* ── Sort / Boards ── */
+"Sort threads" = "Sort threads";
+"Ascending" = "Ascending";
+"Descending" = "Descending";
+
+/* ── User actions (kick/ban sheet) ── */
+"Expire" = "Expire";
+"Expiration date" = "Expiration date";
+
+/* ── Boards permissions ── */
+"None" = "None";
+"Owner" = "Owner";
+"Owner access" = "Owner access";
+"Group access" = "Group access";

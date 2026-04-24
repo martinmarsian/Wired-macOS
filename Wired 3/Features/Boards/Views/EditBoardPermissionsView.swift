@@ -70,30 +70,30 @@ struct EditBoardPermissionsView: View {
                 }
 
                 Section("Permissions") {
-                    Picker("Proprietaire", selection: $ownerSelection) {
-                        Text("Aucun").tag("")
+                    Picker("Owner", selection: $ownerSelection) {
+                        Text("None").tag("")
                         ForEach(ownerOptions, id: \.self) { name in
                             Text(name).tag(name)
                         }
                     }
                     .disabled(isLoading || isSaving)
 
-                    Picker("Acces proprietaire", selection: $ownerLevel) {
+                    Picker("Owner access", selection: $ownerLevel) {
                         ForEach(PermissionLevel.allCases) { level in
                             Text(level.label).tag(level)
                         }
                     }
                     .disabled(isLoading || isSaving)
 
-                    Picker("Groupe", selection: $groupSelection) {
-                        Text("Aucun").tag("")
+                    Picker("Group", selection: $groupSelection) {
+                        Text("None").tag("")
                         ForEach(groupOptions, id: \.self) { name in
                             Text(name).tag(name)
                         }
                     }
                     .disabled(isLoading || isSaving)
 
-                    Picker("Acces groupe", selection: $groupLevel) {
+                    Picker("Group access", selection: $groupLevel) {
                         ForEach(PermissionLevel.allCases) { level in
                             Text(level.label).tag(level)
                         }

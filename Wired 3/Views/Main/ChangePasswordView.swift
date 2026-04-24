@@ -12,6 +12,10 @@ import WiredSwift
 
 struct ChangePasswordView: View {
     let connectionID: UUID
+    /// When `true`, the sheet was opened because the account has a legacy SHA1 password
+    /// (migrated from Wired 2.5). The Cancel button is hidden and an informational banner
+    /// is shown to explain why a new password is required.
+    var isMandatory: Bool = false
 
     @Environment(ConnectionController.self) private var controller
     @Environment(\.dismiss) private var dismiss
@@ -28,6 +32,18 @@ struct ChangePasswordView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                if isMandatory {
+                    Section {
+                        Label {
+                            Text("Your account was migrated from Wired 2.5. You must set a new password before you can use this server.")
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
                 Section {
                     SecureField("New password", text: $newPassword)
                     SecureField("Confirm password", text: $confirmPassword)
@@ -47,10 +63,12 @@ struct ChangePasswordView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") {
-                    dismiss()
+                if !isMandatory {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.cancelAction)
                 }
-                .keyboardShortcut(.cancelAction)
 
                 Button("Change") {
                     Task { await submit() }
@@ -60,8 +78,9 @@ struct ChangePasswordView: View {
             }
             .padding(12)
         }
-        .frame(width: 320)
+        .frame(width: 340)
         .fixedSize(horizontal: false, vertical: true)
+        .interactiveDismissDisabled(isMandatory)
     }
 
     private func submit() async {

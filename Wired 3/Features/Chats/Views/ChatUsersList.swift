@@ -227,14 +227,14 @@ private struct UserModerationSheetView: View {
                         .font(.headline)
 
                     Picker("Expire", selection: $hasExpirationDate) {
-                        Text("Jamais").tag(false)
+                        Text("Never").tag(false)
                         Text("Date").tag(true)
                     }
                     .pickerStyle(.segmented)
 
                     if hasExpirationDate {
                         DatePicker(
-                            "Date d'expiration",
+                            "Expiration date",
                             selection: $expirationDate,
                             in: Date()...,
                             displayedComponents: [.date, .hourAndMinute]
