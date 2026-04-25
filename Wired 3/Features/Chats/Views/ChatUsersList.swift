@@ -187,9 +187,6 @@ struct ChatUsersList: View {
             serverName: nil,
             connectionID: runtime.id
         )
-        #if os(macOS)
-        .frame(width: 200)
-        #endif
     }
 }
 
