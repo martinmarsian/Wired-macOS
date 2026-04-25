@@ -1377,8 +1377,8 @@ final class ConnectionController {
             await MainActor.run {
                 runtime.userID = message.uint32(forField: "wired.user.id") ?? 0
                 runtime.resetBoards()
-                runtime.uploadPublicKey()
             }
+            await runtime.uploadPublicKey()
 
             let request = P7Message(withName: "wired.chat.get_chats", spec: spec)
             _ = try? await runtime.send(request)

@@ -1092,12 +1092,12 @@ final class ConnectionRuntime: Identifiable {
         return urlLogin.isEmpty ? nil : urlLogin
     }
 
-    func uploadPublicKey() {
+    func uploadPublicKey() async {
         guard let login = currentLogin else { return }
         let keyData = OfflineMessageKeyManager.shared.loadOrCreateKeyPair(for: login).publicKey.rawRepresentation
         let msg = P7Message(withName: "wired.user.set_public_key", spec: spec)
         msg.addParameter(field: "wired.user.public_key", value: keyData)
-        Task { _ = try? await send(msg) }
+        _ = try? await send(msg)
     }
 
     func receiveOfflineMessage(fromLogin senderLogin: String, senderNick: String?, text: String, date: Date, isEncrypted: Bool) {
