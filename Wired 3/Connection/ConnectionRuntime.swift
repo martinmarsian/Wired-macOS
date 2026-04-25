@@ -1087,10 +1087,10 @@ final class ConnectionRuntime: Identifiable {
         let conversation = ensureDirectConversation(nick: senderLogin, userID: nil, login: senderLogin)
         conversation.messages.append(
             MessageEvent(
-                eventID: UUID(),
+                id: UUID(),
                 senderNick: senderLogin,
-                userID: nil,
-                icon: nil,
+                senderUserID: nil,
+                senderIcon: nil,
                 text: text,
                 date: date,
                 isFromCurrentUser: false,
