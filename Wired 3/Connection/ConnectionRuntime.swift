@@ -1084,16 +1084,44 @@ final class ConnectionRuntime: Identifiable {
         return conversation
     }
 
-    func receiveOfflineMessage(fromLogin senderLogin: String, senderNick: String?, text: String, date: Date) {
+    var currentLogin: String? {
+        if let config = connectionController.configuration(for: id) {
+            return config.login.isEmpty ? nil : config.login
+        }
+        let urlLogin = connection?.url.login ?? ""
+        return urlLogin.isEmpty ? nil : urlLogin
+    }
+
+    func uploadPublicKey() {
+        guard let login = currentLogin else { return }
+        let keyData = OfflineMessageKeyManager.shared.loadOrCreateKeyPair(for: login).publicKey.rawRepresentation
+        let msg = P7Message(withName: "wired.user.set_public_key", spec: spec)
+        msg.addParameter(field: "wired.user.public_key", value: keyData)
+        Task { _ = try? await send(msg) }
+    }
+
+    func receiveOfflineMessage(fromLogin senderLogin: String, senderNick: String?, text: String, date: Date, isEncrypted: Bool) {
         let displayNick = senderNick ?? senderLogin
         let conversation = ensureDirectConversation(nick: displayNick, userID: nil, login: senderLogin)
+
+        var displayText = text
+        if isEncrypted {
+            if let login = currentLogin,
+               let privateKey = OfflineMessageKeyManager.shared.privateKey(for: login),
+               let decrypted = try? OfflineMessageCrypto.decrypt(blob: text, privateKey: privateKey) {
+                displayText = decrypted
+            } else {
+                displayText = "[Encrypted message — decryption key not available]"
+            }
+        }
+
         conversation.messages.append(
             MessageEvent(
                 id: UUID(),
                 senderNick: displayNick,
                 senderUserID: nil,
                 senderIcon: nil,
-                text: text,
+                text: displayText,
                 date: date,
                 isFromCurrentUser: false,
                 attachments: []
@@ -1122,9 +1150,23 @@ final class ConnectionRuntime: Identifiable {
         if resolvedRecipientUserID(for: conversation) == nil,
            let login = conversation.participantLogin,
            hasPrivilege("wired.account.message.send_offline_messages") {
+
             let offlineMsg = P7Message(withName: "wired.message.send_offline_message", spec: spec)
             offlineMsg.addParameter(field: "wired.message.offline.recipient_login", value: login)
-            offlineMsg.addParameter(field: "wired.message.message", value: trimmed)
+
+            // Fetch recipient public key and encrypt if available
+            let keyRequest = P7Message(withName: "wired.user.get_public_key", spec: spec)
+            keyRequest.addParameter(field: "wired.user.login", value: login)
+            if let keyResponse = try? await send(keyRequest),
+               let pubKeyData = keyResponse.data(forField: "wired.user.public_key"),
+               let encryptedBlob = try? OfflineMessageCrypto.encrypt(plaintext: trimmed, recipientPublicKeyData: pubKeyData) {
+                offlineMsg.addParameter(field: "wired.message.message", value: encryptedBlob)
+                offlineMsg.addParameter(field: "wired.message.offline.encrypted", value: true)
+            } else {
+                // No public key registered yet — send plaintext (backward compatible)
+                offlineMsg.addParameter(field: "wired.message.message", value: trimmed)
+            }
+
             if let response = try await send(offlineMsg), response.name == "wired.error" {
                 throw WiredError(message: response)
             }

@@ -1377,6 +1377,7 @@ final class ConnectionController {
             await MainActor.run {
                 runtime.userID = message.uint32(forField: "wired.user.id") ?? 0
                 runtime.resetBoards()
+                runtime.uploadPublicKey()
             }
 
             let request = P7Message(withName: "wired.chat.get_chats", spec: spec)
@@ -1871,15 +1872,16 @@ final class ConnectionController {
                let body = message.string(forField: "wired.message.message"),
                let date = message.date(forField: "wired.message.offline.date") {
                 let senderNick = message.string(forField: "wired.message.offline.sender_nick")
+                let isEncrypted = message.bool(forField: "wired.message.offline.encrypted") ?? false
                 let displayName = senderNick ?? senderLogin
                 await MainActor.run {
-                    runtime.receiveOfflineMessage(fromLogin: senderLogin, senderNick: senderNick, text: body, date: date)
+                    runtime.receiveOfflineMessage(fromLogin: senderLogin, senderNick: senderNick, text: body, date: date, isEncrypted: isEncrypted)
                     self.triggerEvent(
                         .messageReceived,
                         runtime: runtime,
                         subtitle: displayName,
-                        body: body,
-                        chatText: "Offline message from \(displayName): \(body)"
+                        body: isEncrypted ? "Encrypted message" : body,
+                        chatText: "Offline message from \(displayName)"
                     )
                 }
             }
