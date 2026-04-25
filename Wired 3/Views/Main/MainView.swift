@@ -994,8 +994,8 @@ struct MainView: View {
             if connectionController.focusWindow(for: bookmark.id) {
                 return
             }
-            // If we cannot resolve an existing tab/window for this active connection,
-            // avoid replacing the current detail content.
+            // Window registry lost this connection — show it in the current window instead.
+            selectConnection(bookmark.id)
             return
 #else
             windowConnectionID = bookmark.id
