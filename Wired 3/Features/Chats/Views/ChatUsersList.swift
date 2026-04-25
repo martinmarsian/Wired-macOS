@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - Moderation helpers
+
 private enum UserModerationActionKind: String {
     case disconnect
     case kick
@@ -40,9 +42,11 @@ private struct UserModerationSheet: Identifiable {
     }
 }
 
+// MARK: - View
+
 struct ChatUsersList: View {
     @Environment(ConnectionRuntime.self) private var runtime
-    @State private var selectedUserID: UInt32?
+    @State private var selectedOnlineID: UInt32?
     @State private var selectedOfflineLogin: String?
     @State private var moderationSheet: UserModerationSheet?
     @State private var moderationError: Error?
@@ -50,21 +54,21 @@ struct ChatUsersList: View {
     var chat: Chat
 
     private var offlineUsers: [OfflineUser] {
-        // Show only users not currently in this chat
         let onlineLogins = Set(chat.users.compactMap { $0.login.isEmpty ? nil : $0.login })
         return runtime.offlineUsers.filter { !onlineLogins.contains($0.login) }
     }
 
-    private func user(for selection: Set<UInt32>) -> User? {
-        guard let userID = selection.first else { return nil }
-        return chat.users.first(where: { $0.id == userID })
+    private var selectedOnlineUser: User? {
+        guard let id = selectedOnlineID else { return nil }
+        return chat.users.first(where: { $0.id == id })
     }
 
     private func openPrivateMessage(for selection: Set<UInt32>) {
-        guard let selectedUser = user(for: selection) else { return }
+        guard let id = selection.first,
+              let user = chat.users.first(where: { $0.id == id }) else { return }
         guard runtime.hasPrivilege("wired.account.message.send_messages"),
-              selectedUser.id != runtime.userID else { return }
-        _ = runtime.openPrivateMessageConversation(with: selectedUser)
+              user.id != runtime.userID else { return }
+        _ = runtime.openPrivateMessageConversation(with: user)
     }
 
     private func openOfflinePrivateMessage(login: String) {
@@ -98,93 +102,15 @@ struct ChatUsersList: View {
 
         Group {
 #if os(macOS)
-            List(selection: $selectedUserID) {
-                Section("Online") {
-                    ForEach(chat.users) { user in
-                        UserListRowView(user: user)
-                            .environment(runtime)
-                            .tag(user.id)
-                    }
+            if offlineUsers.isEmpty {
+                onlineList
+            } else {
+                VSplitView {
+                    onlineList
+                        .frame(minHeight: 60)
+                    offlineList
+                        .frame(minHeight: 40)
                 }
-                if !offlineUsers.isEmpty {
-                    Section("Offline") {
-                        ForEach(offlineUsers) { offlineUser in
-                            Text(offlineUser.nick)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    openOfflinePrivateMessage(login: offlineUser.login)
-                                }
-                        }
-                    }
-                }
-            }
-            .contextMenu(forSelectionType: UInt32.self) { selection in
-                Button("Get Infos") {
-                    guard let selectedUser = user(for: selection) else { return }
-                    runtime.getUserInfo(selectedUser.id)
-                }
-                .disabled(
-                    !runtime.hasPrivilege("wired.account.user.get_info")
-                    || user(for: selection) == nil
-                )
-
-                Divider()
-
-                Button("Send Private Message") {
-                    openPrivateMessage(for: selection)
-                }
-                .disabled({
-                    guard let selectedUser = user(for: selection) else { return true }
-                    return !runtime.hasPrivilege("wired.account.message.send_messages")
-                        || selectedUser.id == runtime.userID
-                }())
-
-                Button("Invite to Private Chat") {
-                    guard let selectedUser = user(for: selection) else { return }
-                    Task {
-                        do {
-                            if chat.isPrivate {
-                                try await runtime.inviteUserToPrivateChat(userID: selectedUser.id, chatID: chat.id)
-                            } else {
-                                try await runtime.createPrivateChat(inviting: selectedUser.id)
-                            }
-                        } catch {
-                            runtime.lastError = error
-                        }
-                    }
-                }
-                .disabled({
-                    guard let selectedUser = user(for: selection) else { return true }
-                    return !runtime.hasPrivilege("wired.account.chat.create_chats")
-                        || selectedUser.id == runtime.userID
-                }())
-
-                if user(for: selection) != nil {
-                    Divider()
-
-                    Button("Disconnect") {
-                        guard let selectedUser = user(for: selection) else { return }
-                        moderationSheet = UserModerationSheet(kind: .disconnect, user: selectedUser, chatID: chat.id)
-                    }
-                    .disabled(!canDisconnect(user(for: selection)))
-
-                    Button("Kick") {
-                        guard let selectedUser = user(for: selection) else { return }
-                        moderationSheet = UserModerationSheet(kind: .kick, user: selectedUser, chatID: chat.id)
-                    }
-                    .disabled(!canKick(user(for: selection)))
-
-                    Button("Ban") {
-                        guard let selectedUser = user(for: selection) else { return }
-                        moderationSheet = UserModerationSheet(kind: .ban, user: selectedUser, chatID: chat.id)
-                    }
-                    .disabled(!canBan(user(for: selection)))
-                }
-            } primaryAction: { selection in
-
-                openPrivateMessage(for: selection)
             }
 #else
             List {
@@ -221,7 +147,126 @@ struct ChatUsersList: View {
         .frame(width: 200)
         #endif
     }
+
+    // MARK: - Sub-views
+
+    @ViewBuilder
+    private var onlineList: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Online")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                Spacer()
+            }
+            .background(.bar)
+
+            List(selection: $selectedOnlineID) {
+                ForEach(chat.users) { user in
+                    UserListRowView(user: user)
+                        .environment(runtime)
+                        .tag(user.id)
+                }
+            }
+            .contextMenu(forSelectionType: UInt32.self) { selection in
+                let user = selection.first.flatMap { id in chat.users.first(where: { $0.id == id }) }
+
+                Button("Get Infos") {
+                    guard let user else { return }
+                    runtime.getUserInfo(user.id)
+                }
+                .disabled(!runtime.hasPrivilege("wired.account.user.get_info") || user == nil)
+
+                Divider()
+
+                Button("Send Private Message") {
+                    openPrivateMessage(for: selection)
+                }
+                .disabled({
+                    guard let user else { return true }
+                    return !runtime.hasPrivilege("wired.account.message.send_messages")
+                        || user.id == runtime.userID
+                }())
+
+                Button("Invite to Private Chat") {
+                    guard let user else { return }
+                    Task {
+                        do {
+                            if chat.isPrivate {
+                                try await runtime.inviteUserToPrivateChat(userID: user.id, chatID: chat.id)
+                            } else {
+                                try await runtime.createPrivateChat(inviting: user.id)
+                            }
+                        } catch {
+                            runtime.lastError = error
+                        }
+                    }
+                }
+                .disabled({
+                    guard let user else { return true }
+                    return !runtime.hasPrivilege("wired.account.chat.create_chats")
+                        || user.id == runtime.userID
+                }())
+
+                if user != nil {
+                    Divider()
+
+                    Button("Disconnect") {
+                        guard let user else { return }
+                        moderationSheet = UserModerationSheet(kind: .disconnect, user: user, chatID: chat.id)
+                    }
+                    .disabled(!canDisconnect(user))
+
+                    Button("Kick") {
+                        guard let user else { return }
+                        moderationSheet = UserModerationSheet(kind: .kick, user: user, chatID: chat.id)
+                    }
+                    .disabled(!canKick(user))
+
+                    Button("Ban") {
+                        guard let user else { return }
+                        moderationSheet = UserModerationSheet(kind: .ban, user: user, chatID: chat.id)
+                    }
+                    .disabled(!canBan(user))
+                }
+            } primaryAction: { selection in
+                openPrivateMessage(for: selection)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var offlineList: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Offline")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                Spacer()
+            }
+            .background(.bar)
+
+            List(selection: $selectedOfflineLogin) {
+                ForEach(offlineUsers) { offlineUser in
+                    Text(offlineUser.nick)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .tag(offlineUser.login)
+                }
+            }
+            .onChange(of: selectedOfflineLogin) { _, login in
+                guard let login else { return }
+                openOfflinePrivateMessage(login: login)
+            }
+        }
+    }
 }
+
+// MARK: - Moderation sheet view
 
 private struct UserModerationSheetView: View {
     let runtime: ConnectionRuntime
