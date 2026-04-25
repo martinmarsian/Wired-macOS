@@ -488,6 +488,7 @@ final class ConnectionRuntime: Identifiable {
 
         resetChats()
         resetBoards()
+        offlineUsers = []
     }
 
     func setAutoReconnectState(
