@@ -1870,14 +1870,16 @@ final class ConnectionController {
             if let senderLogin = message.string(forField: "wired.message.offline.sender_login"),
                let body = message.string(forField: "wired.message.message"),
                let date = message.date(forField: "wired.message.offline.date") {
+                let senderNick = message.string(forField: "wired.message.offline.sender_nick")
+                let displayName = senderNick ?? senderLogin
                 await MainActor.run {
-                    runtime.receiveOfflineMessage(fromLogin: senderLogin, text: body, date: date)
+                    runtime.receiveOfflineMessage(fromLogin: senderLogin, senderNick: senderNick, text: body, date: date)
                     self.triggerEvent(
                         .messageReceived,
                         runtime: runtime,
-                        subtitle: senderLogin,
+                        subtitle: displayName,
                         body: body,
-                        chatText: "Offline message from \(senderLogin): \(body)"
+                        chatText: "Offline message from \(displayName): \(body)"
                     )
                 }
             }

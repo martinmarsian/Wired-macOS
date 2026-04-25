@@ -1084,12 +1084,13 @@ final class ConnectionRuntime: Identifiable {
         return conversation
     }
 
-    func receiveOfflineMessage(fromLogin senderLogin: String, text: String, date: Date) {
-        let conversation = ensureDirectConversation(nick: senderLogin, userID: nil, login: senderLogin)
+    func receiveOfflineMessage(fromLogin senderLogin: String, senderNick: String?, text: String, date: Date) {
+        let displayNick = senderNick ?? senderLogin
+        let conversation = ensureDirectConversation(nick: displayNick, userID: nil, login: senderLogin)
         conversation.messages.append(
             MessageEvent(
                 id: UUID(),
-                senderNick: senderLogin,
+                senderNick: displayNick,
                 senderUserID: nil,
                 senderIcon: nil,
                 text: text,
