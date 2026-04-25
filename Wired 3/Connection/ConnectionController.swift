@@ -1866,6 +1866,33 @@ final class ConnectionController {
                 }
             }
 
+        case "wired.message.offline_message":
+            if let senderLogin = message.string(forField: "wired.message.offline.sender_login"),
+               let body = message.string(forField: "wired.message.message"),
+               let date = message.date(forField: "wired.message.offline.date") {
+                await MainActor.run {
+                    runtime.receiveOfflineMessage(fromLogin: senderLogin, text: body, date: date)
+                    self.triggerEvent(
+                        .messageReceived,
+                        runtime: runtime,
+                        subtitle: senderLogin,
+                        body: body,
+                        chatText: "Offline message from \(senderLogin): \(body)"
+                    )
+                }
+            }
+
+        case "wired.user.offline_list":
+            if let login = message.string(forField: "wired.user.login") {
+                let nick = message.string(forField: "wired.user.nick")
+                await MainActor.run {
+                    runtime.receiveOfflineUserList(login: login, nick: nick)
+                }
+            }
+
+        case "wired.user.offline_list.done":
+            break
+
         case "wired.file.directory_changed":
             if let path = message.string(forField: "wired.file.path") {
                 NotificationCenter.default.post(

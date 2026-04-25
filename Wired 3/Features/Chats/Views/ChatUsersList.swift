@@ -43,10 +43,17 @@ private struct UserModerationSheet: Identifiable {
 struct ChatUsersList: View {
     @Environment(ConnectionRuntime.self) private var runtime
     @State private var selectedUserID: UInt32?
+    @State private var selectedOfflineLogin: String?
     @State private var moderationSheet: UserModerationSheet?
     @State private var moderationError: Error?
 
     var chat: Chat
+
+    private var offlineUsers: [OfflineUser] {
+        // Show only users not currently in this chat
+        let onlineLogins = Set(chat.users.compactMap { $0.login.isEmpty ? nil : $0.login })
+        return runtime.offlineUsers.filter { !onlineLogins.contains($0.login) }
+    }
 
     private func user(for selection: Set<UInt32>) -> User? {
         guard let userID = selection.first else { return nil }
@@ -58,6 +65,12 @@ struct ChatUsersList: View {
         guard runtime.hasPrivilege("wired.account.message.send_messages"),
               selectedUser.id != runtime.userID else { return }
         _ = runtime.openPrivateMessageConversation(with: selectedUser)
+    }
+
+    private func openOfflinePrivateMessage(login: String) {
+        guard runtime.hasPrivilege("wired.account.message.send_offline_messages") else { return }
+        guard let offlineUser = runtime.offlineUsers.first(where: { $0.login == login }) else { return }
+        _ = runtime.openOfflineMessageConversation(with: offlineUser)
     }
 
     private func canModerate(_ user: User?) -> Bool {
@@ -85,10 +98,27 @@ struct ChatUsersList: View {
 
         Group {
 #if os(macOS)
-            List(chat.users, id: \.id, selection: $selectedUserID) { user in
-                UserListRowView(user: user)
-                    .environment(runtime)
-                    .tag(user.id)
+            List(selection: $selectedUserID) {
+                Section("Online") {
+                    ForEach(chat.users) { user in
+                        UserListRowView(user: user)
+                            .environment(runtime)
+                            .tag(user.id)
+                    }
+                }
+                if !offlineUsers.isEmpty {
+                    Section("Offline") {
+                        ForEach(offlineUsers) { offlineUser in
+                            Text(offlineUser.nick)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    openOfflinePrivateMessage(login: offlineUser.login)
+                                }
+                        }
+                    }
+                }
             }
             .contextMenu(forSelectionType: UInt32.self) { selection in
                 Button("Get Infos") {

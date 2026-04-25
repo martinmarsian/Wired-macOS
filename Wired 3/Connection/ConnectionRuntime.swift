@@ -201,6 +201,7 @@ final class MessageConversation: Identifiable {
     var title: String
     var participantNick: String?
     var participantUserID: UInt32?
+    var participantLogin: String?
     var messages: [MessageEvent] = []
     var unreadMessagesCount: Int = 0
     @ObservationIgnored private var searchCache: SearchCacheEntry?
@@ -214,13 +215,15 @@ final class MessageConversation: Identifiable {
         kind: MessageConversationKind,
         title: String,
         participantNick: String? = nil,
-        participantUserID: UInt32? = nil
+        participantUserID: UInt32? = nil,
+        participantLogin: String? = nil
     ) {
         self.id = id
         self.kind = kind
         self.title = title
         self.participantNick = participantNick
         self.participantUserID = participantUserID
+        self.participantLogin = participantLogin
     }
 }
 
@@ -353,6 +356,7 @@ final class ConnectionRuntime: Identifiable {
     var pendingBroadcastConversation: Bool = false
     var selectedMessageConversationID: UUID?
     var messageConversations: [MessageConversation] = []
+    var offlineUsers: [OfflineUser] = []
 
     // Boards
     var boards: [Board] = []
@@ -607,6 +611,7 @@ final class ConnectionRuntime: Identifiable {
     func resetMessages() {
         selectedMessageConversationID = nil
         messageConversations = []
+        offlineUsers = []
         persistMessages()
     }
 
@@ -1000,7 +1005,21 @@ final class ConnectionRuntime: Identifiable {
     func openPrivateMessageConversation(with user: User) -> MessageConversation {
         let conversation = ensureDirectConversation(
             nick: user.nick,
-            userID: user.id
+            userID: user.id,
+            login: user.login.isEmpty ? nil : user.login
+        )
+        selectedMessageConversationID = conversation.id
+        selectedTab = .messages
+        resetUnreads(conversation)
+        persistMessages()
+        return conversation
+    }
+
+    func openOfflineMessageConversation(with offlineUser: OfflineUser) -> MessageConversation {
+        let conversation = ensureDirectConversation(
+            nick: offlineUser.nick,
+            userID: nil,
+            login: offlineUser.login
         )
         selectedMessageConversationID = conversation.id
         selectedTab = .messages
@@ -1011,13 +1030,15 @@ final class ConnectionRuntime: Identifiable {
 
     func ensureDirectConversation(
         nick: String,
-        userID: UInt32?
+        userID: UInt32?,
+        login: String? = nil
     ) -> MessageConversation {
-        // 1. Match by userID (most reliable — survives nick changes)
-        if let userID, let conversation = messageConversations.first(where: {
-            $0.kind == .direct && $0.participantUserID == userID
-        }) {
-            // Only update nick if it's a real name, not a "User #X" fallback placeholder
+        // 1. Match by login (most stable — survives session reconnects)
+        if let login, !login.isEmpty,
+           let conversation = messageConversations.first(where: {
+               $0.kind == .direct && $0.participantLogin == login
+           }) {
+            if let userID { conversation.participantUserID = userID }
             let isPlaceholderNick = nick.hasPrefix("User #")
             if !isPlaceholderNick && conversation.participantNick != nick {
                 conversation.participantNick = nick
@@ -1026,20 +1047,35 @@ final class ConnectionRuntime: Identifiable {
             return conversation
         }
 
-        // 2. Fallback: match by nick
+        // 2. Match by userID (survives nick changes within a session)
+        if let userID, let conversation = messageConversations.first(where: {
+            $0.kind == .direct && $0.participantUserID == userID
+        }) {
+            if let login, !login.isEmpty { conversation.participantLogin = login }
+            let isPlaceholderNick = nick.hasPrefix("User #")
+            if !isPlaceholderNick && conversation.participantNick != nick {
+                conversation.participantNick = nick
+                conversation.title = nick
+            }
+            return conversation
+        }
+
+        // 3. Fallback: match by nick
         if let conversation = messageConversations.first(where: {
             $0.kind == .direct && $0.participantNick == nick
         }) {
             if let userID { conversation.participantUserID = userID }
+            if let login, !login.isEmpty { conversation.participantLogin = login }
             return conversation
         }
 
-        // 3. Create new
+        // 4. Create new
         let conversation = MessageConversation(
             kind: .direct,
             title: nick,
             participantNick: nick,
-            participantUserID: userID
+            participantUserID: userID,
+            participantLogin: login
         )
         messageConversations.append(conversation)
         sortMessageConversations()
@@ -1047,10 +1083,52 @@ final class ConnectionRuntime: Identifiable {
         return conversation
     }
 
+    func receiveOfflineMessage(fromLogin senderLogin: String, text: String, date: Date) {
+        let conversation = ensureDirectConversation(nick: senderLogin, userID: nil, login: senderLogin)
+        conversation.messages.append(
+            MessageEvent(
+                eventID: UUID(),
+                senderNick: senderLogin,
+                userID: nil,
+                icon: nil,
+                text: text,
+                date: date,
+                isFromCurrentUser: false,
+                attachments: []
+            )
+        )
+        conversation.unreadMessagesCount += 1
+        sortMessageConversations()
+        if selectedTab != .messages {
+            connectionController.updateNotificationsBadge()
+        }
+        persistMessages()
+    }
+
+    func receiveOfflineUserList(login: String, nick: String?) {
+        guard !offlineUsers.contains(where: { $0.login == login }) else { return }
+        offlineUsers.append(OfflineUser(login: login, nick: nick))
+        offlineUsers.sort { $0.nick.localizedCaseInsensitiveCompare($1.nick) == .orderedAscending }
+    }
+
     func sendPrivateMessage(_ text: String, in conversation: MessageConversation, attachments: [ChatDraftAttachment] = []) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         guard conversation.kind == .direct else { return }
+
+        // If recipient is offline and we have their login, send as offline message
+        if resolvedRecipientUserID(for: conversation) == nil,
+           let login = conversation.participantLogin,
+           hasPrivilege("wired.account.message.send_offline_messages") {
+            let offlineMsg = P7Message(withName: "wired.message.send_offline_message", spec: spec)
+            offlineMsg.addParameter(field: "wired.message.offline.recipient_login", value: login)
+            offlineMsg.addParameter(field: "wired.message.message", value: trimmed)
+            if let response = try await send(offlineMsg), response.name == "wired.error" {
+                throw WiredError(message: response)
+            }
+            appendOwnPrivateMessage(trimmed, to: conversation)
+            return
+        }
 
         guard let recipientUserID = resolvedRecipientUserID(for: conversation) else {
             throw WiredError(withTitle: "Private Message", message: "User is offline.")
@@ -1164,7 +1242,10 @@ final class ConnectionRuntime: Identifiable {
             return hasPrivilege("wired.account.message.broadcast")
         case .direct:
             guard hasPrivilege("wired.account.message.send_messages") else { return false }
-            return resolvedRecipientUserID(for: conversation) != nil
+            if resolvedRecipientUserID(for: conversation) != nil { return true }
+            // Allow sending as offline message if recipient has a known login and privilege is granted
+            return conversation.participantLogin != nil
+                && hasPrivilege("wired.account.message.send_offline_messages")
         }
     }
 
