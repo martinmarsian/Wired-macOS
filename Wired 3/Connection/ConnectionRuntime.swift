@@ -1154,18 +1154,27 @@ final class ConnectionRuntime: Identifiable {
             let offlineMsg = P7Message(withName: "wired.message.send_offline_message", spec: spec)
             offlineMsg.addParameter(field: "wired.message.offline.recipient_login", value: login)
 
-            // Fetch recipient public key and encrypt if available
             let keyRequest = P7Message(withName: "wired.user.get_public_key", spec: spec)
             keyRequest.addParameter(field: "wired.user.login", value: login)
-            if let keyResponse = try? await send(keyRequest),
-               let pubKeyData = keyResponse.data(forField: "wired.user.public_key"),
-               let encryptedBlob = try? OfflineMessageCrypto.encrypt(plaintext: trimmed, recipientPublicKeyData: pubKeyData) {
-                offlineMsg.addParameter(field: "wired.message.message", value: encryptedBlob)
-                offlineMsg.addParameter(field: "wired.message.offline.encrypted", value: true)
-            } else {
-                // No public key registered yet — send plaintext (backward compatible)
-                offlineMsg.addParameter(field: "wired.message.message", value: trimmed)
+
+            guard let keyResponse = try? await send(keyRequest),
+                  let pubKeyData = keyResponse.data(forField: "wired.user.public_key"),
+                  !pubKeyData.isEmpty else {
+                throw WiredError(
+                    withTitle: "Offline Message",
+                    message: "This user hasn't enabled offline messaging yet. They need to connect at least once with a compatible client to register their encryption key."
+                )
             }
+
+            guard let encryptedBlob = try? OfflineMessageCrypto.encrypt(
+                plaintext: trimmed,
+                recipientPublicKeyData: pubKeyData
+            ) else {
+                throw WiredError(withTitle: "Offline Message", message: "Failed to encrypt message.")
+            }
+
+            offlineMsg.addParameter(field: "wired.message.message", value: encryptedBlob)
+            offlineMsg.addParameter(field: "wired.message.offline.encrypted", value: true)
 
             if let response = try await send(offlineMsg), response.name == "wired.error" {
                 throw WiredError(message: response)

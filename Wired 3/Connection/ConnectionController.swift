@@ -1880,7 +1880,7 @@ final class ConnectionController {
                         .messageReceived,
                         runtime: runtime,
                         subtitle: displayName,
-                        body: isEncrypted ? "Encrypted message" : body,
+                        body: "New private message from \(displayName)",
                         chatText: "Offline message from \(displayName)"
                     )
                 }
