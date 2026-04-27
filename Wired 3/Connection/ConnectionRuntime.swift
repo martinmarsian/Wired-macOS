@@ -1155,7 +1155,7 @@ final class ConnectionRuntime: Identifiable {
             offlineMsg.addParameter(field: "wired.message.offline.recipient_login", value: login)
 
             let keyRequest = P7Message(withName: "wired.user.get_public_key", spec: spec)
-            keyRequest.addParameter(field: "wired.user.login", value: login)
+            keyRequest.addParameter(field: "wired.message.offline.recipient_login", value: login)
 
             guard let keyResponse = try? await send(keyRequest),
                   let pubKeyData = keyResponse.data(forField: "wired.user.public_key"),
