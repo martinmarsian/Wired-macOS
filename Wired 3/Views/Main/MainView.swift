@@ -1691,6 +1691,15 @@ private final class WindowCloseDelegate: NSObject, NSWindowDelegate {
             return false
         }
 
+        // If the user is not on the Public Chat tab, Cmd+W navigates back to it
+        // instead of closing. The close/quit dialog only appears from the chat tab.
+        if let id = selectedConnectionID,
+           let runtime = connectionController?.runtime(for: id),
+           runtime.selectedTab != .chats {
+            runtime.selectedTab = .chats
+            return false
+        }
+
         guard checkBeforeClosing,
               let connectionController else {
             return true
