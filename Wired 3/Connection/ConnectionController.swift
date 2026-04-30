@@ -1589,6 +1589,10 @@ final class ConnectionController {
                                 }
                             }
                             runtime.refreshPrivateChatName(chat)
+                            // Keep offline user list in sync: remove users that just came online
+                            if !user.login.isEmpty {
+                                runtime.offlineUserCameOnline(login: user.login)
+                            }
                         }
                     }
                 }

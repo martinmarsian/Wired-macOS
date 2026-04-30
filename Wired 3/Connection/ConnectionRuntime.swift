@@ -1092,9 +1092,18 @@ final class ConnectionRuntime: Identifiable {
         return urlLogin.isEmpty ? nil : urlLogin
     }
 
+    var currentServerHost: String {
+        if let config = connectionController.configuration(for: id) {
+            return config.hostname.lowercased()
+        }
+        return connection?.url.hostname.lowercased() ?? ""
+    }
+
     func uploadPublicKey() async {
         guard let login = currentLogin else { return }
-        let keyData = OfflineMessageKeyManager.shared.loadOrCreateKeyPair(for: login).publicKey.rawRepresentation
+        let keyData = OfflineMessageKeyManager.shared
+            .loadOrCreateKeyPair(for: login, serverHost: currentServerHost)
+            .publicKey.rawRepresentation
         let msg = P7Message(withName: "wired.user.set_public_key", spec: spec)
         msg.addParameter(field: "wired.user.public_key", value: keyData)
         _ = try? await send(msg)
@@ -1107,7 +1116,7 @@ final class ConnectionRuntime: Identifiable {
         var displayText = text
         if isEncrypted {
             if let login = currentLogin,
-               let privateKey = OfflineMessageKeyManager.shared.privateKey(for: login),
+               let privateKey = OfflineMessageKeyManager.shared.privateKey(for: login, serverHost: currentServerHost),
                let decrypted = try? OfflineMessageCrypto.decrypt(blob: text, privateKey: privateKey) {
                 displayText = decrypted
             } else {
@@ -1141,6 +1150,10 @@ final class ConnectionRuntime: Identifiable {
         offlineUsers.sort { $0.nick.localizedCaseInsensitiveCompare($1.nick) == .orderedAscending }
     }
 
+    func offlineUserCameOnline(login: String) {
+        offlineUsers.removeAll { $0.login == login }
+    }
+
     func sendPrivateMessage(_ text: String, in conversation: MessageConversation, attachments: [ChatDraftAttachment] = []) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
@@ -1163,6 +1176,17 @@ final class ConnectionRuntime: Identifiable {
                 throw WiredError(
                     withTitle: "Offline Message",
                     message: "This user hasn't enabled offline messaging yet. They need to connect at least once with a compatible client to register their encryption key."
+                )
+            }
+
+            // TOFU: reject if recipient's key changed since last contact
+            switch OfflineMessageKeyManager.shared.validateRecipientKey(pubKeyData, login: login, serverHost: currentServerHost) {
+            case .trusted:
+                break
+            case .changed:
+                throw WiredError(
+                    withTitle: "Key Changed",
+                    message: "The encryption key for '\(login)' has changed since your last message. For security, the message was not sent. If this is expected (e.g., the user reinstalled their client), ask them to message you first — that will update the stored key."
                 )
             }
 
