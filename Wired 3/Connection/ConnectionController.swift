@@ -1377,15 +1377,21 @@ final class ConnectionController {
             await MainActor.run {
                 runtime.userID = message.uint32(forField: "wired.user.id") ?? 0
                 runtime.resetBoards()
+                // Pre-register public chat 1 so incoming user_list.done can
+                // resolve it even if the server auto-joins without a request.
+                runtime.appendChat(Chat(id: 1, name: "Public Chat", isPrivate: false))
             }
-            await runtime.uploadPublicKey()
-
-            let request = P7Message(withName: "wired.chat.get_chats", spec: spec)
-            _ = try? await runtime.send(request)
-
-            // Keep board bootstrap off the main message-processing path:
-            // some servers may never answer these requests, which would stall
-            // chat join events and leave the UI on "Connecting...".
+            // Keep all server requests off the main message-processing path.
+            // External servers may not respond to some messages (e.g. set_public_key,
+            // get_chats), which would block sendAsync and freeze the loop forever.
+            Task { await runtime.uploadPublicKey() }
+            Task {
+                try? await runtime.joinChat(1)
+            }
+            Task {
+                let request = P7Message(withName: "wired.chat.get_chats", spec: spec)
+                _ = try? await runtime.send(request)
+            }
             Task {
                 try? await runtime.subscribeBoards()
                 try? await runtime.getBoards()
@@ -1463,17 +1469,9 @@ final class ConnectionController {
 
         case "wired.chat.chat_list":
             if let chat = await parseChat(from: message) {
+                // appendChat is a no-op if chat already exists (e.g. chat 1
+                // pre-registered and joined in the wired.login handler).
                 await runtime.appendChat(chat)
-
-                if chat.id == 1 {
-                    do {
-                        try await runtime.joinChat(chat.id)
-                    } catch {
-                        await MainActor.run {
-                            runtime.lastError = error
-                        }
-                    }
-                }
             }
         case "wired.chat.chat_created":
             if let chatID = message.uint32(forField: "wired.chat.id") {
