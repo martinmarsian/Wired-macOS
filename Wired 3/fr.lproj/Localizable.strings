@@ -297,6 +297,13 @@
 "Verified Identity" = "Identité vérifiée";
 "Identity not verified" = "Identité non vérifiée";
 
+/* ── File types ── */
+"File" = "Fichier";
+"Directory" = "Dossier";
+"Uploads Folder" = "Dossier de dépôt";
+"Drop Box" = "Boîte de dépôt";
+"Sync Folder" = "Dossier de synchronisation";
+
 /* ── File Info sheet ── */
 "File Info" = "Infos fichier";
 "Close" = "Fermer";

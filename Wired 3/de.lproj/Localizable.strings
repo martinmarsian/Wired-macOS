@@ -296,6 +296,13 @@
 "Verified Identity" = "Verifizierte Identität";
 "Identity not verified" = "Identität nicht verifiziert";
 
+/* ── Dateitypen ── */
+"File" = "Datei";
+"Directory" = "Ordner";
+"Uploads Folder" = "Upload-Ordner";
+"Drop Box" = "Ablagebox";
+"Sync Folder" = "Synchronisierungsordner";
+
 /* ── Dateiinfo-Fenster ── */
 "File Info" = "Dateiinfo";
 "Close" = "Schließen";
