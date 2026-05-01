@@ -650,7 +650,15 @@
 /* ── Files overwrite alert ── */
 "File Already Exists" = "Fichier déjà existant";
 "A file already exists at:\n%@\n\nOverwrite it?" = "Un fichier existe déjà à :\n%@\n\nL'écraser ?";
+"Do you want to overwrite \"%@\"?" = "Voulez-vous écraser « %@ » ?";
 "Overwrite" = "Écraser";
+
+/* ── Quick Look alert ── */
+"Download Preview?" = "Télécharger l'aperçu ?";
+"Download Previews?" = "Télécharger les aperçus ?";
+"%@ is not cached yet and is larger than 512 KB.\nWired will fetch a lightweight Quick Look preview from the server." = "%@ n'est pas encore en cache et dépasse 512 Ko.\nWired récupérera un aperçu Quick Look allégé depuis le serveur.";
+"%lld selected files are not cached yet and are larger than 512 KB.\nWired will fetch lightweight Quick Look previews from the server." = "%lld fichiers sélectionnés ne sont pas encore en cache et dépassent 512 Ko.\nWired récupérera des aperçus Quick Look allégés depuis le serveur.";
+"Quick Look Error" = "Erreur Quick Look";
 
 /* ── Files column headers ── */
 "Kind" = "Type";

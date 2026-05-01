@@ -650,7 +650,15 @@
 /* ── Files overwrite alert ── */
 "File Already Exists" = "Datei existiert bereits";
 "A file already exists at:\n%@\n\nOverwrite it?" = "Eine Datei existiert bereits unter:\n%@\n\nÜberschreiben?";
+"Do you want to overwrite \"%@\"?" = "Möchten Sie „%@" überschreiben?";
 "Overwrite" = "Überschreiben";
+
+/* ── Quick Look alert ── */
+"Download Preview?" = "Vorschau laden?";
+"Download Previews?" = "Vorschauen laden?";
+"%@ is not cached yet and is larger than 512 KB.\nWired will fetch a lightweight Quick Look preview from the server." = "%@ ist noch nicht zwischengespeichert und größer als 512 KB.\nWired lädt eine schlanke Schnellansicht vom Server.";
+"%lld selected files are not cached yet and are larger than 512 KB.\nWired will fetch lightweight Quick Look previews from the server." = "%lld ausgewählte Dateien sind noch nicht zwischengespeichert und größer als 512 KB.\nWired lädt schlanke Schnellansichten vom Server.";
+"Quick Look Error" = "Schnellansicht-Fehler";
 
 /* ── Files column headers ── */
 "Kind" = "Art";
